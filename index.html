@@ -1559,7 +1559,14 @@
                     wheelSettings: localStorage.getItem('app_wheel_settings'),
                     evilWheelConfig: localStorage.getItem('app_evil_wheel_config'),
                     randomEventHistory: localStorage.getItem('app_random_event_history'),
-                    dailyRandomCounts: localStorage.getItem('app_daily_random_counts')
+                    dailyRandomCounts: localStorage.getItem('app_daily_random_counts'),
+					userCity: localStorage.getItem('app_user_city_v1'),
+                    curriculumProgress: localStorage.getItem('app_curriculum_progress_v1'),
+                    xpWheelConfig: localStorage.getItem('app_xp_wheel_config'),
+                    settingsPassword: localStorage.getItem('app_settings_password'),
+                    testMode: localStorage.getItem('app_test_mode'),
+                    weekendSettings: localStorage.getItem('app_weekend_settings'),
+                    notifiedLevels: localStorage.getItem('app_notified_levels')
                 };
                 
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1616,6 +1623,13 @@
                                                       key === 'evilWheelConfig' ? 'app_evil_wheel_config' :
                                                       key === 'randomEventHistory' ? 'app_random_event_history' :
                                                       key === 'dailyRandomCounts' ? 'app_daily_random_counts' : null;
+													  key === 'userCity' ? 'app_user_city_v1' :
+                                                      key === 'curriculumProgress' ? 'app_curriculum_progress_v1' :
+                                                      key === 'xpWheelConfig' ? 'app_xp_wheel_config' :
+                                                      key === 'settingsPassword' ? 'app_settings_password' :
+                                                      key === 'testMode' ? 'app_test_mode' :
+                                                      key === 'weekendSettings' ? 'app_weekend_settings' :
+                                                      key === 'notifiedLevels' ? 'app_notified_levels' : null;
                                     
                                     if (storageKey) {
                                         localStorage.setItem(storageKey, data[key]);
