@@ -6868,8 +6868,8 @@
 			
             const theme = useMemo(() => {
                 const profile = profiles.find(p => p.name === activeChild) || profiles[0];
-                return COLOR_PALETTES[profile.theme] || COLOR_PALETTES.rose;
-            }, [activeChild, profiles]);
+                return profile ? (COLOR_PALETTES[profile.theme] || COLOR_PALETTES.rose) : COLOR_PALETTES.rose;
+        }, [activeChild, profiles]);
 
             const dates = useMemo(() => getDatesInRange(globalDates.start, globalDates.end), [globalDates]);
             
@@ -10049,8 +10049,8 @@
 					  profiles={profiles}
                   />				  
 
-                  <div className="fixed bottom-0 w-full bg-white/60 backdrop-blur-md border-t border-white/20 p-2 text-center text-[18px] text-Red-400 z-10">
-                     张恒与张又兮出品 “不怕同学是学霸，就怕学霸放寒假“系列之2026年超强寒假学习打卡大计划 V2.8       灵感创意、产品小经理：张恒与张又兮小朋友  大助理：爸爸  
+                  <div className="fixed bottom-0 w-full bg-white/60 backdrop-blur-md border-t border-white/20 p-2 text-center text-[12px] text-Red-400 z-10">
+                     张恒与张又兮出品&nbsp; &nbsp; “不怕同学是学霸，就怕学霸放寒假“系列之2026年超强寒假学习打卡大计划 V2.8&nbsp; &nbsp; &nbsp; &nbsp; 灵感创意、产品小经理：张恒与张又兮小朋友&nbsp; &nbsp; &nbsp; 大助理：爸爸&nbsp; &nbsp; &nbsp; Copyright ©2026&nbsp; 张恒与张又兮&nbsp; &nbsp; &nbsp;  All right reserved.
                   </div>
                 </div>
             );
