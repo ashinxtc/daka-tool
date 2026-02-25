@@ -9434,6 +9434,28 @@
 			
 			const hasActiveBg = !!activeBg;
 			
+			// 如果当前设备没有任何账户记录，直接拦截并全屏显示初始引导页，防止任何误操作触发底层数据
+			if (profiles.length === 0) {
+				return (
+					<div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
+						<div className="bg-white/70 backdrop-blur-lg p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center border border-white">
+							<div className="text-6xl mb-4 animate-bounce">✨</div>
+							<h1 className="text-2xl font-black text-slate-800 mb-2">欢迎来到进化之路 ——超强寒假学习打卡大计划</h1>
+							<p className="text-slate-500 mb-8 text-sm font-medium">当前设备暂无记录，请先创建第一个成员开启你们的打卡之旅！</p>
+							<button 
+								onClick={handleAddProfile} 
+								className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-blue-500/30 transform transition active:scale-95"
+							>
+								+ 新建第一个成员
+							</button>
+						</div>
+						<div className="absolute bottom-10 text-xs text-slate-400">
+							Copyright ©2026 张恒与&张又兮&nbsp; &nbsp; &nbsp;  All right reserved 
+						</div>
+					</div>
+				);
+			}
+			
             return (
                 <div className={`min-h-screen ${hasActiveBg ? 'bg-transparent' : theme.softBg} font-sans pb-24 transition-colors duration-500`}>
 				  {/* --- 新增：沉浸式动态背景层 --- */}
@@ -10064,7 +10086,7 @@
                   />				  
 
                   <div className="fixed bottom-0 w-full bg-white/60 backdrop-blur-md border-t border-white/20 p-2 text-center text-[12px] text-Red-400 z-10">
-                     张恒与张又兮出品&nbsp; &nbsp; “不怕同学是学霸，就怕学霸放寒假“系列之2026年超强寒假学习打卡大计划 V2.8&nbsp; &nbsp; &nbsp; &nbsp; 灵感创意、产品小经理：张恒与张又兮小朋友&nbsp; &nbsp; &nbsp; 大助理：爸爸&nbsp; &nbsp; &nbsp; Copyright ©2026&nbsp; 张恒与张又兮（软件著作权注册中）&nbsp; &nbsp; &nbsp;  All right reserved.
+                     张恒与&张又兮出品&nbsp; &nbsp; “不怕同学是学霸，就怕学霸放寒假“系列之2026年超强寒假学习打卡大计划 V2.8&nbsp; &nbsp; &nbsp; &nbsp; 灵感创意、产品小经理：张恒与&张又兮小朋友&nbsp; &nbsp; &nbsp; 大助理：爸爸&nbsp; &nbsp; &nbsp; Copyright ©2026&nbsp; 张恒与&张又兮（软件著作权注册中）&nbsp; &nbsp; &nbsp;  All right reserved.
                   </div>
                 </div>
             );
