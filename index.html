@@ -6,9 +6,9 @@
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="进化之路">
+    <meta name="apple-mobile-web-app-title" content="时空市集">
     
-    <title>进化之路 ——超强寒假学习打卡大计划 v2.8</title>
+    <title>长期学习打卡任务 v2.8</title>
     
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -866,7 +866,7 @@
             // 第五类：策略与辅助（高阶玩家专用）
             { 
                 id: 'item_freeze', name: '冰河世纪图腾', icon: '❄️', type: 'freeze', 
-                price: 60, era: '远古之路', minLevel: 3, 
+                price: 1000, era: '远古之路', minLevel: 3, 
                 desc: '冻结卡。使用后，整个系统"冻结"一天。这一天不打卡也不会断掉"连续打卡天数"记录，也不会触发任何惩罚，但同时也无法获得收益。',
                 category: 'tool'
             },
@@ -1249,6 +1249,22 @@
             { id: 'sci_5_2', name: '造物小工程师', desc: '了解了热的传递和船的演变，不仅做实验，还亲手设计制作了小船和保温瓶，展现卓越工程思维。', rarity: 'legendary', category: '精通' },
             { id: 'sci_6_1', name: '微观观察家', desc: '借助显微镜跨入神奇微观世界！了解了细胞和微生物，探究了地球自转与公转带来的昼夜四季。', rarity: 'legendary', category: '精通' },
             { id: 'sci_6_2', name: '少年科学家', desc: '从住房建造到宇宙探索，从遗传到能量转换。走完小学六年科学之旅，愿你永远保持好奇心！', rarity: 'legendary', category: '精通' },
+			// --- 【新增】校内英语天梯系列 (School English) ---
+            // 第一阶段：语感启蒙期 (一、二年级 / 第1-4学期)
+            { id: 'eng_1_1', name: 'ABC小能手', desc: '结识了26个字母好朋友，学会了用简单的“Hello”向世界问好，英语的大门已为你敞开！', rarity: 'rare', category: '精通' },
+            { id: 'eng_1_2', name: '色彩与数字小灵通', desc: 'Red, Blue, One, Two... 你不仅认识了五颜六色的单词，还能用英语数出生活中的小物件了。', rarity: 'rare', category: '精通' },
+            { id: 'eng_2_1', name: '动物农场主', desc: '认识了可爱的动物、美味的食物，你开始能用简单的英语表达自己的喜好：“I like...”', rarity: 'rare', category: '精通' },
+            { id: 'eng_2_2', name: '拼读小魔术师', desc: '掌握了基础的自然拼读魔法，看到陌生的简单单词也能勇敢地拼读出来，语感越来越棒啦！', rarity: 'rare', category: '精通' },
+            // 第二阶段：情景对话期 (三、四年级 / 第5-8学期)
+            { id: 'eng_3_1', name: '校园交际花', desc: '掌握了文具、身体部位的表达，能够自信地用英语做自我介绍，开启简单的全英文对话。', rarity: 'epic', category: '精通' },
+            { id: 'eng_3_2', name: '方位导航员', desc: 'In, on, under... 你学会了用英语精准定位物品的位置，还能和家人朋友聊聊不同的家庭成员。', rarity: 'epic', category: '精通' },
+            { id: 'eng_4_1', name: '小小生活家', desc: '从教室到卧室，从职业到外貌。你能用更丰富的疑问句式（Who, What, Where）探索世界。', rarity: 'epic', category: '精通' },
+            { id: 'eng_4_2', name: '时间管理者', desc: '认识了天气、衣物和农场，学会了用英语看时间（What time is it?），英语完全融入了日常生活。', rarity: 'epic', category: '精通' },
+            // 第三阶段：语法与读写期 (五、六年级 / 第9-12学期)
+            { id: 'eng_5_1', name: '时态初探者', desc: '描述人物性格、日常作息和周末活动。你开始接触时态的变换，英语表达越来越精确严谨。', rarity: 'legendary', category: '精通' },
+            { id: 'eng_5_2', name: '季节巡游者', desc: '探讨了四季变迁、节日的庆祝，还掌握了现在进行时。仿佛在用英语进行一场跨越季节的巡游。', rarity: 'legendary', category: '精通' },
+            { id: 'eng_6_1', name: '环球小旅人', desc: '聊交通、谈论路线、分享爱好。你的英语视界不再局限于身边，而是放眼于广阔的世界！', rarity: 'legendary', category: '精通' },
+            { id: 'eng_6_2', name: '英语小演说家', desc: '掌握了一般过去时，学会了描述外貌和身高的变化。带上这份自信，去向世界大声表达自己吧！', rarity: 'legendary', category: '精通' },
 		];
 
 		// --- 【新增】学业目标配置框架 ---
@@ -1312,6 +1328,22 @@
                     'sci_1_1', 'sci_1_2', 'sci_2_1', 'sci_2_2', 
                     'sci_3_1', 'sci_3_2', 'sci_4_1', 'sci_4_2', 
                     'sci_5_1', 'sci_5_2', 'sci_6_1', 'sci_6_2'
+                ],
+                getSemesterName: (index) => {
+                    const grade = Math.floor(index / 2) + 1;
+                    const term = index % 2 === 0 ? '上' : '下';
+                    return `${grade}年级${term}学期`;
+                }
+            },
+			// --- 【新增】校内英语天梯配置 ---
+            school_english: {
+                id: 'school_english',
+                name: '校内英语天梯',
+                totalSemesters: 12, // 6年 * 2学期
+                badges: [
+                    'eng_1_1', 'eng_1_2', 'eng_2_1', 'eng_2_2', 
+                    'eng_3_1', 'eng_3_2', 'eng_4_1', 'eng_4_2', 
+                    'eng_5_1', 'eng_5_2', 'eng_6_1', 'eng_6_2'
                 ],
                 getSemesterName: (index) => {
                     const grade = Math.floor(index / 2) + 1;
@@ -5279,90 +5311,139 @@
                                 </button>
                             </div>
                        </section>
-                       <section>
-                          <h3 className={`font-bold ${theme.primary} mb-4 flex items-center gap-2`}><Target className="w-5 h-5" /> 每日任务 ({activeChild})</h3>
-                          <div className="space-y-4">
-                            {(tasks[activeChild] || []).map((task) => (
-                              <div key={task.id} className="border p-4 rounded-xl bg-gray-50 flex flex-col gap-3 relative group hover:shadow-md transition-all hover:bg-white">
-                                <button onClick={() => handleDeleteTask(task.id)} className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>
-                                {/* 【修改】任务类型切换按钮与达成状态指示 */}
-								<div className="flex gap-2 mb-1 items-center">
-									<button onClick={() => updateTaskSetting(task.id, 'type', task.type === 'core' ? 'daily' : 'core')} className={`px-2 py-0.5 text-[10px] rounded border font-bold ${task.type === 'core' ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-emerald-100 text-emerald-600 border-emerald-200'}`} >
-										{task.type === 'core' ? '⭐ 核心任务' : '🍃 日常任务'}
-									</button>
+                       {/* --- 新增：使用闭包对任务进行分类并渲染，补全完成奖励字段 --- */}
+						{(() => {
+							const childTasks = tasks[activeChild] || [];
+							const ongoingTasksForSetting = [];
+							const completedTasksForSetting = [];
+							
+							// 动态分类：判断是否已完成目标
+							childTasks.forEach(task => {
+								const count = Object.keys(checkins[activeChild]?.[task.id] || {}).length;
+								if (count >= task.targetCount) {
+									completedTasksForSetting.push(task);
+								} else {
+									ongoingTasksForSetting.push(task);
+								}
+							});
+
+							// 统一的卡片渲染函数
+							const renderTaskSettingCard = (task, isCompleted) => (
+								<div key={task.id} className={`border p-4 rounded-xl flex flex-col gap-3 relative group hover:shadow-md transition-all hover:bg-white ${isCompleted ? 'bg-yellow-50/30 border-yellow-200' : 'bg-gray-50 border-gray-100'}`}>
+									<button onClick={() => handleDeleteTask(task.id)} className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
 									
-									{/* 动态计算是否已达成 */}
-									{Object.keys(checkins[activeChild]?.[task.id] || {}).length >= task.targetCount && (
-										<span className="px-2 py-0.5 text-[10px] rounded border font-bold bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-600 border-yellow-200 shadow-sm flex items-center gap-1">
-											🎯 已达成目标
-										</span>
-									)}
+									<div className="flex gap-2 mb-1 items-center">
+										<button onClick={() => updateTaskSetting(task.id, 'type', task.type === 'core' ? 'daily' : 'core')} className={`px-2 py-0.5 text-[10px] rounded border font-bold ${task.type === 'core' ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-emerald-100 text-emerald-600 border-emerald-200'}`} >
+											{task.type === 'core' ? '⭐ 核心任务' : '🍃 日常任务'}
+										</button>
+										{isCompleted && (
+											<span className="px-2 py-0.5 text-[10px] rounded border font-bold bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-600 border-yellow-200 shadow-sm flex items-center gap-1">
+												🎯 已达成目标
+											</span>
+										)}
+									</div>
+
+									<div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2">
+												<span className="text-xs font-bold text-indigo-500">🎓 学业目标关联:</span>
+												<select value={task.linkedSubject || ''} onChange={(e) => updateTaskSetting(task.id, 'linkedSubject', e.target.value)} className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600 outline-none focus:border-indigo-400" >
+													<option value="">无关联</option>
+													<option value="math_olympiad">奥数思维天梯</option>
+													<option value="school_math">校内数学天梯</option>
+													<option value="school_chinese">校内语文天梯</option>
+													<option value="school_science">校内科学天梯</option>
+													<option value="school_english">校内英语天梯</option>
+												</select>
+											</div>
+											{task.linkedSubject && CURRICULUM_CONFIG[task.linkedSubject] && (
+												<div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+													{(() => {
+														const subjectConfig = CURRICULUM_CONFIG[task.linkedSubject];
+														const currentIdx = curriculumProgress[activeChild]?.[task.linkedSubject] !== undefined ? curriculumProgress[activeChild][task.linkedSubject] : -1;
+														const nextIdx = currentIdx + 1;
+														const isMax = nextIdx >= subjectConfig.totalSemesters;
+														
+														return (
+															<>
+																<div className="text-xs text-indigo-800">
+																	当前: <span className="font-bold">{currentIdx === -1 ? '未开始' : subjectConfig.getSemesterName(currentIdx)}</span>
+																</div>
+																{!isMax && (
+																	<button onClick={() => {
+																		if(confirm(`⚠️ 家长确认\n\n确认 ${activeChild} 已经完成了【${subjectConfig.getSemesterName(nextIdx)}】的全部学习内容吗？\n\n确认后将解锁对应成就！`)) {
+																			handleVerifyCurriculum(activeChild, task.linkedSubject, nextIdx);
+																		}
+																	}} className="px-2 py-0.5 bg-indigo-500 text-white text-[10px] font-bold rounded hover:bg-indigo-600 transition-colors shadow-sm flex items-center gap-1" >
+																		<CheckCircle2 className="w-3 h-3" /> 核销: {subjectConfig.getSemesterName(nextIdx)}
+																	</button>
+																)}
+																{isMax && <span className="text-[10px] text-green-600 font-bold">🎉 全阶通关</span>}
+															</>
+														);
+													})()}
+												</div>
+											)}
+										</div>
+									</div>
+
+									<div className="pr-8">
+										<input type="text" value={task.name} onChange={(e) => updateTaskSetting(task.id, 'name', e.target.value)} className="font-bold text-lg bg-transparent border-b border-dashed border-gray-300 focus:border-indigo-500 focus:outline-none w-full mb-2" />
+										<input type="text" value={task.targetGoal || ''} onChange={(e) => updateTaskSetting(task.id, 'targetGoal', e.target.value)} placeholder="输入具体目标内容..." className="text-sm bg-transparent border-b border-dashed border-gray-200 w-full text-gray-500 focus:outline-none" />
+									</div>
+									
+									{/* --- 【修改点】补全完成奖励字段，优化为 3 列 和 2 列两行排版 --- */}
+									<div className="grid grid-cols-3 gap-2 text-sm mb-2">
+										<div><label className="text-xs text-gray-400">单次奖励</label><input type="number" value={task.reward} onChange={(e) => updateTaskSetting(task.id, 'reward', parseInt(e.target.value)||0)} className="w-full bg-white border border-gray-200 outline-none focus:border-indigo-400 rounded p-1 text-gray-700 font-medium" /></div>
+										<div><label className="text-xs text-amber-500 font-bold">完成奖励</label><input type="number" value={task.completedReward || 0} onChange={(e) => updateTaskSetting(task.id, 'completedReward', parseInt(e.target.value)||0)} className="w-full bg-amber-50 border border-amber-200 outline-none focus:border-amber-400 rounded p-1 text-amber-600 font-bold" /></div>
+										<div><label className="text-xs text-gray-400">目标次数</label><input type="number" value={task.targetCount} onChange={(e) => updateTaskSetting(task.id, 'targetCount', parseInt(e.target.value)||0)} className="w-full bg-white border border-gray-200 outline-none focus:border-indigo-400 rounded p-1 text-gray-700 font-medium" /></div>
+									</div>
+									<div className="grid grid-cols-2 gap-2 text-sm">
+										<div className="col-span-1"><label className="text-xs text-gray-400 text-blue-500 font-bold">开始日期</label><input type="date" value={task.startDate || globalDates.start} onChange={(e) => updateTaskSetting(task.id, 'startDate', e.target.value)} className="w-full bg-blue-50/50 border border-blue-100 rounded p-1 text-blue-600 outline-none focus:border-blue-400" /></div>
+										<div className="col-span-1"><label className="text-xs text-gray-400 text-red-500 font-bold">截止日期</label><input type="date" value={task.deadline || globalDates.end} onChange={(e) => updateTaskSetting(task.id, 'deadline', e.target.value)} className="w-full bg-red-50/50 border border-red-100 rounded p-1 text-red-600 outline-none focus:border-red-400" /></div>
+									</div>
 								</div>
-								{/* --- 【新增】学业目标关联与核销区 --- */}
-                                <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-indigo-500">🎓 学业目标关联:</span>
-                                            <select 
-                                                value={task.linkedSubject || ''} 
-                                                onChange={(e) => updateTaskSetting(task.id, 'linkedSubject', e.target.value)}
-                                                className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600"
-                                            >
-                                                <option value="">无关联</option>
-                                                <option value="math_olympiad">奥数思维天梯</option>
-												<option value="school_math">校内数学天梯</option>
-												<option value="school_chinese">校内语文天梯</option>
-												<option value="school_science">校内科学天梯</option>
-                                                {/* 后续添加英语等 */}
-                                            </select>
-                                        </div>
-                                        
-                                        {/* 只有选择了关联科目才显示进度核销 */}
-                                        {task.linkedSubject && CURRICULUM_CONFIG[task.linkedSubject] && (
-                                            <div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
-                                                {(() => {
-                                                    const subjectConfig = CURRICULUM_CONFIG[task.linkedSubject];
-                                                    // 获取当前已完成到的索引
-                                                    const currentIdx = curriculumProgress[activeChild]?.[task.linkedSubject] !== undefined 
-                                                        ? curriculumProgress[activeChild][task.linkedSubject] 
-                                                        : -1;
-                                                    const nextIdx = currentIdx + 1;
-                                                    const isMax = nextIdx >= subjectConfig.totalSemesters;
-                                                    
-                                                    return (
-                                                        <>
-                                                            <div className="text-xs text-indigo-800">
-                                                                当前: <span className="font-bold">{currentIdx === -1 ? '未开始' : subjectConfig.getSemesterName(currentIdx)}</span>
-                                                            </div>
-                                                            {!isMax && (
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        if(confirm(`⚠️ 家长确认\n\n确认 ${activeChild} 已经完成了【${subjectConfig.getSemesterName(nextIdx)}】的全部学习内容吗？\n\n确认后将解锁对应成就！`)) {
-                                                                            handleVerifyCurriculum(activeChild, task.linkedSubject, nextIdx);
-                                                                        }
-                                                                    }}
-                                                                    className="px-2 py-0.5 bg-indigo-500 text-white text-[10px] font-bold rounded hover:bg-indigo-600 transition-colors shadow-sm flex items-center gap-1"
-                                                                >
-                                                                    <CheckCircle2 className="w-3 h-3" />
-                                                                    核销: {subjectConfig.getSemesterName(nextIdx)}
-                                                                </button>
-                                                            )}
-                                                            {isMax && <span className="text-[10px] text-green-600 font-bold">🎉 全阶通关</span>}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-								
-								<div className="pr-8"><input type="text" value={task.name} onChange={(e) => updateTaskSetting(task.id, 'name', e.target.value)} className="font-bold text-lg bg-transparent border-b border-dashed border-gray-300 focus:border-indigo-500 focus:outline-none w-full mb-2" /><input type="text" value={task.targetGoal || ''} onChange={(e) => updateTaskSetting(task.id, 'targetGoal', e.target.value)} placeholder="输入具体目标内容..." className="text-sm bg-transparent border-b border-dashed border-gray-200 w-full text-gray-500 focus:outline-none" /></div>
-                                <div className="grid grid-cols-4 gap-2 text-sm"><div><label className="text-xs text-gray-400">单次奖励</label><input type="number" value={task.reward} onChange={(e) => updateTaskSetting(task.id, 'reward', parseInt(e.target.value)||0)} className="w-full bg-white border rounded p-1" /></div><div><label className="text-xs text-gray-400">目标次数</label><input type="number" value={task.targetCount} onChange={(e) => updateTaskSetting(task.id, 'targetCount', parseInt(e.target.value)||0)} className="w-full bg-white border rounded p-1" /></div><div className="col-span-1"><label className="text-xs text-gray-400 text-blue-500 font-bold">开始日期</label><input type="date" value={task.startDate || globalDates.start} onChange={(e) => updateTaskSetting(task.id, 'startDate', e.target.value)} className="w-full bg-blue-50/50 border border-blue-100 rounded p-1 text-blue-600" /></div><div className="col-span-1"><label className="text-xs text-gray-400 text-red-500 font-bold">截止日期</label><input type="date" value={task.deadline || globalDates.end} onChange={(e) => updateTaskSetting(task.id, 'deadline', e.target.value)} className="w-full bg-red-50/50 border border-red-100 rounded p-1 text-red-600" /></div></div>
-                              </div>
-                            ))}
-                            <button onClick={handleAddTask} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 transition flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> 添加新任务</button>
-                          </div>
-                      </section>
+							);
+
+							return (
+								<>
+									{/* 1. 进行中的任务区 */}
+									<section>
+										<h3 className={`font-bold ${theme.primary} mb-4 flex items-center gap-2`}><Target className="w-5 h-5" /> 正在进行的项目 ({activeChild})</h3>
+										<div className="space-y-4">
+											{ongoingTasksForSetting.map(t => renderTaskSettingCard(t, false))}
+											<button onClick={handleAddTask} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 transition flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> 添加新任务</button>
+										</div>
+									</section>
+
+									{/* 2. 已完成的任务区 (美观的高级折叠面板) */}
+									{completedTasksForSetting.length > 0 && (
+										<section className="mt-6 border border-yellow-200 rounded-2xl overflow-hidden bg-yellow-50/30 shadow-sm">
+											<button 
+												onClick={() => setShowCompletedSettings(!showCompletedSettings)}
+												className="w-full p-4 flex items-center justify-between bg-gradient-to-r from-yellow-50 to-amber-50 hover:from-yellow-100 hover:to-amber-100 transition-colors"
+											>
+												<div className="flex items-center gap-2">
+													<Trophy className="w-5 h-5 text-amber-500" />
+													<span className="font-bold text-amber-700">已达成目标的项目 ({completedTasksForSetting.length})</span>
+												</div>
+												<div className="text-amber-500 font-bold text-xs flex items-center gap-1">
+													<span className={`transform transition-transform inline-block duration-300 ${showCompletedSettings ? 'rotate-180' : ''}`}>
+														▼
+													</span>
+													{showCompletedSettings ? '点击隐藏' : '点击展开'}
+												</div>
+											</button>
+											{showCompletedSettings && (
+												<div className="p-4 space-y-4 border-t border-yellow-200/50 bg-slate-50/50">
+													{completedTasksForSetting.map(t => renderTaskSettingCard(t, true))}
+												</div>
+											)}
+										</section>
+									)}
+								</>
+							);
+						})()}
                       <section className="bg-slate-900 text-gray-300 p-5 rounded-2xl border border-red-900 mt-8">
                             <h3 className="font-bold text-red-500 mb-4 flex items-center gap-2"><Skull className="w-5 h-5" /> 惩罚机制 (家长专用)</h3>
                             <p className="text-xs text-gray-500 mb-4">注意：此功能仅供特殊情况下使用，转出的结果将直接扣除金元宝。</p>
@@ -6689,6 +6770,35 @@
                 return () => clearInterval(weatherTimer);
 
             }, [userCity]); // 当城市改变时，Effect 重置，定时器也会重置并立即执行一次
+			
+			// 全局当天属性状态 ('workday' 为上学日/调休，'holiday' 为周末/节假日)
+			const [todayType, setTodayType] = React.useState('workday');
+
+			// 利用 API 获取当天状态的 Effect
+			React.useEffect(() => {
+				const fetchHolidayInfo = async () => {
+					try {
+						const today = getLocalDateKey(0); // 取出类似 '2026-02-25' 的字符串
+						const res = await fetch(`https://timor.tech/api/holiday/info/${today}`);
+						const data = await res.json();
+						if (data.code === 0) {
+							// type.type 返回: 0(工作日), 1(周末), 2(节日), 3(调休)
+							const dayTypeNum = data.type.type;
+							if (dayTypeNum === 0 || dayTypeNum === 3) {
+								setTodayType('workday'); // 正常上学日与调休补班
+							} else {
+								setTodayType('holiday'); // 周末与法定节假日
+							}
+						}
+					} catch (error) {
+						console.error("节假日API请求失败，降级为普通周末判断", error);
+						const day = new Date().getDay();
+						setTodayType((day === 0 || day === 6) ? 'holiday' : 'workday');
+					}
+				};
+				fetchHolidayInfo();
+			}, []);
+			
 			
 			// 【新增】控制进贡弹窗显示隐藏的状态
 			const [showTributeModal, setShowTributeModal] = React.useState(false);
@@ -9440,7 +9550,7 @@
 					<div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
 						<div className="bg-white/70 backdrop-blur-lg p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center border border-white">
 							<div className="text-6xl mb-4 animate-bounce">✨</div>
-							<h1 className="text-2xl font-black text-slate-800 mb-2">欢迎来到进化之路 ——超强寒假学习打卡大计划</h1>
+							<h1 className="text-2xl font-black text-slate-800 mb-2">欢迎来到进化之路 ——超强学习打卡大计划</h1>
 							<p className="text-slate-500 mb-8 text-sm font-medium">当前设备暂无记录，请先创建第一个成员开启你们的打卡之旅！</p>
 							<button 
 								onClick={handleAddProfile} 
