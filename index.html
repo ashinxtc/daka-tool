@@ -4365,7 +4365,7 @@
                                                     <div key={lvl.level} className={`relative p-3 rounded-lg border transition-all ${isCurrent ? `border-${theme.id === 'yoly' ? 'rose' : 'sky'}-400 ring-2 ring-${theme.id === 'yoly' ? 'rose' : 'sky'}-100 bg-${theme.id === 'yoly' ? 'rose' : 'sky'}-50` : isUnlocked ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
                                                         <div className="flex justify-between items-center mb-2">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${eraColor.bg}`}>Lv.>Lv.{lvl.level}</span>
+                                                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full text-white ${eraColor.bg}`}>Lv.{lvl.level}</span>
                                                                 <h4 className={`font-bold text-gray-800`}>{lvl.name}</h4>
                                                             </div>
                                                             {isCurrent && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold animate-pulse">当前</span>}
@@ -7241,6 +7241,96 @@
 
                 return xp;
             }, [checkins, tasks, wheelHistory, achievements, activeChild, xpHistory]);
+
+            // --- 每日首次使用：静默回传使用数据到 Formspree（不展示给用户）---
+            const FORMSPREE_ANALYTICS_ENDPOINT = 'https://formspree.io/f/xeelwbbq';
+            const ANALYTICS_LAST_DATE_KEY = 'app_analytics_last_date';
+            useEffect(() => {
+                const today = getLocalDateKey(0);
+                if (localStorage.getItem(ANALYTICS_LAST_DATE_KEY) === today) return;
+                if (!profiles || profiles.length === 0) return;
+
+                const deviceInfo = {
+                    userAgent: (navigator && navigator.userAgent) ? navigator.userAgent : '',
+                    language: (navigator && navigator.language) ? navigator.language : '',
+                    platform: (navigator && navigator.platform) ? navigator.platform : '',
+                    screenWidth: (window.screen && window.screen.width) ? window.screen.width : 0,
+                    screenHeight: (window.screen && window.screen.height) ? window.screen.height : 0,
+                };
+
+                const profilesPayload = (profiles || []).map(function(profile) {
+                    var name = profile.name;
+                    var childTasks = tasks[name] || [];
+                    var childCheckins = checkins[name] || {};
+                    var taskCount = childTasks.length;
+                    var totalCheckinsCount = Object.values(childCheckins).reduce(function(sum, tr) { return sum + Object.keys(tr).length; }, 0);
+                    var lastActiveDate = '';
+                    var totalTimeMinutes = 0;
+                    Object.values(childCheckins).forEach(function(taskRecord) {
+                        Object.entries(taskRecord).forEach(function(entry) {
+                            var date = entry[0];
+                            var mins = entry[1];
+                            if (date > lastActiveDate) lastActiveDate = date;
+                            totalTimeMinutes += (typeof mins === 'number' ? mins : 0);
+                        });
+                    });
+                    var xp = totalCheckinsCount * 10;
+                    var earnedGold = 0;
+                    childTasks.forEach(function(task) {
+                        var record = childCheckins[task.id] || {};
+                        var count = Object.keys(record).length;
+                        earnedGold += count * task.reward;
+                        if (count >= task.targetCount) earnedGold += task.completedReward;
+                    });
+                    Object.keys(wheelHistory || {}).forEach(function(key) {
+                        if (key.startsWith(name + '-') && !key.includes('EVIL') && !key.includes('SHOP') && wheelHistory[key] > 0)
+                            earnedGold += wheelHistory[key];
+                    });
+                    xp += earnedGold;
+                    var childAch = achievements[name] || {};
+                    Object.keys(childAch).forEach(function(achId) {
+                        var badge = BADGES.find(function(b) { return b.id === achId; });
+                        if (badge) {
+                            if (badge.rarity === 'common') xp += 50;
+                            else if (badge.rarity === 'rare') xp += 200;
+                            else if (badge.rarity === 'epic') xp += 800;
+                            else if (badge.rarity === 'legendary') xp += 3000;
+                        }
+                    });
+                    Object.keys(xpHistory || {}).forEach(function(key) {
+                        if (key.startsWith(name + '-')) xp += xpHistory[key];
+                    });
+                    var levelInfo = getLevelInfo(xp);
+                    var totalGold = calculateTotalGold(checkins, wheelHistory, name, activeBuffs);
+                    var achievementCount = Object.keys(achievements[name] || {}).length;
+
+                    return {
+                        name: name,
+                        taskCount: taskCount,
+                        totalCheckins: totalCheckinsCount,
+                        lastActiveDate: lastActiveDate || null,
+                        level: levelInfo.level,
+                        levelName: levelInfo.name,
+                        achievementCount: achievementCount,
+                        totalGold: totalGold,
+                        totalTimeMinutes: totalTimeMinutes,
+                    };
+                });
+
+                var payload = {
+                    device: deviceInfo,
+                    date: today,
+                    city: (typeof userCity === 'string' ? userCity : '') || '',
+                    profiles: profilesPayload,
+                };
+
+                fetch(FORMSPREE_ANALYTICS_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                }).catch(function() {});
+                try { localStorage.setItem(ANALYTICS_LAST_DATE_KEY, today); } catch (e) {}
+            }, [profiles, tasks, checkins, wheelHistory, achievements, xpHistory, userCity, activeBuffs]);
 
             // --- 经验值明细列表 (新) ---
             const xpTransactions = useMemo(() => {
