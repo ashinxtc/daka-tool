@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>兑换核销 · 时空市集</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #0f172a 0%, #1e293b 35%, #334155 100%);
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .card {
+            width: 100%;
+            max-width: 360px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%);
+            backdrop-filter: blur(20px);
+            border-radius: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.12);
+            padding: 1.75rem;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+        }
+        .card.success { border-color: rgba(34, 197, 94, 0.4); background: linear-gradient(180deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%); }
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #f8fafc, #cbd5e1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .sub {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
+        }
+        .info-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.9rem 1rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .info-row .label { font-size: 0.75rem; color: #94a3b8; min-width: 3.2em; }
+        .info-row .value { font-weight: 600; color: #f1f5f9; }
+        .product-name { font-size: 1.05rem; }
+        .btn {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 700;
+            border: none;
+            border-radius: 1rem;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+            margin-top: 1.25rem;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        }
+        .btn-primary:hover { box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5); }
+        .success-state { display: none; text-align: center; }
+        .success-state.visible { display: block; }
+        .confirm-state.hidden { display: none; }
+        .icon-done {
+            width: 4rem;
+            height: 4rem;
+            margin: 0 auto 1rem;
+            background: linear-gradient(135deg, #34d399, #10b981);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            animation: scaleIn 0.4s ease-out;
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .code-box {
+            background: rgba(0,0,0,0.35);
+            border: 2px dashed rgba(34, 197, 94, 0.5);
+            border-radius: 1rem;
+            padding: 1.25rem;
+            margin: 1rem 0;
+        }
+        .code-box .hint { font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; }
+        .code-box .code {
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: 0.35em;
+            color: #34d399;
+            text-align: center;
+            user-select: all;
+        }
+        .time { font-size: 0.8rem; color: #94a3b8; margin-top: 0.75rem; }
+        .footer-note { font-size: 0.75rem; color: #64748b; margin-top: 1.5rem; text-align: center; line-height: 1.5; }
+        .device-info { font-size: 0.7rem; color: #475569; margin-top: 0.5rem; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="card" id="card">
+        <h1>🎫 兑换核销</h1>
+        <p class="sub">时空市集 · 现实兑换凭证</p>
+
+        <div class="confirm-state" id="confirmState">
+            <div class="info-row">
+                <span class="label">账户</span>
+                <span class="value" id="account">—</span>
+            </div>
+            <div class="info-row">
+                <span class="label">商品</span>
+                <span class="value product-name" id="product">—</span>
+            </div>
+            <p class="footer-note">请核对上方信息，确认已在现实中完成兑换后，点击下方按钮完成核销。</p>
+            <button class="btn btn-primary" id="confirmBtn">确认核销</button>
+        </div>
+
+        <div class="success-state" id="successState">
+            <div class="icon-done">✓</div>
+            <p style="font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem;">核销成功</p>
+            <p class="footer-note">请将下方核销码输入电脑/平板上的主程序「兑换记录」中，完成同步。</p>
+            <div class="code-box">
+                <div class="hint">核销码</div>
+                <div class="code" id="displayCode">—</div>
+            </div>
+            <div class="time" id="verifyTime">—</div>
+            <div class="device-info" id="deviceInfo"></div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var code = params.get('code') || '';
+            var account = params.get('account') ? decodeURIComponent(params.get('account')) : '—';
+            var product = params.get('product') ? decodeURIComponent(params.get('product')) : '—';
+
+            document.getElementById('account').textContent = account;
+            document.getElementById('product').textContent = product;
+
+            var confirmState = document.getElementById('confirmState');
+            var successState = document.getElementById('successState');
+            var card = document.getElementById('card');
+            var confirmBtn = document.getElementById('confirmBtn');
+
+            confirmBtn.addEventListener('click', function() {
+                if (!code) {
+                    alert('缺少核销参数，请从主程序重新打开扫码页。');
+                    return;
+                }
+                confirmState.classList.add('hidden');
+                successState.classList.add('visible');
+                card.classList.add('success');
+
+                document.getElementById('displayCode').textContent = code;
+                var now = new Date();
+                document.getElementById('verifyTime').textContent = '核销时间：' + now.toLocaleString('zh-CN');
+                var ua = navigator.userAgent || '';
+                if (ua) document.getElementById('deviceInfo').textContent = '设备信息：' + ua.substring(0, 80) + (ua.length > 80 ? '…' : '');
+            });
+        })();
+    </script>
+</body>
+</html>
