@@ -46,20 +46,6 @@
 	<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://unpkg.com/ogl/dist/ogl.umd.js"></script>
 
-	<script>
-		// 禁用鼠标右键菜单
-		document.addEventListener('contextmenu', function(e) {
-			e.preventDefault();
-		});
-
-		// 禁用 F12 键和 Ctrl+Shift+I (开发者工具快捷键)
-		document.addEventListener('keydown', function(e) {
-			if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
-				e.preventDefault();
-			}
-		});
-	</script>
-	
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         
@@ -600,15 +586,21 @@
             border-radius: 50%;
             border: none;
         }
-        /* 春燕头像框 - 未展开状态：框放大到完全盖住头像白边 */
+        /* 春燕头像框 - 未展开状态：框放大到完全盖住头像白边
+           【上下位置】改本规则里的 top、bottom（或单独改 background-position 垂直值）
+           - 框再上移：top 更负（如 -14px → -18px），或 bottom 往 0 调（如 -3px → 0）
+           - 框再下移：top 往 0 调，或 bottom 更负 */
         .frame-springbird::before {
             content: "";
             position: absolute;
-            inset: -8px;
+            left: -8px;
+            right: -8px;
+            top: -14px;
+            bottom: -3px;
             background-image: url('./img/ringframe/Springbird.webp');
             background-size: contain;
             background-repeat: no-repeat;
-            background-position: center;
+            background-position: center center;
             z-index: 10;
             pointer-events: none;
             opacity: 1;
@@ -631,9 +623,120 @@
             50% { opacity: 0.7; transform: scale(1.15); }
             100% { opacity: 1; transform: scale(1); }
         }
-        /* 展开后卡片内小头像框：框放大到完全盖住头像白边 */
+        /* 展开后卡片内小头像框
+           【大小】改 left / right / top / bottom 的负值：绝对值越小 → 框越小、越贴头像、越易盖住白边；绝对值越大 → 框越大
+           【上下】仍靠 top / bottom 微调 */
         .frame-springbird.expanded::before {
-            inset: -6.5px;
+            left: -3.5px;
+            right: -3.5px;
+            top: -6px;
+            bottom: -1.5px;
+        }
+
+        /* --- 电脉涌动·坚持之光头像框 (Electricpower) --- */
+        .frame-electricpower {
+            position: relative;
+            border-radius: 50%;
+            border: none;
+        }
+        /* 电脉头像框 - 未展开状态：框放大到完全盖住头像白边
+           【上下位置】改本规则里的 top、bottom（或单独改 background-position 垂直值）
+           - 框再上移：top 更负（如 -14px → -18px），或 bottom 往 0 调（如 -3px → 0）
+           - 框再下移：top 往 0 调，或 bottom 更负 */
+        .frame-electricpower::before {
+            content: "";
+            position: absolute;
+            left: -8px;
+            right: -8px;
+            top: -9px;
+            bottom: -8px;
+            background-image: url('./img/ringframe/Electricpower.webp');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center center;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 1;
+        }
+        /* 展开过程中头像框淡出并缩放消失 */
+        .frame-electricpower.collapsing::before {
+            animation: electricpower-collapse 0.4s ease-out forwards;
+        }
+        @keyframes electricpower-collapse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 0; transform: scale(0.5); }
+        }
+        /* 展开过程中头像框淡入并放大出现 */
+        .frame-electricpower.expanding::before {
+            animation: electricpower-expand 0.4s ease-out forwards;
+        }
+        @keyframes electricpower-expand {
+            0% { opacity: 0; transform: scale(0.5); }
+            50% { opacity: 0.7; transform: scale(1.15); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        /* 展开后卡片内小头像框
+           【大小】改 left / right / top / bottom 的负值：绝对值越小 → 框越小、越贴头像、越易盖住白边；绝对值越大 → 框越大
+           【上下】仍靠 top / bottom 微调 */
+        .frame-electricpower.expanded::before {
+            left: -3.5px;
+            right: -3.5px;
+            top: -4px;
+            bottom: -3.5px;
+        }
+
+        /* --- 天穹金翼·至尊加冕头像框 (Skywing) --- */
+        .frame-skywing {
+            position: relative;
+            border-radius: 50%;
+            border: none;
+        }
+        /* 天穹金翼头像框 - 未展开状态：框放大到完全盖住头像白边
+           【上下位置】改本规则里的 top、bottom（或单独改 background-position 垂直值）
+           - 框再上移：top 更负（如 -14px → -18px），或 bottom 往 0 调（如 -3px → 0）
+           - 框再下移：top 往 0 调，或 bottom 更负 */
+        .frame-skywing::before {
+            content: "";
+            position: absolute;
+            left: -8px;
+            right: -8px;
+            top: -7px;
+            bottom: -10px;
+            background-image: url('./img/ringframe/Skywing.webp');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center center;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 1;
+        }
+        /* 展开过程中头像框淡出并缩放消失 */
+        .frame-skywing.collapsing::before {
+            animation: skywing-collapse 0.4s ease-out forwards;
+        }
+        @keyframes skywing-collapse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 0; transform: scale(0.5); }
+        }
+        /* 展开过程中头像框淡入并放大出现 */
+        .frame-skywing.expanding::before {
+            animation: skywing-expand 0.4s ease-out forwards;
+        }
+        @keyframes skywing-expand {
+            0% { opacity: 0; transform: scale(0.5); }
+            50% { opacity: 0.7; transform: scale(1.15); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        /* 展开后卡片内小头像框
+           【大小】改 left / right / top / bottom 的负值：绝对值越小 → 框越小、越贴头像、越易盖住白边；绝对值越大 → 框越大
+           【上下】仍靠 top / bottom 微调 */
+        .frame-skywing.expanded::before {
+            left: -3.5px;
+            right: -3.5px;
+            top: -3px;
+            bottom: -4.5px;
         }
 
         /* --- 优化后的火焰特效 v2.6 --- */
@@ -1129,6 +1232,18 @@
                 id: 'frame_springbird', name: '青燕筑梦·春华锦绣头像框', icon: '🐦', type: 'cosmetic_frame', 
                 price: 150, era: '远古之路', minLevel: 0, 
                 desc: '春燕归来，万物复苏。',
+                category: 'cosmetic'
+            },
+            { 
+                id: 'frame_electricpower', name: '电脉涌动·坚持之光头像框', icon: '⚡', type: 'cosmetic_frame', 
+                price: 150, era: '远古之路', minLevel: 0, 
+                desc: '电脉涌动，意志如光。',
+                category: 'cosmetic'
+            },
+            { 
+                id: 'frame_skywing', name: '天穹金翼·至尊加冕头像框', icon: '👑', type: 'cosmetic_frame', 
+                price: 150, era: '远古之路', minLevel: 0, 
+                desc: '天穹金翼，荣耀加冕。',
                 category: 'cosmetic'
             },
             { 
@@ -12852,6 +12967,8 @@
                                          const isGoldmoneyrainEquipped = pF === 'frame_goldmoneyrain';
                                          const isPurplegloryEquipped = pF === 'frame_purpleglory';
                                          const isSpringbirdEquipped = pF === 'frame_springbird';
+                                         const isElectricpowerEquipped = pF === 'frame_electricpower';
+                                         const isSkywingEquipped = pF === 'frame_skywing';
                                          const avatarFireRingClass = pNameEffectClass === 'name-effect-fire' ? 'avatar-fire-ring' : '';
 
                                          return (
@@ -12862,11 +12979,11 @@
                                                 ${isActive 
                                                   ? `w-48 shadow-2xl scale-105 z-10 rounded-2xl 
                                                      ${(isPeonyEquipped || isBronzeEquipped || isGoldcloudEquipped) ? 'bg-transparent' : 
-                                                       isAuroraEquipped || isGoldmoneyrainEquipped || isPurplegloryEquipped || isSpringbirdEquipped ? 'bg-white border-2 border-gray-200' :
+                                                       isAuroraEquipped || isGoldmoneyrainEquipped || isPurplegloryEquipped || isSpringbirdEquipped || isElectricpowerEquipped || isSkywingEquipped ? 'bg-white border-2 border-gray-200' :
                                                        `bg-gradient-to-br from-white to-${COLOR_PALETTES[profile.theme]?.id}-50 border-2 ${COLOR_PALETTES[profile.theme]?.border} animate-border-flow`
                                                      }`
                                                   : `w-16 h-16 rounded-full bg-white/90 hover:bg-white hover:scale-110 hover:shadow-lg opacity-80 hover:opacity-100 
-                                                     ${isPeonyEquipped ? 'frame-peony' : isGoldcloudEquipped ? 'frame-goldcloud rounded-full' : isAuroraEquipped ? 'frame-kissofaurora rounded-full' : isGoldmoneyrainEquipped ? 'frame-goldmoneyrain rounded-full' : isPurplegloryEquipped ? 'frame-purpleglory rounded-full' : isSpringbirdEquipped ? 'frame-springbird rounded-full' : isBronzeEquipped ? 'frame-bronze-glow rounded-full' : 'border-2 border-white/50'}`
+                                                     ${isPeonyEquipped ? 'frame-peony' : isGoldcloudEquipped ? 'frame-goldcloud rounded-full' : isAuroraEquipped ? 'frame-kissofaurora rounded-full' : isGoldmoneyrainEquipped ? 'frame-goldmoneyrain rounded-full' : isPurplegloryEquipped ? 'frame-purpleglory rounded-full' : isSpringbirdEquipped ? 'frame-springbird rounded-full' : isElectricpowerEquipped ? 'frame-electricpower rounded-full' : isSkywingEquipped ? 'frame-skywing rounded-full' : isBronzeEquipped ? 'frame-bronze-glow rounded-full' : 'border-2 border-white/50'}`
                                                 }`}
                                             >
                                                 {isActive && isPeonyEquipped && <div className="peony-bg-layer"></div>}
@@ -12878,10 +12995,10 @@
                                                         <span>{pLevelInfo.name}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2 mb-2 mt-2 w-full">
-                                                        <div className={`relative ${isPeonyEquipped || isGoldcloudEquipped || isAuroraEquipped || isGoldmoneyrainEquipped || isPurplegloryEquipped || isSpringbirdEquipped ? '' : pFrameClass} ${avatarFireRingClass} ${isGoldcloudEquipped ? 'frame-goldcloud expanded' : ''} ${isAuroraEquipped ? 'frame-kissofaurora expanded' : ''} ${isGoldmoneyrainEquipped ? 'frame-goldmoneyrain expanded' : ''} ${isPurplegloryEquipped ? 'frame-purpleglory expanded' : ''} ${isSpringbirdEquipped ? 'frame-springbird expanded' : ''} rounded-full transition-all duration-300`}>
+                                                        <div className={`relative ${isPeonyEquipped || isGoldcloudEquipped || isAuroraEquipped || isGoldmoneyrainEquipped || isPurplegloryEquipped || isSpringbirdEquipped || isElectricpowerEquipped || isSkywingEquipped ? '' : pFrameClass} ${avatarFireRingClass} ${isGoldcloudEquipped ? 'frame-goldcloud expanded' : ''} ${isAuroraEquipped ? 'frame-kissofaurora expanded' : ''} ${isGoldmoneyrainEquipped ? 'frame-goldmoneyrain expanded' : ''} ${isPurplegloryEquipped ? 'frame-purpleglory expanded' : ''} ${isSpringbirdEquipped ? 'frame-springbird expanded' : ''} ${isElectricpowerEquipped ? 'frame-electricpower expanded' : ''} ${isSkywingEquipped ? 'frame-skywing expanded' : ''} rounded-full transition-all duration-300`}>
                                                             {profile.avatar ? <img src={profile.avatar} className="w-8 h-8 rounded-full object-cover shadow-sm ring-2 ring-white shrink-0" /> : <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs text-white font-bold shadow-sm ring-2 ring-white shrink-0 ${COLOR_PALETTES[profile.theme]?.primaryBg || 'bg-gray-400'}`}>{profile.name[0]}</div>}
                                                         </div>
-                                                        <div className={`font-bold text-sm truncate flex-1 text-left ${pNameEffectClass} ${isSpringbirdEquipped ? 'text-gray-800' : (isBronzeEquipped || isGoldcloudEquipped || isAuroraEquipped || isGoldmoneyrainEquipped || isPurplegloryEquipped ? 'text-amber-100 text-shadow' : 'text-gray-800')}`}>{profile.name}</div>
+                                                        <div className={`font-bold text-sm truncate flex-1 text-left ${pNameEffectClass} ${isSpringbirdEquipped || isElectricpowerEquipped || isSkywingEquipped ? 'text-gray-800' : (isBronzeEquipped || isGoldcloudEquipped || isAuroraEquipped || isGoldmoneyrainEquipped || isPurplegloryEquipped ? 'text-amber-100 text-shadow' : 'text-gray-800')}`}>{profile.name}</div>
                                                     </div>
                                                     <div onClick={(e) => { e.stopPropagation(); setShowXPHistory(true); }} className="w-full h-4 bg-gray-100 rounded-full overflow-hidden shadow-inner relative cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-100">
                                                         <div className={`h-full ${eraColor.bar} transition-all duration-1000 ease-out`} style={{width: `${percent}%`}}></div>
