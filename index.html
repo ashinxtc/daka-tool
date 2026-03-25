@@ -9189,7 +9189,7 @@
             return null;
         };
 		
-		    // --- 自定义 Hook：持久化 State ---
+		    // --- 自定义 Hook：持久化 State（带修改时间追踪）---
             const useStickyState = (defaultValue, key) => {
                 const [value, setValue] = useState(() => {
                     try {
@@ -9207,6 +9207,11 @@
                     timerRef.current = setTimeout(() => {
                         try {
                             window.localStorage.setItem(key, JSON.stringify(value));
+                            // 记录数据修改时间（用于云端同步比较）
+                            const DATA_META_KEY = 'firebase_data_meta';
+                            const meta = JSON.parse(window.localStorage.getItem(DATA_META_KEY) || '{}');
+                            meta[key] = Date.now();
+                            window.localStorage.setItem(DATA_META_KEY, JSON.stringify(meta));
                         } catch (error) {
                             console.warn(`Error setting localStorage key "${key}":`, error);
                         }
