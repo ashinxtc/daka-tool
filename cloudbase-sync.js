@@ -335,19 +335,14 @@ async function syncFromCloud(userId, options = { merge: true }) {
     }
 
     if (result.data) {
-      const localData = getLocalData();
       for (const [cloudKey, localKey] of Object.entries(
         Object.fromEntries(Object.entries(SYNC_KEYS).map(([k, v]) => [v, k]))
       )) {
         const cloudValue = result.data[cloudKey];
         if (cloudValue !== undefined && cloudValue !== null) {
-          if (options.merge && localData[cloudKey] !== undefined) {
-            // 合并模式：云端覆盖本地
-          }
-          const localStorageKey = Object.keys(SYNC_KEYS).find(k => SYNC_KEYS[k] === cloudKey);
-          if (localStorageKey) {
-            saveToLocalStorage(localStorageKey, cloudValue);
-          }
+          // 直接用 userId 参数构造前缀键，避免依赖 getCurrentUserId()
+          const prefixedKey = userId ? `app_${userId}_${localKey}` : localKey;
+          localStorage.setItem(prefixedKey, JSON.stringify(cloudValue));
         }
       }
     }
@@ -588,10 +583,18 @@ function checkHasUnmigratedLegacyData(userId) {
     if (mapping[userId] && mapping[userId].keys && mapping[userId].keys.length > 0) {
         return false;
     }
-    // 检查本地是否存在旧无前缀 key
+    // 检查本地是否存在旧无前缀 key（且是真实数据，非仅默认配置）
     for (const localKey of Object.keys(SYNC_KEYS)) {
-        if (localStorage.getItem(localKey) !== null) {
-            return true;
+        const raw = localStorage.getItem(localKey);
+        if (raw === null) continue;
+        try {
+            const val = JSON.parse(raw);
+            // 跳过空数组、空对象、false、0、空字符串等"默认值"
+            const isRealData = Array.isArray(val) ? val.length > 0
+                : (typeof val === 'object' && val !== null ? Object.keys(val).length > 0 : val);
+            if (isRealData) return true;
+        } catch {
+            // 非 JSON 值（如空字符串），视为无数据
         }
     }
     return false;
