@@ -1999,9 +1999,35 @@
 
                 // 无旧数据，正常走同步流程
                 if (syncAction === 'download') {
-                    // 云端数据已同步到本地，重新加载页面让 React 从更新后的 localStorage 初始化
+                    // fullSync 已将云端数据写入 localStorage，重新加载页面让 React 从更新后的 localStorage 初始化
                     window.location.reload();
                     return;
+                }
+                if (syncAction === 'none') {
+                    // fullSync 返回 none：可能云端没数据（新建账号），也可能云端数据被覆盖（本地空时不应上传但云函数未更新）
+                    // 通过 syncFromCloud 明确下载云端数据，若有数据则 reload
+                    if (typeof window.CloudBaseSync.syncFromCloud === 'function') {
+                        window.CloudBaseSync.syncFromCloud(userId).then((cloudResult) => {
+                            if (cloudResult && cloudResult.success && cloudResult.data && Object.keys(cloudResult.data).length > 0) {
+                                // 云端有数据，重新加载让 React 从更新后的 localStorage 初始化
+                                window.location.reload();
+                            } else {
+                                // 云端也无数据（全新账号），渲染 App 让用户创建第一个成员
+                                if (window.__hideAccountSwitching) {
+                                    window.__hideAccountSwitching();
+                                }
+                                if (window.__renderApp) window.__renderApp();
+                                resetAuthForm();
+                            }
+                        }).catch(() => {
+                            if (window.__hideAccountSwitching) {
+                                window.__hideAccountSwitching();
+                            }
+                            if (window.__renderApp) window.__renderApp();
+                            resetAuthForm();
+                        });
+                        return;
+                    }
                 }
                 if (window.__hideAccountSwitching) {
                     window.__hideAccountSwitching(() => {
@@ -17995,11 +18021,40 @@
                         window.CloudBaseSync.migrateAndSyncOnLogin(userId),
                         new Promise(r => setTimeout(r, 10000))
                     ]).then((outcome) => {
-                        // 如果是下载动作，说明本地为空、云端有数据，需要重新加载页面让 React 从已更新的 localStorage 初始化
-                        if (outcome && outcome.syncAction === 'download') {
+                        if (!outcome) {
+                            // 超时，直接渲染
+                            _renderApp();
+                            setTimeout(_hideLoading, 100);
+                            return;
+                        }
+                        const syncAction = outcome.syncAction;
+                        if (syncAction === 'download') {
+                            // fullSync 已将云端数据写入 localStorage，重新加载页面让 React 从更新后的 localStorage 初始化
                             window.location.reload();
                             return;
                         }
+                        if (syncAction === 'none') {
+                            // fullSync 返回 none：可能云端没数据（新建账号），也可能云端数据已覆盖（本地空时不应上传但云函数未更新）
+                            // 通过 syncFromCloud 明确下载云端数据，若有数据则 reload
+                            if (typeof window.CloudBaseSync.syncFromCloud === 'function') {
+                                window.CloudBaseSync.syncFromCloud(userId).then((result) => {
+                                    if (result && result.success && result.data && Object.keys(result.data).length > 0) {
+                                        // 云端有数据，重新加载
+                                        window.location.reload();
+                                    } else {
+                                        // 云端也无数据（全新账号），渲染 App 让用户创建第一个成员
+                                        _renderApp();
+                                        setTimeout(_hideLoading, 100);
+                                    }
+                                }).catch(() => {
+                                    // syncFromCloud 失败，渲染 App
+                                    _renderApp();
+                                    setTimeout(_hideLoading, 100);
+                                });
+                                return;
+                            }
+                        }
+                        // upload / merge / none（无云端数据）：数据已在 localStorage，直接渲染
                         _renderApp();
                         setTimeout(_hideLoading, 100);
                     });
