@@ -9766,7 +9766,17 @@
                 const timerRef = React.useRef(null);
                 const isFirstRender = React.useRef(true);
                 useEffect(() => {
-                    if (isFirstRender.current) { isFirstRender.current = false; return; }
+                    if (isFirstRender.current) {
+                        isFirstRender.current = false;
+                        // 首次渲染：立即同步写入（解决新账号首次创建成员时 debounce 延迟导致 React 状态回退的问题）
+                        try {
+                            const activeKey = getActiveKey();
+                            window.localStorage.setItem(activeKey, JSON.stringify(value));
+                        } catch (error) {
+                            console.warn(`Error setting localStorage key "${key}" on first render:`, error);
+                        }
+                        return;
+                    }
                     if (timerRef.current) clearTimeout(timerRef.current);
                     timerRef.current = setTimeout(() => {
                         try {
@@ -17964,7 +17974,8 @@
         (function() {
             function hasLoggedInAccount() {
                 try {
-                    const mapping = JSON.parse(localStorage.getItem('account_mapping_v1') || '{}');
+                    // 使用与 cloudbase-sync.js 一致的 key（cloudbase_account_mapping），而非旧的 account_mapping_v1
+                    const mapping = JSON.parse(localStorage.getItem('cloudbase_account_mapping') || '{}');
                     return Object.keys(mapping).length > 0;
                 } catch { return false; }
             }
