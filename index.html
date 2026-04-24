@@ -12761,9 +12761,12 @@
 
 			}, []); // 空依赖数组，确保只在组件加载时执行一次
 			
-            // --- 1. 核心时间状态已下沉到 Header 内部（A3优化）---
-            // 移除根组件的 now 状态，避免每秒 setNow 触发整个 App 重渲染
-            // 时间显示现在由 Header 内部的独立 timer 管理
+            // --- 1. 核心时间状态 ---
+            const [now, setNow] = useState(new Date());
+            useEffect(() => {
+                const timer = setInterval(() => setNow(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
 
             // --- 移动端断点检测 (<768px 为手机端) ---
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -16673,16 +16676,8 @@
                   
 				  {/* --- 最终修正版 Header：保留变色背景 + 叠加天气特效 --- */}
                   {(() => {
-                      // 【A3优化】将时间状态下沉到 Header 内部，只让 Header 每秒重渲染
-                      // 而不是让整个 App 重渲染，从而大幅减少 diff 范围
-                      const [now, setNow] = useState(() => new Date());
-                      useEffect(() => {
-                          const timer = setInterval(() => setNow(new Date()), 1000);
-                          return () => clearInterval(timer);
-                      }, []);
-                      
                       const holiday = getHolidayInfo(now);
-                      let weather = getWeatherInfo(now);
+                      let weather = getWeatherInfo(now); // 获取天气
                       const headerTheme = getHeaderTheme(now, holiday); // 获取原本的星期/节日背景主题
                       // 【修改 2】插入这段丢失的逻辑 (用于加载真实天气)
                       if (realWeather) {
