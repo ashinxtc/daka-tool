@@ -1998,7 +1998,11 @@
                 }
 
                 // 无旧数据，正常走同步流程
-                if (syncAction === 'download') showSyncConflictDialog();
+                if (syncAction === 'download') {
+                    // 云端数据已同步到本地，重新加载页面让 React 从更新后的 localStorage 初始化
+                    window.location.reload();
+                    return;
+                }
                 if (window.__hideAccountSwitching) {
                     window.__hideAccountSwitching(() => {
                         showSyncStatus('success', '同步完成');
@@ -12675,6 +12679,7 @@
 				try {
 					const profilesKey = getActiveStorageKey ? getActiveStorageKey('app_profiles_v1') : 'app_profiles_v1';
 					const savedProfiles = JSON.parse(localStorage.getItem(profilesKey));
+					// profiles 为空时使用空字符串，后续 UI 引导用户创建成员时不产生访问 stats[''] 等问题
 					return savedProfiles && savedProfiles.length > 0 ? savedProfiles[0].name : '';
 				} catch {
 					return '';
@@ -17989,7 +17994,12 @@
                     Promise.race([
                         window.CloudBaseSync.migrateAndSyncOnLogin(userId),
                         new Promise(r => setTimeout(r, 10000))
-                    ]).then(() => {
+                    ]).then((outcome) => {
+                        // 如果是下载动作，说明本地为空、云端有数据，需要重新加载页面让 React 从已更新的 localStorage 初始化
+                        if (outcome && outcome.syncAction === 'download') {
+                            window.location.reload();
+                            return;
+                        }
                         _renderApp();
                         setTimeout(_hideLoading, 100);
                     });
