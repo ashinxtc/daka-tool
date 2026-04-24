@@ -429,6 +429,8 @@ async function logout() {
   } catch (e) {}
 
   localStorage.removeItem('cb_current_user');
+  // 清除 cloudbase_current_user_id，防止登出后 CloudBaseSync 仍使用旧用户的前缀键
+  localStorage.removeItem('cloudbase_current_user_id');
   console.log('[CloudBase] 登出成功');
   notifyAuthStateChange(null);
   return { success: true };
