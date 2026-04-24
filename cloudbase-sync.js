@@ -72,15 +72,15 @@ function getCurrentUserId() {
 
 /**
  * 设置当前登录用户 ID
+ * 不允许 falsy 值（undefined/null）写入 localStorage，防止前缀键变成 app_undefined_xxx
  */
 function setCurrentUserId(userId) {
-  if (userId) {
-    localStorage.setItem(USER_PREFIX_KEY, userId);
-    // 同步更新 account mapping
-    _updateAccountMapping(userId);
-  } else {
-    localStorage.removeItem(USER_PREFIX_KEY);
+  if (!userId) {
+    console.warn('[CloudBase Sync] setCurrentUserId 收到空值，不更新 localStorage');
+    return;
   }
+  localStorage.setItem(USER_PREFIX_KEY, userId);
+  _updateAccountMapping(userId);
 }
 
 /**
@@ -607,6 +607,10 @@ function checkHasUnmigratedLegacyData(userId) {
  * @returns {object} { migrated: boolean, dataCount: number }
  */
 function migrateLegacyDataManually(userId) {
+    if (!userId) {
+        console.warn('[CloudBase Sync] migrateLegacyDataManually 收到空 userId，跳过');
+        return { migrated: false, dataCount: 0 };
+    }
     let count = 0;
     for (const [localKey, cloudKey] of Object.entries(SYNC_KEYS)) {
         const legacyKey = localKey;
@@ -694,6 +698,17 @@ function _createLoginSyncDeferred() {
 _createLoginSyncDeferred();
 
 async function migrateAndSyncOnLogin(userId) {
+  // userId 为空时（注册流程中 uid 未知），跳过同步
+  if (!userId) {
+    console.warn('[CloudBase Sync] userId 为空，跳过迁移+同步');
+    const outcome = { migrated: false, syncAction: 'none', hasUnmigratedLegacyData: false };
+    if (_loginSyncDeferred && typeof _loginSyncDeferred.resolve === 'function') {
+      _loginSyncDeferred.resolve(outcome);
+    }
+    _createLoginSyncDeferred();
+    return outcome;
+  }
+
   setCurrentUserId(userId);
 
   // 获取当前的 Deferred（loading 页面已持有其 promise）
