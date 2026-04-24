@@ -1974,6 +1974,20 @@
          * @param {string} loginType - 'login' | 'registerOtp' | 'registerOtp2'，用于日志区分
          */
         function handleLegacyDataBinding(userId, result, loginType) {
+            // 注册流程中 uid 可能为 null，尝试从 cb_current_user 读取真实 uid
+            // （verifyRegisterOtp2 已在返回前将 user 写入 localStorage）
+            if (!userId) {
+                try {
+                    const saved = localStorage.getItem('cb_current_user');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        userId = parsed && parsed.uid;
+                        console.log('[App] 从 cb_current_user 获取到 uid:', userId);
+                    }
+                } catch (e) {}
+            }
+
+            // 即使 uid 仍为空，也继续（migrateAndSyncOnLogin 内部会跳过无 uid 的同步）
             CloudBaseSync.migrateAndSyncOnLogin(userId).then(({ syncAction, hasUnmigratedLegacyData }) => {
                 // 处理旧数据绑定弹窗
                 if (hasUnmigratedLegacyData) {
