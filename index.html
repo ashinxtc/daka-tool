@@ -1783,12 +1783,9 @@
                         // 拉起账号切换遮罩层，隐藏登录表单
                         if (window.__showAccountSwitching) window.__showAccountSwitching('正在同步数据...');
                         if (window.__hideLoading) window.__hideLoading();
-
-                        // 使用 username 判断是否需要处理同步（uid 在注册流程中可能为 null）
-                        // uid 从 getCurrentUser() 获取（notifyAuthStateChange 已在 loginWithPassword 内部调用）
-                        if (result.user.username) {
-                            const currentUser = window.CloudBaseAuth.getCurrentUser();
-                            handleLegacyDataBinding(currentUser && currentUser.uid, result, 'login');
+                        
+                        if (result.user.uid) {
+                            handleLegacyDataBinding(result.user.uid, result, 'login');
                         } else {
                             if (window.__renderApp) window.__renderApp();
                             if (window.__hideAccountSwitching) window.__hideAccountSwitching();
@@ -1857,12 +1854,9 @@
                         console.log('[App] 注册成功:', result.user.username);
                         if (window.__showAccountSwitching) window.__showAccountSwitching('正在同步数据...');
                         if (window.__hideLoading) window.__hideLoading();
-
-                        // 使用 username 判断是否需要处理同步（uid 在注册流程中可能为 null）
-                        // uid 从 getCurrentUser() 获取（notifyAuthStateChange 已在 verifyRegisterOtp 内部调用）
-                        if (result.user.username) {
-                            const currentUser = window.CloudBaseAuth.getCurrentUser();
-                            handleLegacyDataBinding(currentUser && currentUser.uid, result, 'registerOtp');
+                        
+                        if (result.user.uid) {
+                            handleLegacyDataBinding(result.user.uid, result, 'registerOtp');
                         } else {
                             if (window.__renderApp) window.__renderApp();
                             if (window.__hideAccountSwitching) window.__hideAccountSwitching();
@@ -1932,12 +1926,9 @@
                         console.log('[App] 注册并设置密码成功:', result.user.username);
                         if (window.__showAccountSwitching) window.__showAccountSwitching('正在同步数据...');
                         if (window.__hideLoading) window.__hideLoading();
-
-                        // 使用 username 判断是否需要处理同步（uid 在注册流程中可能为 null）
-                        // uid 从 getCurrentUser() 获取（notifyAuthStateChange 已在 verifyRegisterOtp2 内部调用）
-                        if (result.user.username) {
-                            const currentUser = window.CloudBaseAuth.getCurrentUser();
-                            handleLegacyDataBinding(currentUser && currentUser.uid, result, 'registerOtp2');
+                        
+                        if (result.user.uid) {
+                            handleLegacyDataBinding(result.user.uid, result, 'registerOtp2');
                         } else {
                             if (window.__renderApp) window.__renderApp();
                             if (window.__hideAccountSwitching) window.__hideAccountSwitching();
@@ -1974,20 +1965,6 @@
          * @param {string} loginType - 'login' | 'registerOtp' | 'registerOtp2'，用于日志区分
          */
         function handleLegacyDataBinding(userId, result, loginType) {
-            // 注册流程中 uid 可能为 null，尝试从 cb_current_user 读取真实 uid
-            // （verifyRegisterOtp2 已在返回前将 user 写入 localStorage）
-            if (!userId) {
-                try {
-                    const saved = localStorage.getItem('cb_current_user');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        userId = parsed && parsed.uid;
-                        console.log('[App] 从 cb_current_user 获取到 uid:', userId);
-                    }
-                } catch (e) {}
-            }
-
-            // 即使 uid 仍为空，也继续（migrateAndSyncOnLogin 内部会跳过无 uid 的同步）
             CloudBaseSync.migrateAndSyncOnLogin(userId).then(({ syncAction, hasUnmigratedLegacyData }) => {
                 // 处理旧数据绑定弹窗
                 if (hasUnmigratedLegacyData) {
@@ -2021,37 +1998,7 @@
                 }
 
                 // 无旧数据，正常走同步流程
-                if (syncAction === 'download') {
-                    // fullSync 已将云端数据写入 localStorage，重新加载页面让 React 从更新后的 localStorage 初始化
-                    window.location.reload();
-                    return;
-                }
-                if (syncAction === 'none') {
-                    // fullSync 返回 none：可能云端没数据（新建账号），也可能云端数据被覆盖（本地空时不应上传但云函数未更新）
-                    // 通过 syncFromCloud 明确下载云端数据，若有数据则 reload
-                    if (typeof window.CloudBaseSync.syncFromCloud === 'function') {
-                        window.CloudBaseSync.syncFromCloud(userId).then((cloudResult) => {
-                            if (cloudResult && cloudResult.success && cloudResult.data && Object.keys(cloudResult.data).length > 0) {
-                                // 云端有数据，重新加载让 React 从更新后的 localStorage 初始化
-                                window.location.reload();
-                            } else {
-                                // 云端也无数据（全新账号），渲染 App 让用户创建第一个成员
-                                if (window.__hideAccountSwitching) {
-                                    window.__hideAccountSwitching();
-                                }
-                                if (window.__renderApp) window.__renderApp();
-                                resetAuthForm();
-                            }
-                        }).catch(() => {
-                            if (window.__hideAccountSwitching) {
-                                window.__hideAccountSwitching();
-                            }
-                            if (window.__renderApp) window.__renderApp();
-                            resetAuthForm();
-                        });
-                        return;
-                    }
-                }
+                if (syncAction === 'download') showSyncConflictDialog();
                 if (window.__hideAccountSwitching) {
                     window.__hideAccountSwitching(() => {
                         showSyncStatus('success', '同步完成');
@@ -9819,17 +9766,7 @@
                 const timerRef = React.useRef(null);
                 const isFirstRender = React.useRef(true);
                 useEffect(() => {
-                    if (isFirstRender.current) {
-                        isFirstRender.current = false;
-                        // 首次渲染：立即同步写入（解决新账号首次创建成员时 debounce 延迟导致 React 状态回退的问题）
-                        try {
-                            const activeKey = getActiveKey();
-                            window.localStorage.setItem(activeKey, JSON.stringify(value));
-                        } catch (error) {
-                            console.warn(`Error setting localStorage key "${key}" on first render:`, error);
-                        }
-                        return;
-                    }
+                    if (isFirstRender.current) { isFirstRender.current = false; return; }
                     if (timerRef.current) clearTimeout(timerRef.current);
                     timerRef.current = setTimeout(() => {
                         try {
@@ -12728,7 +12665,6 @@
 				try {
 					const profilesKey = getActiveStorageKey ? getActiveStorageKey('app_profiles_v1') : 'app_profiles_v1';
 					const savedProfiles = JSON.parse(localStorage.getItem(profilesKey));
-					// profiles 为空时使用空字符串，后续 UI 引导用户创建成员时不产生访问 stats[''] 等问题
 					return savedProfiles && savedProfiles.length > 0 ? savedProfiles[0].name : '';
 				} catch {
 					return '';
@@ -18028,8 +17964,7 @@
         (function() {
             function hasLoggedInAccount() {
                 try {
-                    // 使用与 cloudbase-sync.js 一致的 key（cloudbase_account_mapping），而非旧的 account_mapping_v1
-                    const mapping = JSON.parse(localStorage.getItem('cloudbase_account_mapping') || '{}');
+                    const mapping = JSON.parse(localStorage.getItem('account_mapping_v1') || '{}');
                     return Object.keys(mapping).length > 0;
                 } catch { return false; }
             }
@@ -18043,41 +17978,7 @@
                     Promise.race([
                         window.CloudBaseSync.migrateAndSyncOnLogin(userId),
                         new Promise(r => setTimeout(r, 10000))
-                    ]).then((outcome) => {
-                        if (!outcome) {
-                            // 超时，直接渲染
-                            _renderApp();
-                            setTimeout(_hideLoading, 100);
-                            return;
-                        }
-                        const syncAction = outcome.syncAction;
-                        if (syncAction === 'download') {
-                            // fullSync 已将云端数据写入 localStorage，重新加载页面让 React 从更新后的 localStorage 初始化
-                            window.location.reload();
-                            return;
-                        }
-                        if (syncAction === 'none') {
-                            // fullSync 返回 none：可能云端没数据（新建账号），也可能云端数据已覆盖（本地空时不应上传但云函数未更新）
-                            // 通过 syncFromCloud 明确下载云端数据，若有数据则 reload
-                            if (typeof window.CloudBaseSync.syncFromCloud === 'function') {
-                                window.CloudBaseSync.syncFromCloud(userId).then((result) => {
-                                    if (result && result.success && result.data && Object.keys(result.data).length > 0) {
-                                        // 云端有数据，重新加载
-                                        window.location.reload();
-                                    } else {
-                                        // 云端也无数据（全新账号），渲染 App 让用户创建第一个成员
-                                        _renderApp();
-                                        setTimeout(_hideLoading, 100);
-                                    }
-                                }).catch(() => {
-                                    // syncFromCloud 失败，渲染 App
-                                    _renderApp();
-                                    setTimeout(_hideLoading, 100);
-                                });
-                                return;
-                            }
-                        }
-                        // upload / merge / none（无云端数据）：数据已在 localStorage，直接渲染
+                    ]).then(() => {
                         _renderApp();
                         setTimeout(_hideLoading, 100);
                     });
