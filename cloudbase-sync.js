@@ -72,15 +72,15 @@ function getCurrentUserId() {
 
 /**
  * 设置当前登录用户 ID
- * 不允许 falsy 值（undefined/null）写入 localStorage，防止前缀键变成 app_undefined_xxx
  */
 function setCurrentUserId(userId) {
-  if (!userId) {
-    console.warn('[CloudBase Sync] setCurrentUserId 收到空值，不更新 localStorage');
-    return;
+  if (userId) {
+    localStorage.setItem(USER_PREFIX_KEY, userId);
+    // 同步更新 account mapping
+    _updateAccountMapping(userId);
+  } else {
+    localStorage.removeItem(USER_PREFIX_KEY);
   }
-  localStorage.setItem(USER_PREFIX_KEY, userId);
-  _updateAccountMapping(userId);
 }
 
 /**
@@ -200,13 +200,11 @@ async function callFunction(name, data) {
 
 /**
  * 读取当前用户对应的 localStorage 数据（带前缀）
- * @param {string} [explicitUserId] - 可选，指定用户ID。默认为当前用户ID。
  */
-function getLocalData(explicitUserId) {
-  const effectiveUserId = explicitUserId || getCurrentUserId();
+function getLocalData() {
   const data = {};
   for (const [localKey, cloudKey] of Object.entries(SYNC_KEYS)) {
-    const prefixedKey = effectiveUserId ? `app_${effectiveUserId}_${localKey}` : localKey;
+    const prefixedKey = getPrefixedKey(localKey);
     try {
       const value = localStorage.getItem(prefixedKey);
       if (value !== null) {
@@ -241,11 +239,9 @@ function saveToLocalStorage(localKey, value) {
 
 /**
  * 读取当前用户对应的元数据（带前缀）
- * @param {string} [explicitUserId] - 可选，指定用户ID。默认为当前用户ID。
  */
-function getDataMeta(explicitUserId) {
-  const effectiveUserId = explicitUserId || getCurrentUserId();
-  const metaKey = effectiveUserId ? `app_${effectiveUserId}_cloudbase_data_meta` : 'cloudbase_data_meta';
+function getDataMeta() {
+  const metaKey = getPrefixedKey('cloudbase_data_meta');
   try {
     const meta = localStorage.getItem(metaKey);
     return meta ? JSON.parse(meta) : {};
@@ -335,14 +331,19 @@ async function syncFromCloud(userId, options = { merge: true }) {
     }
 
     if (result.data) {
+      const localData = getLocalData();
       for (const [cloudKey, localKey] of Object.entries(
         Object.fromEntries(Object.entries(SYNC_KEYS).map(([k, v]) => [v, k]))
       )) {
         const cloudValue = result.data[cloudKey];
         if (cloudValue !== undefined && cloudValue !== null) {
-          // 直接用 userId 参数构造前缀键，避免依赖 getCurrentUserId()
-          const prefixedKey = userId ? `app_${userId}_${localKey}` : localKey;
-          localStorage.setItem(prefixedKey, JSON.stringify(cloudValue));
+          if (options.merge && localData[cloudKey] !== undefined) {
+            // 合并模式：云端覆盖本地
+          }
+          const localStorageKey = Object.keys(SYNC_KEYS).find(k => SYNC_KEYS[k] === cloudKey);
+          if (localStorageKey) {
+            saveToLocalStorage(localStorageKey, cloudValue);
+          }
         }
       }
     }
@@ -362,21 +363,10 @@ async function fullSync(userId) {
     return { success: false, error: '用户未登录' };
   }
 
-  // 验证 userId 与当前存储的用户 ID 一致，防止数据写入错误的账户
-  const currentUserId = getCurrentUserId();
-  if (currentUserId && userId !== currentUserId) {
-    console.warn(`[CloudBase Sync] userId 不一致: 参数=${userId}, 当前=${currentUserId}，使用当前用户 ID`);
-    userId = currentUserId;
-  }
-  if (!userId) {
-    return { success: false, error: '用户ID无效' };
-  }
-
   updateSyncStatus('syncing');
   try {
-    // 使用显式 userId 读取本地数据（不再依赖 getCurrentUserId）
-    const localData = getLocalData(userId);
-    const localMeta = getDataMeta(userId);
+    const localData = getLocalData();
+    const localMeta = getDataMeta();
 
     const payload = {
       action: 'fullSync',
@@ -391,22 +381,19 @@ async function fullSync(userId) {
       throw new Error(result.error);
     }
 
-    // 应用云端胜出的数据到本地（使用显式 userId 计算前缀键）
+    // 应用云端胜出的数据到本地
     if (result.cloudWins) {
       for (const [cloudKey, value] of Object.entries(result.cloudWins)) {
         const localKey = Object.keys(SYNC_KEYS).find(k => SYNC_KEYS[k] === cloudKey);
         if (localKey) {
-          // 直接用 userId 参数构造前缀键，避免依赖 getCurrentUserId()
-          const prefixedKey = `app_${userId}_${localKey}`;
-          localStorage.setItem(prefixedKey, JSON.stringify(value));
+          saveToLocalStorage(localKey, value);
         }
       }
     }
 
-    // 更新元数据（使用显式 userId）
+    // 更新元数据
     if (result.dataMeta) {
-      const metaKey = `app_${userId}_cloudbase_data_meta`;
-      localStorage.setItem(metaKey, JSON.stringify(result.dataMeta));
+      localStorage.setItem(getPrefixedKey('cloudbase_data_meta'), JSON.stringify(result.dataMeta));
     }
 
     console.log(`[CloudBase Sync] 同步完成，action: ${result.action}`);
@@ -583,18 +570,10 @@ function checkHasUnmigratedLegacyData(userId) {
     if (mapping[userId] && mapping[userId].keys && mapping[userId].keys.length > 0) {
         return false;
     }
-    // 检查本地是否存在旧无前缀 key（且是真实数据，非仅默认配置）
+    // 检查本地是否存在旧无前缀 key
     for (const localKey of Object.keys(SYNC_KEYS)) {
-        const raw = localStorage.getItem(localKey);
-        if (raw === null) continue;
-        try {
-            const val = JSON.parse(raw);
-            // 跳过空数组、空对象、false、0、空字符串等"默认值"
-            const isRealData = Array.isArray(val) ? val.length > 0
-                : (typeof val === 'object' && val !== null ? Object.keys(val).length > 0 : val);
-            if (isRealData) return true;
-        } catch {
-            // 非 JSON 值（如空字符串），视为无数据
+        if (localStorage.getItem(localKey) !== null) {
+            return true;
         }
     }
     return false;
@@ -607,10 +586,6 @@ function checkHasUnmigratedLegacyData(userId) {
  * @returns {object} { migrated: boolean, dataCount: number }
  */
 function migrateLegacyDataManually(userId) {
-    if (!userId) {
-        console.warn('[CloudBase Sync] migrateLegacyDataManually 收到空 userId，跳过');
-        return { migrated: false, dataCount: 0 };
-    }
     let count = 0;
     for (const [localKey, cloudKey] of Object.entries(SYNC_KEYS)) {
         const legacyKey = localKey;
@@ -698,17 +673,6 @@ function _createLoginSyncDeferred() {
 _createLoginSyncDeferred();
 
 async function migrateAndSyncOnLogin(userId) {
-  // userId 为空时（注册流程中 uid 未知），跳过同步
-  if (!userId) {
-    console.warn('[CloudBase Sync] userId 为空，跳过迁移+同步');
-    const outcome = { migrated: false, syncAction: 'none', hasUnmigratedLegacyData: false };
-    if (_loginSyncDeferred && typeof _loginSyncDeferred.resolve === 'function') {
-      _loginSyncDeferred.resolve(outcome);
-    }
-    _createLoginSyncDeferred();
-    return outcome;
-  }
-
   setCurrentUserId(userId);
 
   // 获取当前的 Deferred（loading 页面已持有其 promise）
