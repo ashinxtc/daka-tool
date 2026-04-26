@@ -417,19 +417,24 @@ async function syncItemToCloud(userId, localKey) {
 
     const prefixedKey = getPrefixedKey(localKey);
     const value = localStorage.getItem(prefixedKey);
-    let parsedValue = value;
+    if (value === null) return;
+
+    let parsedValue;
     try {
       parsedValue = JSON.parse(value);
-    } catch {}
+    } catch {
+      parsedValue = value;
+    }
 
-    // 单项同步：读取完整本地数据 + 元数据，调用 fullSync
+    // 用 upload action 替代 fullSync：直接全量推送本地数据，不做合并比较
+    // upload 会 set 替换整篇文档，确保云端与本地完全一致
     const localData = getLocalData();
     const localMeta = getDataMeta();
     await callFunction('dataSync', {
-      action: 'fullSync',
+      action: 'upload',
       userId: userId,
       localData: localData,
-      localMeta: localMeta
+      dataMeta: localMeta
     });
 
     console.log(`[CloudBase Sync] 同步 ${localKey} 到云端成功`);
@@ -438,17 +443,22 @@ async function syncItemToCloud(userId, localKey) {
   }
 }
 
+let _autoSyncRegistered = false;
+
 function setupAutoSync(userId) {
   if (!userId) return;
+
+  if (_autoSyncRegistered) {
+    console.log('[CloudBase Sync] 自动同步已设置，跳过重复注册');
+    return;
+  }
+  _autoSyncRegistered = true;
 
   window.addEventListener('storage', (event) => {
     const userId = getCurrentUserId();
     if (!userId) return;
     const expectedPrefix = `app_${userId}_`;
-    // 检查是否是当前用户的前缀键，或者旧的无前缀键（触发迁移）
     if (SYNC_KEYS.hasOwnProperty(event.key)) {
-      // 旧的无前缀键 -> 触发迁移
-      console.log(`[CloudBase Sync] 检测到旧键 ${event.key}，触发迁移...`);
       migrateLegacyDataToCurrentUser();
     } else if (event.key.startsWith(expectedPrefix)) {
       const localKey = event.key.substring(expectedPrefix.length);
@@ -462,6 +472,7 @@ function setupAutoSync(userId) {
 }
 
 function clearAutoSync() {
+  _autoSyncRegistered = false;
   console.log('[CloudBase Sync] 自动同步已清除');
 }
 
@@ -674,6 +685,9 @@ _createLoginSyncDeferred();
 
 async function migrateAndSyncOnLogin(userId) {
   setCurrentUserId(userId);
+
+  // 开启跨标签页自动同步
+  setupAutoSync(userId);
 
   // 获取当前的 Deferred（loading 页面已持有其 promise）
   const deferred = _loginSyncDeferred;
