@@ -44,19 +44,7 @@
 	<!-- 引入 OGL 渲染库 -->
 	<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://unpkg.com/ogl/dist/ogl.umd.js"></script>
-	<script>
-		// 禁用鼠标右键菜单
-		document.addEventListener('contextmenu', function(e) {
-			e.preventDefault();
-		});
 
-		// 禁用 F12 键和 Ctrl+Shift+I (开发者工具快捷键)
-		document.addEventListener('keydown', function(e) {
-			if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
-				e.preventDefault();
-			}
-		});
-	</script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         
@@ -1527,7 +1515,10 @@
         function showSyncConflictDialog() {
             const confirmed = confirm('检测到云端有更新数据，是否恢复云端数据？\n\n点击"确定"将用云端数据覆盖本地数据。');
             if (confirmed) {
-                // 重新加载页面以应用新数据
+                window.location.reload();
+            } else {
+                // 用户点取消：本地数据已写入 localStorage，但 React 树未刷新
+                // 强制 reload 确保页面与 localStorage 状态一致，避免操作空数据覆盖云端
                 window.location.reload();
             }
         }
@@ -1999,7 +1990,9 @@
                         }
                         if (window.__renderApp) window.__renderApp();
                     } else {
-                        // 用户选择不绑定：显示欢迎页，旧数据保留在 localStorage 中不动
+                        // 用户选择不绑定：显示欢迎页，旧数据保留在本地不动
+                        // 同时检查是否需要处理云端下载冲突
+                        if (syncAction === 'download') showSyncConflictDialog();
                         if (window.__hideAccountSwitching) {
                             window.__hideAccountSwitching();
                         }
@@ -16617,6 +16610,13 @@
 			
 			const hasActiveBg = !!currentBg;
 			
+			// 时钟 timer hooks（必须在所有条件返回之后提前声明，防止 Hook 顺序错乱）
+			const [now, setNow] = useState(() => new Date());
+			useEffect(() => {
+				const timer = setInterval(() => setNow(new Date()), 1000);
+				return () => clearInterval(timer);
+			}, []);
+			
 			// 如果当前设备没有任何账户记录，直接拦截并全屏显示初始引导页，防止任何误操作触发底层数据
 			if (profiles.length === 0) {
 				return (
@@ -16673,14 +16673,6 @@
                   
 				  {/* --- 最终修正版 Header：保留变色背景 + 叠加天气特效 --- */}
                   {(() => {
-                      // 【A3优化】将时间状态下沉到 Header 内部，只让 Header 每秒重渲染
-                      // 而不是让整个 App 重渲染，从而大幅减少 diff 范围
-                      const [now, setNow] = useState(() => new Date());
-                      useEffect(() => {
-                          const timer = setInterval(() => setNow(new Date()), 1000);
-                          return () => clearInterval(timer);
-                      }, []);
-                      
                       const holiday = getHolidayInfo(now);
                       let weather = getWeatherInfo(now);
                       const headerTheme = getHeaderTheme(now, holiday); // 获取原本的星期/节日背景主题
@@ -17975,8 +17967,14 @@
         // ===== 已有账号：等待 sync 完成后再 render App =====
         (function() {
             function hasLoggedInAccount() {
+                // 直接检查 cloudbase_current_user_id，避免 account_mapping key 名不一致问题
+                if (window.CloudBaseSync && typeof window.CloudBaseSync.getCurrentUserId === 'function') {
+                    const userId = window.CloudBaseSync.getCurrentUserId();
+                    if (userId) return true;
+                }
+                // 兜底：检查 account_mapping 中是否有记录（向后兼容）
                 try {
-                    const mapping = JSON.parse(localStorage.getItem('account_mapping_v1') || '{}');
+                    const mapping = JSON.parse(localStorage.getItem('cloudbase_account_mapping') || '{}');
                     return Object.keys(mapping).length > 0;
                 } catch { return false; }
             }
