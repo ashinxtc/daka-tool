@@ -5739,6 +5739,130 @@
 			);
 		};
 
+        // 星星明细弹窗
+		const StarHistoryModal = ({ show, onClose, starTransactions, theme }) => {
+			if (!show) return null;
+
+			const [filterType, setFilterType] = useState('all');
+
+			const groupedTransactions = useMemo(() => {
+				let filtered = starTransactions;
+				if (filterType === 'income') filtered = starTransactions.filter(t => t.amount > 0);
+				if (filterType === 'expense') filtered = starTransactions.filter(t => t.amount < 0);
+
+				const groups = {};
+				filtered.forEach(t => {
+					const date = t.date || '未知日期';
+					if (!groups[date]) groups[date] = { items: [], totalIncome: 0, totalExpense: 0 };
+					groups[date].items.push(t);
+					if (t.amount > 0) groups[date].totalIncome += t.amount;
+					else groups[date].totalExpense += t.amount;
+				});
+
+				return Object.entries(groups)
+					.sort((a, b) => new Date(b[0]) - new Date(a[0]))
+					.map(([date, data]) => ({ date, ...data, items: data.items.reverse() }));
+			}, [starTransactions, filterType]);
+
+			const getDateLabel = (dateStr) => {
+				const today = new Date().toLocaleDateString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g, '-');
+				const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g, '-');
+				if (dateStr === today) return '今天';
+				if (dateStr === yesterday) return '昨天';
+				return dateStr;
+			};
+
+			return (
+				<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+					<div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 overflow-hidden">
+						{/* 头部 */}
+						<div className={`p-5 border-b bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0`}>
+							<div>
+								<h3 className="font-black flex items-center gap-2 text-xl drop-shadow-md"><span>⭐</span> 星星明细</h3>
+								<p className="text-xs text-white/80 mt-1">记录星星的获取与使用</p>
+							</div>
+							<button onClick={onClose} className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors backdrop-blur-sm"><XIcon className="w-5 h-5" /></button>
+						</div>
+
+						{/* 筛选导航 */}
+						<div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex gap-2 shrink-0 overflow-x-auto no-scrollbar shadow-inner">
+							{[{id: 'all', label: '全部记录'}, {id: 'income', label: '收入记录'}, {id: 'expense', label: '支出记录'}].map(f => (
+								<button
+									key={f.id}
+									onClick={() => setFilterType(f.id)}
+									className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors transition-transform ${filterType === f.id ? 'bg-amber-500 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-amber-50 border border-gray-200'}`}
+								>
+									{f.label}
+								</button>
+							))}
+						</div>
+
+						{/* 历史记录列表 */}
+						<div className="flex-1 overflow-y-auto p-4 bg-gray-50/50 space-y-6">
+							{groupedTransactions.length === 0 ? (
+								<div className="text-center text-gray-400 py-12 flex flex-col items-center">
+									<div className="text-5xl mb-3 grayscale opacity-30 filter">⭐</div>
+									<div className="text-sm font-medium">暂无相关记录</div>
+								</div>
+							) : (
+								groupedTransactions.map((group) => (
+									<div key={group.date} className="space-y-3 relative">
+										{/* 日期分割线与每日统计 */}
+										<div className="flex items-center justify-between sticky top-0 bg-gray-50/90 backdrop-blur-sm z-10 py-2 border-b border-gray-100">
+											<div className="flex items-center gap-2">
+												<span className="bg-gray-800 text-white px-3 py-1 rounded-full text-xs font-black shadow-sm">
+													{getDateLabel(group.date)}
+												</span>
+												<span className="text-[10px] text-gray-400 font-medium">{group.date}</span>
+											</div>
+											<div className="flex gap-2 text-[10px] font-bold">
+												{group.totalIncome > 0 && <span className="text-amber-600 bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200">收入 +{group.totalIncome}</span>}
+												{group.totalExpense < 0 && <span className="text-red-500 bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">支出 {group.totalExpense}</span>}
+											</div>
+										</div>
+										{/* 当日明细卡片列表 */}
+										<div className="space-y-2">
+											{group.items.map((t) => {
+												const isIncome = t.amount > 0;
+												let ItemIcon = '⭐';
+												if (t.name.includes('打卡')) ItemIcon = '✅';
+												if (t.name.includes('兑换')) ItemIcon = '💰';
+												if (t.name.includes('领养')) ItemIcon = '🐾';
+												if (t.name.includes('喂食')) ItemIcon = '🍖';
+												if (t.name.includes('洗香香')) ItemIcon = '🛁';
+												if (t.name.includes('去玩耍')) ItemIcon = '🎪';
+												if (t.name.includes('睡觉')) ItemIcon = '💤';
+												if (t.name.includes('摸摸头')) ItemIcon = '🤚';
+
+												return (
+													<div key={t.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-colors transition-transform group">
+														<div className="flex items-center gap-3">
+															<div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${isIncome ? 'bg-amber-50 text-amber-500 border border-amber-100' : 'bg-rose-50 text-rose-500 border border-rose-100'}`}>
+																{ItemIcon}
+															</div>
+															<div>
+																<div className="font-bold text-gray-800 text-sm group-hover:text-amber-600 transition-colors">{t.name}</div>
+																<div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+																	{isIncome ? '星星到账' : '星星消耗'}
+																</div>
+															</div>
+														</div>
+														<div className={`font-black text-xl tracking-tight ${isIncome ? 'text-amber-500' : 'text-red-500'}`}>
+															{isIncome ? '+' : ''}{t.amount} ⭐
+														</div>
+													</div>
+												);
+											})}
+										</div>
+									</div>
+								))
+							)}
+						</div>
+					</div>
+				</div>
+			);
+		};
+
         // 经验值明细弹窗 (系统整理与高级美化版)
 		const XPHistoryModal = ({ show, onClose, xpTransactions, theme }) => {
 			if (!show) return null;
@@ -6290,7 +6414,7 @@
             });
         };
 
-        const PetHomeView = ({ theme, activeChild, petData, setPetData, ownedPets, activePet, petCooldowns, setPetCooldowns, petStats, setPetStats, stars, setStars, petMusicOn, lowPerfMode, checkAchievements }) => {
+        const PetHomeView = ({ theme, activeChild, petData, setPetData, ownedPets, activePet, petCooldowns, setPetCooldowns, petStats, setPetStats, stars, setStars, setStarHistory, petMusicOn, lowPerfMode, checkAchievements }) => {
             const petId = activePet[activeChild];
             const myOwned = ownedPets[activeChild] || [];
 
@@ -6499,6 +6623,7 @@
                                                     playActionAnim(btn.key);
                                                     if (action.starCost > 0) {
                                                         setStars(prev => ({ ...prev, [activeChild]: currentStars - action.starCost }));
+                                                        setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_PET_${btn.key}-${petId}-${Date.now()}`]: -action.starCost }));
                                                     }
                                                     setPetData(prev => {
                                                         const childPets = { ...(prev[activeChild] || {}) };
@@ -6610,7 +6735,7 @@
             );
         };
 
-        const PetShopView = ({ theme, activeChild, level, currentEra, ownedPets, setOwnedPets, petData, setPetData, activePet, setActivePet, stars, setStars, petStats, setPetStats, checkAchievements, showToast }) => {
+        const PetShopView = ({ theme, activeChild, level, currentEra, ownedPets, setOwnedPets, petData, setPetData, activePet, setActivePet, stars, setStars, setStarHistory, petStats, setPetStats, checkAchievements, showToast }) => {
             const [filter, setFilter] = useState('all');
             const myOwned = ownedPets[activeChild] || [];
             const currentStars = stars[activeChild] || 0;
@@ -6630,6 +6755,7 @@
 
                 if (catalog.price > 0) {
                     setStars(prev => ({ ...prev, [activeChild]: currentStars - catalog.price }));
+                    setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_PET_BUY-${petId}-${Date.now()}`]: -catalog.price }));
                     setPetStats(prev => ({
                         ...prev,
                         [activeChild]: { ...(prev[activeChild] || {}), totalStarsSpent: ((prev[activeChild] || {}).totalStarsSpent || 0) + catalog.price },
@@ -6748,7 +6874,7 @@
             );
         };
 
-        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, stars, setStars, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements }) => {
+        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, stars, setStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements }) => {
             if (!show) return null;
 
             const [currentTab, setCurrentTab] = useState('home');
@@ -6822,8 +6948,8 @@
 
                         {/* 内容区 */}
                         <div className="flex-1 overflow-y-auto px-5 pb-5">
-                            {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} stars={stars} setStars={setStars} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} />}
-                            {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} stars={stars} setStars={setStars} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} />}
+                            {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} stars={stars} setStars={setStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} />}
+                            {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} stars={stars} setStars={setStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} />}
                             {currentTab === 'album' && <PetAlbumView theme={theme} activeChild={activeChild} ownedPets={ownedPets} petData={petData} />}
                         </div>
                     </div>
@@ -10173,6 +10299,7 @@
             const [evilPointerRotation, setEvilPointerRotation] = useState(0);
             const [showGoldHistory, setShowGoldHistory] = useState(false);
             const [showXPHistory, setShowXPHistory] = useState(false);
+            const [showStarHistory, setShowStarHistory] = useState(false);
             const [isEvilDemo, setIsEvilDemo] = useState(false);
             
             const [showEvolutionPath, setShowEvolutionPath] = useState(false);
@@ -10585,6 +10712,48 @@
             const totalStars = useMemo(() => {
                 return calculateTotalStars(deferredActiveChild);
             }, [calculateTotalStars, deferredActiveChild]);
+
+            // --- 星星明细数据 ---
+            const starTransactions = useMemo(() => {
+                const history = starHistory || {};
+                const list = [];
+                const petActionNames = { feed: '喂食', bath: '洗香香', play: '去玩耍', sleep: '睡觉', pet: '摸摸头' };
+                Object.keys(history).forEach(key => {
+                    if (!key.startsWith(deferredActiveChild + '-STAR_')) return;
+                    const amount = history[key];
+                    if (key.includes('-STAR_CHECKIN-')) {
+                        const parts = key.split('-STAR_CHECKIN-');
+                        const rest = parts[1] || '';
+                        const lastDash = rest.lastIndexOf('-');
+                        const taskId = rest.substring(0, lastDash);
+                        const date = rest.substring(lastDash + 1);
+                        const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
+                        const taskName = task ? task.name : '打卡';
+                        list.push({ id: key, date, name: `打卡：${taskName}`, amount, type: 'income' });
+                    } else if (key.includes('-STAR_PET_BUY-')) {
+                        const ts = key.match(/-(\d{13})$/)?.[1];
+                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const petId = key.match(/-STAR_PET_BUY-([^-]+)-/)?.[1] || '';
+                        const catalog = petCatalog.find(c => c.id === petId);
+                        const petName = catalog ? catalog.name : '宠物';
+                        list.push({ id: key, date, name: `领养：${petName}`, amount, type: amount > 0 ? 'income' : 'expense' });
+                    } else if (key.includes('-STAR_PET_')) {
+                        const ts = key.match(/-(\d{13})$/)?.[1];
+                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const actionKey = key.match(/-STAR_PET_([^-]+)-/)?.[1] || '';
+                        const actionName = petActionNames[actionKey] || actionKey;
+                        list.push({ id: key, date, name: `宠物互动：${actionName}`, amount, type: amount > 0 ? 'income' : 'expense' });
+                    } else if (key.includes('-STAR_BUY-')) {
+                        const ts = key.match(/-(\d{13})$/)?.[1];
+                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const itemId = key.match(/-STAR_BUY-([^-]+)-/)?.[1] || '';
+                        const item = SHOP_ITEMS.find(i => i.id === itemId);
+                        const itemName = item ? item.name : '星星兑换';
+                        list.push({ id: key, date, name: `兑换：${itemName}`, amount, type: 'income' });
+                    }
+                });
+                return list.sort((a, b) => new Date(b.date) - new Date(a.date));
+            }, [starHistory, deferredActiveChild, tasks]);
 
             // --- 宠物属性衰减 ---
             useEffect(() => {
@@ -13536,6 +13705,10 @@
                                       <Coins className="w-3.5 h-3.5 text-yellow-300" />
                                       <span className="text-xs font-black text-yellow-100">{totalGold}</span>
                                     </div>
+                                    <div className="flex items-center gap-0.5 cursor-pointer active:scale-95 px-1.5 py-0.5 rounded" onClick={() => setShowStarHistory(true)}>
+                                      <span className="text-xs">⭐</span>
+                                      <span className="text-xs font-black text-yellow-100">{totalStars}</span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -13669,7 +13842,7 @@
                                       <button onClick={() => { setShopInitialTab('buy'); setShowShop(true); }} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="时空集市"><div className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 rounded-full animate-bounce shadow-sm border border-white/30">NEW</div><span className="text-xl filter drop-shadow-sm">🏪</span></button>
                                       <div onClick={() => canSpinLuckyWheel && setShowWheelChoice(true)} className={`hidden xl:flex flex-col items-center justify-center mx-1 px-2 py-0.5 rounded-lg border cursor-pointer h-9 transition-colors ${canSpinLuckyWheel ? 'bg-amber-400/80 border-amber-200 animate-pulse text-black' : 'bg-transparent border-transparent hover:bg-white/10 text-white'}`}><div className="flex items-center gap-1"><span className="text-xs">🧩</span><span className="text-xs font-black">{todayFragmentStats.completed}/{todayFragmentStats.required}</span></div></div>
                                       <div className="flex items-center gap-1 mx-2 cursor-pointer hover:bg-white/10 p-1 rounded transition-colors" onClick={() => setShowGoldHistory(true)}><Coins className="w-4 h-4 text-yellow-300 drop-shadow-sm" /><span className="text-sm font-black text-yellow-100">{totalGold}</span></div>
-                                      <div className="flex items-center gap-1 mx-1"><span className="text-sm">⭐</span><span className="text-sm font-black text-yellow-100">{totalStars}</span></div>
+                                      <div className="flex items-center gap-1 mx-1 cursor-pointer hover:bg-white/10 p-1 rounded transition-colors" onClick={() => setShowStarHistory(true)}><span className="text-sm">⭐</span><span className="text-sm font-black text-yellow-100">{totalStars}</span></div>
                                       <div className="w-px h-5 bg-white/20 mx-1"></div>
                                       <button onClick={() => setShowThemeModal(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="切换主题"><span className="text-xl">🎨</span></button>
                                       <button onClick={handleOpenSettings} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="设置"><span className="text-xl">🛠️</span></button>
@@ -14253,6 +14426,7 @@
 				      setAchievements={setAchievements}
 				      lowPerfMode={window.__lowPerf || false}
 				      checkAchievements={checkAchievements}
+				      setStarHistory={setStarHistory}
 				  />
 				  <CompletedWallModal 
 					show={showCompletedWall} 
@@ -14359,13 +14533,19 @@
                     result={evilWheelResult}
                     isDemo={isEvilDemo}
                   />
-				  <GoldHistoryModal 
-                    show={showGoldHistory} 
-                    onClose={() => setShowGoldHistory(false)} 
+				  <GoldHistoryModal
+                    show={showGoldHistory}
+                    onClose={() => setShowGoldHistory(false)}
                     transactions={transactions}
                     theme={theme}
                   />
-                  <XPHistoryModal 
+                  <StarHistoryModal
+                    show={showStarHistory}
+                    onClose={() => setShowStarHistory(false)}
+                    starTransactions={starTransactions}
+                    theme={theme}
+                  />
+                  <XPHistoryModal
                     show={showXPHistory} 
                     onClose={() => setShowXPHistory(false)} 
                     xpTransactions={xpTransactions}
