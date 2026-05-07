@@ -6424,15 +6424,20 @@
             return (
                 <div className="space-y-5 pb-2">
                     {/* 宠物展示卡 */}
-                    <div className="bg-white/70 rounded-3xl p-5 shadow-sm border border-amber-100/50">
+                    <div className="relative bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-3xl p-5 shadow-sm border border-indigo-100/60 overflow-hidden">
+                        {/* 装饰星星 */}
+                        <div className="absolute top-3 right-4 text-indigo-200/60 text-lg pointer-events-none">✦</div>
+                        <div className="absolute bottom-4 left-4 text-pink-200/60 text-sm pointer-events-none">✧</div>
+                        <div className="absolute top-1/2 right-8 text-purple-200/40 text-[10px] pointer-events-none">✦</div>
+
                         {/* 气泡对话 */}
-                        <div className="flex justify-center mb-4">
-                            <div className="px-4 py-2 bg-white rounded-2xl rounded-bl-sm shadow-sm border border-gray-100 text-sm text-gray-600 max-w-[220px] text-center">
+                        <div className="flex justify-center mb-3">
+                            <div className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-2xl rounded-bl-sm shadow-sm border border-white text-sm text-gray-600 max-w-[220px] text-center">
                                 "{dialog}"
                             </div>
                         </div>
 
-                        {/* 状态环（左）+ 宠物头像（中）+ 互动按钮（右） */}
+                        {/* 状态环（左）+ 宠物大图（中）+ 互动按钮（右） */}
                         <div className="flex items-center justify-between mb-4 gap-2">
                             {/* 左侧：3 个状态环 */}
                             <div className="flex flex-col gap-2 shrink-0">
@@ -6447,7 +6452,7 @@
                                         <div key={s.key} className="flex items-center gap-1">
                                             <div className="relative w-9 h-9">
                                                 <svg className="w-9 h-9 -rotate-90" viewBox="0 0 36 36">
-                                                    <circle cx="18" cy="18" r="15" fill="none" stroke="#f3f4f6" strokeWidth="3" />
+                                                    <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" strokeWidth="3" />
                                                     <circle cx="18" cy="18" r="15" fill="none" stroke={strokeColor} strokeWidth="3" strokeLinecap="round" strokeDasharray={`${val * 0.942} 94.2`} className="transition-all duration-700" />
                                                 </svg>
                                                 <span className="absolute inset-0 flex items-center justify-center text-xs">{s.icon}</span>
@@ -6461,15 +6466,15 @@
                                 })}
                             </div>
 
-                            {/* 中间：大圆头像 */}
+                            {/* 中间：宠物大图（无边框） */}
                             <div className="flex-shrink-0">
-                                <div className={`w-28 h-28 rounded-full bg-gradient-to-br from-amber-100 to-orange-50 border-4 border-white shadow-lg flex items-center justify-center overflow-hidden ${pet.currentState === 'feed' ? 'animate-pet-eat' : pet.currentState === 'sleep' ? 'animate-pet-sleep-bob' : pet.currentState === 'click' ? 'animate-pet-wiggle' : 'animate-pet-bounce-gentle'}`}>
+                                <div className={`w-40 h-40 flex items-center justify-center ${pet.currentState === 'feed' ? 'animate-pet-eat' : pet.currentState === 'sleep' ? 'animate-pet-sleep-bob' : pet.currentState === 'click' ? 'animate-pet-wiggle' : 'animate-pet-bounce-gentle'}`}>
                                     {animSrc ? (
-                                        <img src={animSrc} alt={catalog.name} className="w-full h-full object-contain" onError={() => setAnimSrc(null)} />
+                                        <img src={animSrc} alt={catalog.name} className="w-full h-full object-contain drop-shadow-lg" onError={() => setAnimSrc(null)} />
                                     ) : catalog.thumbUrl ? (
-                                        <img src={catalog.thumbUrl} alt={catalog.name} className="w-full h-full object-contain" onError={(e) => { e.target.style.display='none'; }} />
+                                        <img src={catalog.thumbUrl} alt={catalog.name} className="w-full h-full object-contain drop-shadow-lg" onError={(e) => { e.target.style.display='none'; }} />
                                     ) : (
-                                        <span className="text-5xl">{catalog.emoji}</span>
+                                        <span className="text-7xl drop-shadow-lg">{catalog.emoji}</span>
                                     )}
                                 </div>
                             </div>
@@ -6558,29 +6563,22 @@
                             </div>
                         </div>
 
-                        {/* 名字 + 等级 + 稀有度 */}
-                        <div className="text-center space-y-2">
-                            <div className="flex items-center justify-center gap-2">
-                                <span className="text-lg font-extrabold text-gray-800">{pet.nickname || catalog.name}</span>
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold border border-amber-200">Lv.{growthStage.level} {growthStage.name}</span>
-                            </div>
-                            <div className="flex items-center justify-center gap-2">
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${rarity.cls}`}>{rarity.name}</span>
-                                <span className="text-[10px] text-gray-400">{catalog.species}</span>
-                                <span className="text-[10px]">{petElements[catalog.attributes.element]?.icon || '⚪'}</span>
-                            </div>
+                        {/* 名字（左）+ Lv 徽章（右） */}
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-lg font-extrabold text-gray-800">{pet.nickname || catalog.name}</span>
+                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/80 text-indigo-600 font-bold border border-indigo-200 shadow-sm">Lv.{growthStage.level} {growthStage.name}</span>
                         </div>
 
                         {/* 成长进度条 */}
-                        <div className="mt-4">
+                        <div>
                             <div className="flex justify-between items-center mb-1.5">
                                 <span className="text-[10px] text-gray-400">🌱 成长</span>
                                 <span className="text-[10px] text-gray-400">
                                     {nextStage ? `${pet.interactionCount}/${nextStage.threshold} → ${nextStage.name}` : '✨ 已满级！'}
                                 </span>
                             </div>
-                            <div className="w-full h-2 bg-white/80 rounded-full overflow-hidden">
-                                <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-400 transition-all duration-700"
+                            <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-purple-400 transition-all duration-700"
                                     style={{ width: nextStage ? `${Math.min(100, (pet.interactionCount / nextStage.threshold) * 100)}%` : '100%' }}></div>
                             </div>
                         </div>

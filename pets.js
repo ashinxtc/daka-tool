@@ -285,7 +285,7 @@ var PET_ACTIONS = {
     icon: '🍖',
     starCost: 10,
     effects: { fullness: +30, mood: +5, cleanliness: -5 },
-    cooldown: 300000,
+    cooldown: 600000,
     desc: '轻轻点一下，就能让它更开心。',
   },
   bath: {
@@ -293,7 +293,7 @@ var PET_ACTIONS = {
     icon: '🛁',
     starCost: 15,
     effects: { cleanliness: +35, mood: +5 },
-    cooldown: 600000,
+    cooldown: 1200000,
     desc: '洗去一身疲惫，焕然一新。',
   },
   play: {
@@ -301,7 +301,7 @@ var PET_ACTIONS = {
     icon: '🎪',
     starCost: 20,
     effects: { mood: +40, fullness: -10, cleanliness: -10 },
-    cooldown: 900000,
+    cooldown: 1800000,
     desc: '出去撒欢跑一跑，心情大好！',
   },
   sleep: {
@@ -309,7 +309,7 @@ var PET_ACTIONS = {
     icon: '💤',
     starCost: 8,
     effects: { mood: +15, fullness: -5 },
-    cooldown: 1800000,
+    cooldown: 3600000,
     desc: '安安稳稳睡一觉，醒来更有精神。',
   },
   pet: {
@@ -317,7 +317,7 @@ var PET_ACTIONS = {
     icon: '🤚',
     starCost: 0,
     effects: { mood: +8 },
-    cooldown: 60000,
+    cooldown: 1200000,
     desc: '温柔地摸摸它的头。',
   },
 };
