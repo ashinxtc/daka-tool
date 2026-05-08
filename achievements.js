@@ -161,6 +161,18 @@ AchievementSystem.BADGES = [
     { id: 'pet_all_5',         name: '五福临门',   desc: '拥有 5 只达到「好伙伴」等级的宠物',  rarity: 'epic',      category: '宠物' },
     { id: 'pet_legendary',     name: '天命所归',   desc: '领养一只神品宠物',                  rarity: 'epic',      category: '宠物' },
     { id: 'pet_rename',        name: '赐名之恩',   desc: '为宠物修改名字',                    rarity: 'common',    category: '宠物' },
+
+    // 探险寻宝
+    { id: 'adv_first',         name: '初次探险',   desc: '完成第一次探险',                     rarity: 'common',    category: '宠物' },
+    { id: 'adv_10',            name: '探险新手',   desc: '完成 10 次探险',                     rarity: 'common',    category: '宠物' },
+    { id: 'adv_50',            name: '资深冒险家', desc: '完成 50 次探险',                     rarity: 'rare',      category: '宠物' },
+    { id: 'adv_all_realms',    name: '环游世界',   desc: '完成所有 5 个领域',                  rarity: 'rare',      category: '宠物' },
+    { id: 'adv_gold_1000',     name: '宝藏猎人',   desc: '探险累计获得 1000 金元宝',           rarity: 'rare',      category: '宠物' },
+    { id: 'adv_xp_5000',       name: '知识行者',   desc: '探险累计获得 5000 经验值',           rarity: 'epic',      category: '宠物' },
+    { id: 'adv_stars_200',     name: '星光旅人',   desc: '探险累计获得 200 星星',              rarity: 'epic',      category: '宠物' },
+    { id: 'adv_god_beast',     name: '神兽之友',   desc: '触发「神兽降临」事件',               rarity: 'legendary', category: '宠物' },
+    { id: 'adv_rainbow',       name: '彩虹收集者', desc: '获得所有领域最高稀有度宝物',         rarity: 'legendary', category: '宠物' },
+    { id: 'adv_100',           name: '时间旅者',   desc: '完成 100 次探险',                    rarity: 'legendary', category: '宠物' },
 ];
 
 // --- 课程配置 ---
@@ -288,7 +300,8 @@ AchievementSystem.checkAchievements = (triggerType, context, data) => {
         activeChild, achievements: allAchievements, checkins, wheelHistory,
         tasks, stats, totalGold, exemptedDays, profiles, globalDates,
         curriculumProgress, currentXP, levels, colorPalettes,
-        ownedPets, petData, petStats
+        ownedPets, petData, petStats,
+        petAdventureStats, petAdventureLog
     } = data;
 
     const BADGES = AchievementSystem.BADGES;
@@ -640,6 +653,42 @@ AchievementSystem.checkAchievements = (triggerType, context, data) => {
         }
         if ((petStatsData.feedCount || 0) >= 100) tryUnlock('pet_feed_100');
         if ((petStatsData.bathCount || 0) >= 50) tryUnlock('pet_bath_50');
+    }
+
+    // ==================== 探险类 ====================
+    if (petAdventureStats || petAdventureLog) {
+        const advStats = (petAdventureStats || {})[activeChild] || {};
+        const advLog = (petAdventureLog || {})[activeChild] || [];
+        const totalAdventures = advStats.totalAdventures || 0;
+        const totalGoldEarned = advStats.totalGoldEarned || 0;
+        const totalXPEarned = advStats.totalXPEarned || 0;
+        const totalStarsEarned = advStats.totalStarsEarned || 0;
+
+        // 完成次数
+        if (totalAdventures >= 1) tryUnlock('adv_first');
+        if (totalAdventures >= 10) tryUnlock('adv_10');
+        if (totalAdventures >= 50) tryUnlock('adv_50');
+        if (totalAdventures >= 100) tryUnlock('adv_100');
+
+        // 累计收益
+        if (totalGoldEarned >= 1000) tryUnlock('adv_gold_1000');
+        if (totalXPEarned >= 5000) tryUnlock('adv_xp_5000');
+        if (totalStarsEarned >= 200) tryUnlock('adv_stars_200');
+
+        // 完成所有领域
+        const realmsVisited = new Set();
+        advLog.forEach(entry => realmsVisited.add(entry.realmId));
+        ['forest', 'creek', 'ruins', 'rift', 'cosmos'].forEach(r => {
+            if (advStats[`${r}Count`] > 0) realmsVisited.add(r);
+        });
+        if (realmsVisited.size >= 5) tryUnlock('adv_all_realms');
+
+        // 神兽降临事件
+        const hasGodBeast = advLog.some(entry => entry.event && entry.event.name === '神兽降临');
+        if (hasGodBeast) tryUnlock('adv_god_beast');
+
+        // 彩虹收集者（每个领域都有日志记录）
+        if (realmsVisited.size >= 5 && totalAdventures >= 5) tryUnlock('adv_rainbow');
     }
 
     // ==================== 构建返回值 ====================

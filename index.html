@@ -1175,6 +1175,7 @@
     <script src="levels.js"></script>
     <script src="achievements.js"></script>
     <script src="pets.js"></script>
+    <script src="pet-adventures.js"></script>
 
     <!-- 低性能设备自动检测（在 React 渲染前执行） -->
     <script>
@@ -1771,6 +1772,15 @@
         const petMoodDialogs = (typeof PET_MOOD_DIALOGS !== 'undefined') ? PET_MOOD_DIALOGS : {};
         const petElements = (typeof PET_ELEMENTS !== 'undefined') ? PET_ELEMENTS : {};
         const petStatNames = (typeof PET_STAT_NAMES !== 'undefined') ? PET_STAT_NAMES : {};
+
+        // --- 从 pet-adventures.js 导入探险系统数据 ---
+        const adventureConfig = (typeof ADVENTURE_CONFIG !== 'undefined') ? ADVENTURE_CONFIG : {};
+        const adventureRealms = (typeof ADVENTURE_REALMS !== 'undefined') ? ADVENTURE_REALMS : [];
+        const adventureLootTables = (typeof ADVENTURE_LOOT_TABLES !== 'undefined') ? ADVENTURE_LOOT_TABLES : {};
+        const adventureEvents = (typeof ADVENTURE_EVENTS !== 'undefined') ? ADVENTURE_EVENTS : {};
+        const adventureRefuseDialogs = (typeof ADVENTURE_REFUSE_DIALOGS !== 'undefined') ? ADVENTURE_REFUSE_DIALOGS : [];
+        const adventureStories = (typeof ADVENTURE_STORIES !== 'undefined') ? ADVENTURE_STORIES : {};
+        const adventureHelpers = (typeof ADVENTURE_HELPERS !== 'undefined') ? ADVENTURE_HELPERS : {};
 
         const DEFAULT_PROFILES = [];
 
@@ -2452,7 +2462,10 @@
                     petCooldowns: localStorage.getItem('app_pet_cooldowns_v1'),
                     petStats: localStorage.getItem('app_pet_stats_v1'),
                     petSkillCooldowns: localStorage.getItem('app_pet_skill_cd_v1'),
-                    petBuffs: localStorage.getItem('app_pet_buffs_v1')
+                    petBuffs: localStorage.getItem('app_pet_buffs_v1'),
+                    petAdventures: localStorage.getItem('app_pet_adventures_v1'),
+                    petAdventureLog: localStorage.getItem('app_pet_adventure_log_v1'),
+                    petAdventureStats: localStorage.getItem('app_pet_adventure_stats_v1')
                 };
                 
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2534,7 +2547,10 @@
                                                       key === 'petCooldowns' ? 'app_pet_cooldowns_v1' :
                                                       key === 'petStats' ? 'app_pet_stats_v1' :
                                                       key === 'petSkillCooldowns' ? 'app_pet_skill_cd_v1' :
-                                                      key === 'petBuffs' ? 'app_pet_buffs_v1' : null;
+                                                      key === 'petBuffs' ? 'app_pet_buffs_v1' :
+                                                      key === 'petAdventures' ? 'app_pet_adventures_v1' :
+                                                      key === 'petAdventureLog' ? 'app_pet_adventure_log_v1' :
+                                                      key === 'petAdventureStats' ? 'app_pet_adventure_stats_v1' : null;
                                     
                                     if (storageKey) {
                                         localStorage.setItem(storageKey, data[key]);
@@ -5833,6 +5849,8 @@
 												if (t.name.includes('去玩耍')) ItemIcon = '🎪';
 												if (t.name.includes('睡觉')) ItemIcon = '💤';
 												if (t.name.includes('摸摸头')) ItemIcon = '🤚';
+												if (t.name.includes('探险出发')) ItemIcon = '🗺️';
+												if (t.name.includes('探险归来')) ItemIcon = '🎁';
 
 												return (
 													<div key={t.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 flex justify-between items-center shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-colors transition-transform group">
@@ -6036,7 +6054,7 @@
 
         // --- 成就墙弹窗组件 ---
         // 注意：此组件依赖全局变量 Trophy, XIcon, Lock, COLOR_PALETTES
-        const AchievementWallModal = ({ show, onClose, achievements, theme, checkins, tasks, activeChild, wheelHistory, stats, totalGold, exemptedDays, ownedPets, petData, petStats }) => {
+        const AchievementWallModal = ({ show, onClose, achievements, theme, checkins, tasks, activeChild, wheelHistory, stats, totalGold, exemptedDays, ownedPets, petData, petStats, petAdventureStats, petAdventureLog }) => {
             if (!show) return null;
             const categories = ['荣耀', '毅力', '效率', '精通', '财富', '探索', '宠物'];
 
@@ -6217,7 +6235,38 @@
                         case 'pet_all_5': return { current: bond3, target: 5 };
                         case 'pet_legendary': return { current: hasLeg ? 1 : 0, target: 1 };
                         case 'pet_rename': return { current: 0, target: 1 };
-                        default: return null;
+                        default: break;
+                    }
+                }
+
+                // 探险成就进度
+                if (typeof ADVENTURE_REALMS !== 'undefined') {
+                    const advStats = (petAdventureStats || {})[activeChild] || {};
+                    const advLog = (petAdventureLog || {})[activeChild] || [];
+                    const totalAdventures = advStats.totalAdventures || 0;
+                    const totalGoldEarned = advStats.totalGoldEarned || 0;
+                    const totalXPEarned = advStats.totalXPEarned || 0;
+                    const totalStarsEarned = advStats.totalStarsEarned || 0;
+                    const realmsVisited = new Set();
+                    ['forest', 'creek', 'ruins', 'rift', 'cosmos'].forEach(r => {
+                        if (advStats[`${r}Count`] > 0) realmsVisited.add(r);
+                    });
+                    advLog.forEach(entry => { if (entry.realmId) realmsVisited.add(entry.realmId); });
+                    const hasGodBeast = advLog.some(e => e.event && e.event.name === '神兽降临');
+                    const hasAllRealmLogs = realmsVisited.size >= 5;
+
+                    switch (badgeId) {
+                        case 'adv_first': return { current: totalAdventures, target: 1 };
+                        case 'adv_10': return { current: totalAdventures, target: 10 };
+                        case 'adv_50': return { current: totalAdventures, target: 50 };
+                        case 'adv_100': return { current: totalAdventures, target: 100 };
+                        case 'adv_all_realms': return { current: realmsVisited.size, target: 5 };
+                        case 'adv_gold_1000': return { current: totalGoldEarned, target: 1000 };
+                        case 'adv_xp_5000': return { current: totalXPEarned, target: 5000 };
+                        case 'adv_stars_200': return { current: totalStarsEarned, target: 200 };
+                        case 'adv_god_beast': return { current: hasGodBeast ? 1 : 0, target: 1 };
+                        case 'adv_rainbow': return { current: hasAllRealmLogs ? 1 : 0, target: 1 };
+                        default: break;
                     }
                 }
 
@@ -6874,15 +6923,377 @@
             );
         };
 
-        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, stars, setStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements }) => {
+        // ==================== 探险视图组件 ====================
+        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, stars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast }) => {
+            const [selectedRealm, setSelectedRealm] = useState(null);
+            const [showGuide, setShowGuide] = useState(false);
+            const [now, setNow] = useState(Date.now());
+            const [selectedPetForAdventure, setSelectedPetForAdventure] = useState(null);
+
+            const currentStars = stars[activeChild] || 0;
+            const advArr = Array.isArray(petAdventures[activeChild]) ? petAdventures[activeChild] : [];
+            const activeAdvs = advArr.filter(a => a.status === 'active');
+            const completedAdvs = advArr.filter(a => a.status === 'completed' && a.result);
+            const isActive = activeAdvs.length > 0;
+            const log = (petAdventureLog[activeChild] || []);
+            const stats = (petAdventureStats[activeChild] || {});
+            const myOwned = ownedPets[activeChild] || [];
+
+            // 正在探险中的宠物 ID 集合
+            const adventuringPetIds = new Set(activeAdvs.map(a => a.petId));
+
+            // 计时器：每秒更新剩余时间（有活跃探险时）
+            useEffect(() => {
+                if (!activeAdvs.length) return;
+                const timer = setInterval(() => setNow(Date.now()), 1000);
+                return () => clearInterval(timer);
+            }, [activeAdvs.length > 0]);
+
+            // 获取选中领域的倍率状态（传入选中宠物）
+            const multiplierStatus = selectedRealm ? getAdventureMultiplierStatus(selectedRealm, selectedPetForAdventure) : null;
+
+            // 领域元素图标
+            const elemIcons = { fire: '🔥', water: '💧', earth: '🌿', wind: '🌀', light: '✨', dark: '🌙', none: '⚪' };
+
+            // 剩余时间格式化
+            const formatRemaining = (endTime) => {
+                const diff = Math.max(0, endTime - now);
+                const h = Math.floor(diff / 3600000);
+                const m = Math.floor((diff % 3600000) / 60000);
+                const s = Math.floor((diff % 60000) / 1000);
+                return `${h}时${m}分${s}秒`;
+            };
+
+            // 进度百分比（单条探险）
+            const calcProgress = (adv) => Math.min(100, ((now - adv.startTime) / (adv.expectedEndTime - adv.startTime)) * 100);
+
+            // 门控状态文案
+            const gateLabel = (status) => {
+                if (status === 'normal') return { text: '✅ 全额收益', color: 'text-emerald-600' };
+                if (status === 'warning') return { text: '⚠️ 收益减半', color: 'text-amber-600' };
+                return { text: '🚫 无法探险', color: 'text-red-600' };
+            };
+
+            return (
+                <div className="p-4 space-y-4">
+                    {/* 顶部：星星余额 + 统计 + 帮助按钮 */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-500">⭐ <span className="font-bold text-amber-600">{currentStars}</span></span>
+                            <span className="text-sm text-gray-500">探险 <span className="font-bold text-gray-800">{stats.totalAdventures || 0}</span> 次</span>
+                        </div>
+                        <button onClick={() => setShowGuide(true)} className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors text-sm font-bold">?</button>
+                    </div>
+
+                    {/* 倍率状态面板 */}
+                    {(() => {
+                        const status = getAdventureMultiplierStatus(selectedRealm || 'forest', selectedPetForAdventure);
+                        if (!status) return (
+                            <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center text-gray-400 text-sm">
+                                请先选择一只宠物
+                            </div>
+                        );
+                        const gate = gateLabel(status.gateStatus);
+                        return (
+                            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                                <div className="text-xs font-bold text-gray-500 mb-2">📊 当前探险收益状态</div>
+                                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                                    <div className="bg-amber-50 rounded-lg p-2 text-center">
+                                        <div className="text-gray-400 text-[10px]">日均金元宝</div>
+                                        <div className="font-bold text-amber-600">{status.dailyGoldBase} 💰</div>
+                                    </div>
+                                    <div className="bg-blue-50 rounded-lg p-2 text-center">
+                                        <div className="text-gray-400 text-[10px]">日均经验</div>
+                                        <div className="font-bold text-blue-600">{status.dailyXPBase} ✨</div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                    <span className="text-gray-500">近 7 天打卡率</span>
+                                    <span className={`font-bold ${gate.color}`}>{Math.round(status.completionRate * 100)}% {gate.text}</span>
+                                </div>
+                                {status.gateStatus !== 'blocked' && (
+                                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 text-[11px]">
+                                        {status.bondItemBonus > 0 && <div className="flex justify-between"><span className="text-gray-400">亲密度加成 ({status.bondLevelName})</span><span className="text-emerald-600 font-bold">+{Math.round(status.bondItemBonus * 100)}%</span></div>}
+                                        {status.elementBonus > 0 && <div className="flex justify-between"><span className="text-gray-400">元素克制 ({elemIcons[status.petElement]}克{elemIcons[status.realmElement]})</span><span className="text-emerald-600 font-bold">+20%</span></div>}
+                                        {status.streakBonus.gold > 0 && <div className="flex justify-between"><span className="text-gray-400">打卡连击 ({status.streakDays}天)</span><span className="text-emerald-600 font-bold">+{Math.round(status.streakBonus.gold * 100)}%</span></div>}
+                                        {status.skillBonus.goldBoost > 0 && <div className="flex justify-between"><span className="text-gray-400">宠物技能 ({status.skillBonus.skillName})</span><span className="text-emerald-600 font-bold">+{Math.round(status.skillBonus.goldBoost * 100)}%</span></div>}
+                                        {status.skillBonus.xpBoost > 0 && <div className="flex justify-between"><span className="text-gray-400">宠物技能 ({status.skillBonus.skillName})</span><span className="text-blue-600 font-bold">经验+{Math.round(status.skillBonus.xpBoost * 100)}%</span></div>}
+                                        <div className="flex justify-between pt-1 border-t border-gray-50">
+                                            <span className="text-gray-500 font-bold">综合倍率</span>
+                                            <span className="font-black text-amber-600">×{status.goldMul}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* 进行中的探险（多条） */}
+                    {activeAdvs.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="text-xs font-bold text-gray-500">🏃 探险中（{activeAdvs.length}）</div>
+                            {activeAdvs.map(adv => {
+                                const realm = adventureRealms.find(r => r.id === adv.realmId);
+                                const pet = petData[activeChild]?.[adv.petId];
+                                const petName = pet?.nickname || adv.petId;
+                                const pct = calcProgress(adv);
+                                return (
+                                    <div key={adv.id} className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl border border-indigo-100 p-4 shadow-sm">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-lg">{realm?.icon || '🗺️'}</span>
+                                                <div>
+                                                    <div className="font-bold text-sm text-gray-800">{realm?.name || '探险'}</div>
+                                                    <div className="text-[10px] text-gray-400">{petName} 出发中</div>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => handleCancelAdventure(adv.id)} className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">召回</button>
+                                        </div>
+                                        <div className="relative h-3 bg-white/60 rounded-full overflow-hidden mb-2">
+                                            <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full transition-all duration-1000" style={{ width: `${pct}%` }} />
+                                        </div>
+                                        <div className="flex justify-between text-[10px] text-gray-500">
+                                            <span>剩余 {formatRemaining(adv.expectedEndTime)}</span>
+                                            <span>{Math.round(pct)}%</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* 刚完成的探险结果 */}
+                    {completedAdvs.length > 0 && completedAdvs.map(adv => (
+                        <div key={adv.id} className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-100 p-4 shadow-sm">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">🎉</span>
+                                    <div className="font-bold text-sm text-gray-800">探险归来！</div>
+                                </div>
+                                <button onClick={() => setPetAdventures(prev => ({ ...prev, [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).filter(a => a.id !== adv.id) }))} className="text-[10px] text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors">关闭</button>
+                            </div>
+                            {adv.result.story && <p className="text-xs text-gray-600 mb-3 leading-relaxed">{adv.result.story}</p>}
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                {adv.result.totalGold > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-[10px] text-gray-400">金元宝</div><div className="font-bold text-amber-600 text-sm">+{adv.result.totalGold}</div></div>}
+                                {adv.result.totalXP > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-[10px] text-gray-400">经验值</div><div className="font-bold text-blue-600 text-sm">+{adv.result.totalXP}</div></div>}
+                                {adv.result.totalStars > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-[10px] text-gray-400">星星</div><div className="font-bold text-purple-600 text-sm">+{adv.result.totalStars}</div></div>}
+                            </div>
+                            {adv.result.event && <div className="mt-2 text-[10px] text-center text-gray-500">{adv.result.event.icon} {adv.result.event.name}</div>}
+                            {/* 宝物明细 */}
+                            {adv.result.items && adv.result.items.length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-emerald-100">
+                                    <div className="text-[10px] text-gray-400 mb-1.5">获得宝物：</div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {adv.result.items.map((item, i) => (
+                                            <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${item.isTrap ? 'bg-red-50 text-red-500' : 'bg-white/60 text-gray-600'}`}>
+                                                {item.icon} {item.name}
+                                                {item.gold !== 0 && <span className="text-amber-500">{item.gold > 0 ? '+' : ''}{item.gold}💰</span>}
+                                                {item.xp > 0 && <span className="text-blue-500">+{item.xp}✨</span>}
+                                                {item.stars > 0 && <span className="text-purple-500">+{item.stars}⭐</span>}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* 领域选择 */}
+                    <div>
+                        <div className="text-xs font-bold text-gray-500 mb-2">🗺️ 选择探险领域</div>
+                        <div className="space-y-2">
+                            {adventureRealms.map(realm => {
+                                const isLocked = (level || 1) < realm.unlockLevel;
+                                const eraOrder = (typeof ERA_ORDER !== 'undefined') ? ERA_ORDER : ['远古之路', '文明初曙', '周·礼制与争鸣', '秦·铁血与一统', '汉·雄风与凿空西域', '魏晋隋唐·融合与登科', '五代·乱世更迭', '宋·文道昌盛', '元·四海交融', '明·日月重开'];
+                                const isEraLocked = realm.unlockEra && eraOrder.indexOf(currentEra) < eraOrder.indexOf(realm.unlockEra);
+                                const isSelected = selectedRealm === realm.id;
+                                const status = selectedPetForAdventure ? getAdventureMultiplierStatus(realm.id, selectedPetForAdventure) : null;
+
+                                return (
+                                    <button key={realm.id} onClick={() => !isLocked && !isEraLocked && setSelectedRealm(realm.id)}
+                                        className={`w-full text-left rounded-2xl border p-3.5 transition-all ${isSelected ? 'border-amber-400 bg-amber-50 shadow-md' : isLocked || isEraLocked ? 'border-gray-100 bg-gray-50 opacity-60' : 'border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm'}`}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2.5">
+                                                <span className="text-2xl">{realm.icon}</span>
+                                                <div>
+                                                    <div className="font-bold text-sm text-gray-800">{realm.name}</div>
+                                                    <div className="text-[10px] text-gray-400 mt-0.5">{realm.desc}</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right shrink-0 ml-2">
+                                                {isLocked ? (
+                                                    <div className="text-[10px] text-gray-400">🔒 Lv.{realm.unlockLevel}</div>
+                                                ) : isEraLocked ? (
+                                                    <div className="text-[10px] text-gray-400">🔒 {realm.unlockEra}</div>
+                                                ) : (
+                                                    <div>
+                                                        <div className="text-xs font-bold text-amber-600">{realm.starCost} ⭐</div>
+                                                        <div className="text-[10px] text-gray-400">{Math.round(realm.duration / 3600000)}小时 · {elemIcons[realm.element]} {realm.element}</div>
+                                                        <div className="text-[10px] text-gray-400">宝物 {realm.minItems}~{realm.maxItems + realm.maxBondBonus + realm.maxLuckyBonus} 件</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {isSelected && !isLocked && !isEraLocked && (
+                                            <div className="mt-3 pt-3 border-t border-amber-100">
+                                                {/* 宠物选择 */}
+                                                <div className="mb-3">
+                                                    <div className="text-[10px] text-gray-500 mb-2">选择探险宠物：</div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {myOwned.map(pid => {
+                                                            const p = petData[activeChild]?.[pid];
+                                                            const cat = (typeof PET_CATALOG !== 'undefined' ? PET_CATALOG : []).find(c => c.id === pid);
+                                                            const isAdventuring = adventuringPetIds.has(pid);
+                                                            const isPetSelected = selectedPetForAdventure === pid;
+                                                            const petElem = cat?.attributes?.element || 'none';
+                                                            const realmElemStrong = petElements[petElem]?.strong;
+                                                            const elemMatch = realmElemStrong === realm.element ? '克制 ✅' : (petElements[realm.element]?.strong === petElem ? '被克 ⚠️' : '');
+                                                            return (
+                                                                <button key={pid} onClick={(e) => { e.stopPropagation(); if (!isAdventuring) setSelectedPetForAdventure(pid); }}
+                                                                    disabled={isAdventuring}
+                                                                    className={`flex flex-col items-center px-3 py-2 rounded-xl border text-[10px] transition-all ${isAdventuring ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' : isPetSelected ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200'}`}>
+                                                                    <div className="w-10 h-10 flex items-center justify-center">
+                                                                        {cat?.thumbUrl ? (
+                                                                            <img src={cat.thumbUrl} alt={cat.name} className="w-full h-full object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display=''; }} />
+                                                                        ) : null}
+                                                                        <span className={`text-xl ${cat?.thumbUrl ? 'hidden' : ''}`}>{cat?.emoji || '🐾'}</span>
+                                                                    </div>
+                                                                    <span className="font-bold text-gray-700 mt-0.5 truncate max-w-[48px]">{p?.nickname || cat?.name || pid}</span>
+                                                                    {isAdventuring ? <span className="text-[8px] text-gray-400">探险中</span> : elemMatch ? <span className={`text-[8px] ${elemMatch.includes('✅') ? 'text-emerald-500' : 'text-red-400'}`}>{elemMatch}</span> : null}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                {/* 倍率预览 */}
+                                                {status && status.gateStatus !== 'blocked' && (
+                                                    <div className="flex items-center justify-end text-[10px] text-gray-500 mb-2">
+                                                        <span className="text-emerald-600 font-bold">×{status.goldMul} 倍率</span>
+                                                    </div>
+                                                )}
+                                                <button onClick={(e) => { e.stopPropagation(); handleStartAdventure(realm.id, selectedPetForAdventure); }}
+                                                    disabled={!selectedPetForAdventure || currentStars < realm.starCost}
+                                                    className={`w-full py-2.5 rounded-xl text-sm font-bold transition-all ${selectedPetForAdventure && currentStars >= realm.starCost ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-md hover:shadow-lg active:scale-95' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                                                    {!selectedPetForAdventure ? '🐾 请先选择宠物' : currentStars >= realm.starCost ? `🚀 出发！（${realm.starCost} ⭐）` : `⭐ 不够（需要 ${realm.starCost}）`}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 最近探险日志 */}
+                    {log.length > 0 && (
+                        <div>
+                            <div className="text-xs font-bold text-gray-500 mb-2">📋 最近探险</div>
+                            <div className="space-y-2">
+                                {log.slice(0, 5).map(entry => (
+                                    <div key={entry.id} className="bg-white rounded-xl border border-gray-100 p-3 text-xs">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-1.5">
+                                                <span>{entry.realmIcon}</span>
+                                                <span className="font-bold text-gray-700">{entry.realmName}</span>
+                                                <span className="text-gray-400">· {entry.petName}</span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400">{new Date(entry.endTime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                        <p className="text-gray-500 text-[11px] leading-relaxed mb-2">{entry.story}</p>
+                                        <div className="flex gap-3 text-[10px]">
+                                            {entry.totalGold > 0 && <span className="text-amber-600">💰 +{entry.totalGold}</span>}
+                                            {entry.totalXP > 0 && <span className="text-blue-600">✨ +{entry.totalXP}</span>}
+                                            {entry.totalStars > 0 && <span className="text-purple-600">⭐ +{entry.totalStars}</span>}
+                                            {entry.event && <span className="text-gray-400">{entry.event.icon} {entry.event.name}</span>}
+                                        </div>
+                                        {entry.items && entry.items.length > 0 && (
+                                            <div className="mt-2 pt-1.5 border-t border-gray-50 flex flex-wrap gap-1">
+                                                {entry.items.map((item, i) => (
+                                                    <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${item.isTrap ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-500'}`}>
+                                                        {item.icon} {item.name}
+                                                        {item.gold !== 0 && <span className="text-amber-500">{item.gold > 0 ? '+' : ''}{item.gold}💰</span>}
+                                                        {item.xp > 0 && <span className="text-blue-500">+{item.xp}✨</span>}
+                                                        {item.stars > 0 && <span className="text-purple-500">+{item.stars}⭐</span>}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 探险统计 */}
+                    {stats.totalAdventures > 0 && (
+                        <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                            <div className="text-xs font-bold text-gray-500 mb-2">📊 探险统计</div>
+                            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                <div><div className="text-gray-400 text-[10px]">总次数</div><div className="font-bold text-gray-800">{stats.totalAdventures || 0}</div></div>
+                                <div><div className="text-gray-400 text-[10px]">总金元宝</div><div className="font-bold text-amber-600">{stats.totalGoldEarned || 0}</div></div>
+                                <div><div className="text-gray-400 text-[10px]">总星星</div><div className="font-bold text-purple-600">{stats.totalStarsEarned || 0}</div></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 帮助弹窗 */}
+                    {showGuide && (
+                        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowGuide(false)}>
+                            <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] shadow-2xl flex flex-col overflow-hidden mx-4" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white flex justify-between items-center shrink-0">
+                                    <div className="font-bold">❓ 探险寻宝指南</div>
+                                    <button onClick={() => setShowGuide(false)} className="p-1 bg-white/20 hover:bg-white/30 rounded-full"><XIcon className="w-5 h-5" /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs text-gray-600 leading-relaxed">
+                                    <div>
+                                        <div className="font-bold text-gray-800 mb-1">一、什么是探险？</div>
+                                        <p>花费星星指派宠物出去探险寻宝。宠物归来后会带回各种宝物：金元宝 💰、经验值 ✨、星星 ⭐，甚至稀有道具！</p>
+                                        <p className="mt-1">可以选择不同宠物出发，利用元素克制获得额外加成。多只宠物可以同时探险！</p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-800 mb-1">二、收益计算</div>
+                                        <p>宝物收益 = 日均基础 × 宝物倍率 × 加成系数</p>
+                                        <p className="mt-1">日均基础 = 近 7 天平均每日收入。💡 学习越努力，探险收益越高！</p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-800 mb-1">三、打卡门控</div>
+                                        <p>· ≥ 50% → ✅ 全额收益</p>
+                                        <p>· 30%~49% → ⚠️ 收益减半</p>
+                                        <p>· {'<'} 30% → 🚫 无法探险</p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-800 mb-1">四、加成系统</div>
+                                        <p>🤝 亲密度加成：互动越多，宝物越多（最高 +50%）</p>
+                                        <p>🔥 元素克制：宠物克制领域元素时 +20%</p>
+                                        <p>📅 打卡连击：连续 3/7/14/30 天额外加成</p>
+                                        <p>⚡ 宠物技能：部分技能在探险中自动生效</p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-800 mb-1">五、随机事件</div>
+                                        <p>30% 概率触发随机事件：正面(60%)、负面(30%)、稀有(1.5%)</p>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-800 mb-1">六、属性变化</div>
+                                        <p>探险每小时：饱腹 -10，清洁 -10，心情 +5</p>
+                                    </div>
+                                </div>
+                                <div className="p-3 border-t border-gray-100 shrink-0">
+                                    <button onClick={() => setShowGuide(false)} className="w-full py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-bold text-gray-600 transition-colors">知道了</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, stars, setStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast }) => {
             if (!show) return null;
 
             const [currentTab, setCurrentTab] = useState('home');
             const myOwned = ownedPets[activeChild] || [];
             const petId = activePet[activeChild];
             const currentStarsCount = stars[activeChild] || 0;
-
-            const showToast = (msg) => { alert(msg); };
 
             const handleSwitchPet = (id) => {
                 setActivePet(prev => ({ ...prev, [activeChild]: id }));
@@ -6910,6 +7321,7 @@
                         <div className="flex gap-1 mx-5 mb-3 bg-white/60 rounded-2xl p-1 shrink-0">
                             {[
                                 { key: 'home', label: '家园', icon: '🏠' },
+                                { key: 'adventure', label: '探险', icon: '🗺️' },
                                 { key: 'shop', label: '商店', icon: '🏪' },
                                 { key: 'album', label: '图鉴', icon: '📖' },
                             ].map(tab => (
@@ -6950,6 +7362,7 @@
                         <div className="flex-1 overflow-y-auto px-5 pb-5">
                             {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} stars={stars} setStars={setStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} />}
                             {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} stars={stars} setStars={setStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} />}
+                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} stars={stars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} />}
                             {currentTab === 'album' && <PetAlbumView theme={theme} activeChild={activeChild} ownedPets={ownedPets} petData={petData} />}
                         </div>
                     </div>
@@ -9626,7 +10039,7 @@
 
 			// 5. 【升级版】彻底清空所有数据（含豁免、周工资等持久化项）
 			const handleClearData = () => {
-				if(confirm('⚠️ 警告：确定要重置测试员的所有数据吗？\n\n将清空：\n- 经验值/等级\n- 金元宝/账单\n- 背包道具\n- 打卡记录\n- 已解锁成就\n- 大事纪记录\n- 豁免记录\n- 周学习工资记录\n- 普罗米修斯之火补签记录\n- 作业与考试成绩登记\n- 每日奇遇次数\n- 静音/禁言状态\n- 历史事件进度\n- 每日分类事件计数\n- 星星余额/收支记录\n- 宠物数据/拥有/统计\n- 宠物互动冷却/增益')) {
+				if(confirm('⚠️ 警告：确定要重置测试员的所有数据吗？\n\n将清空：\n- 经验值/等级\n- 金元宝/账单\n- 背包道具\n- 打卡记录\n- 已解锁成就\n- 大事纪记录\n- 豁免记录\n- 周学习工资记录\n- 普罗米修斯之火补签记录\n- 作业与考试成绩登记\n- 每日奇遇次数\n- 静音/禁言状态\n- 历史事件进度\n- 每日分类事件计数\n- 星星余额/收支记录\n- 宠物数据/拥有/统计\n- 宠物互动冷却/增益\n- 探险状态/日志/统计')) {
 					
                     // 【修改】清除过滤器：不仅删除 "TESTER" 开头的，也要删除 activeChild (即 "测试员") 开头的
                     // 这样才能删掉转盘、奇遇等产生的正常数据
@@ -9711,6 +10124,11 @@
 				if (setPetStats) setPetStats(prev => ({ ...prev, [activeChild]: {} }));
 				if (setPetSkillCooldowns) setPetSkillCooldowns(prev => ({ ...prev, [activeChild]: {} }));
 				if (setPetBuffs) setPetBuffs(prev => ({ ...prev, [activeChild]: {} }));
+
+				// 探险系统
+				if (setPetAdventures) setPetAdventures(prev => ({ ...prev, [activeChild]: {} }));
+				if (setPetAdventureLog) setPetAdventureLog(prev => ({ ...prev, [activeChild]: [] }));
+				if (setPetAdventureStats) setPetAdventureStats(prev => ({ ...prev, [activeChild]: {} }));
 
 				alert('♻️ 数据已彻底重置');
 				}
@@ -10387,6 +10805,26 @@
             const [petSkillCooldowns, setPetSkillCooldowns] = useStickyState({}, 'app_pet_skill_cd_v1');
             const [petBuffs, setPetBuffs] = useStickyState({}, 'app_pet_buffs_v1');
 
+            // --- 探险系统状态 ---
+            const [petAdventures, setPetAdventures] = useStickyState({}, 'app_pet_adventures_v1');
+            const [petAdventureLog, setPetAdventureLog] = useStickyState({}, 'app_pet_adventure_log_v1');
+            const [petAdventureStats, setPetAdventureStats] = useStickyState({}, 'app_pet_adventure_stats_v1');
+
+            // 旧格式迁移：单探险对象 → 数组格式
+            useEffect(() => {
+                let needsMigration = false;
+                const migrated = {};
+                Object.entries(petAdventures).forEach(([child, val]) => {
+                    if (val && !Array.isArray(val) && val.realmId) {
+                        needsMigration = true;
+                        migrated[child] = [{ ...val, id: val.id || ('adv_' + (val.startTime || Date.now())) }];
+                    }
+                });
+                if (needsMigration) {
+                    setPetAdventures(prev => ({ ...prev, ...migrated }));
+                }
+            }, []);
+
             // --- 宠物提醒通知状态 ---
             const [petNotif, setPetNotif] = useStickyState(null, 'app_pet_notif_v1');
             const [petNotifVisible, setPetNotifVisible] = useState(false);
@@ -10743,6 +11181,20 @@
                         const actionKey = key.match(/-STAR_PET_([^-]+)-/)?.[1] || '';
                         const actionName = petActionNames[actionKey] || actionKey;
                         list.push({ id: key, date, name: `宠物互动：${actionName}`, amount, type: amount > 0 ? 'income' : 'expense' });
+                    } else if (key.includes('-STAR_ADVENTURE_START-')) {
+                        const ts = key.match(/-(\d{13})$/)?.[1];
+                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const realmId = key.match(/-STAR_ADVENTURE_START-([^-]+)-/)?.[1] || '';
+                        const realm = adventureRealms.find(r => r.id === realmId);
+                        const realmName = realm ? realm.name : '探险';
+                        list.push({ id: key, date, name: `探险出发：${realmName}`, amount, type: 'expense' });
+                    } else if (key.includes('-STAR_ADVENTURE_REWARD-')) {
+                        const ts = key.match(/-(\d{13})$/)?.[1];
+                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const realmId = key.match(/-STAR_ADVENTURE_REWARD-([^-]+)-/)?.[1] || '';
+                        const realm = adventureRealms.find(r => r.id === realmId);
+                        const realmName = realm ? realm.name : '探险';
+                        list.push({ id: key, date, name: `探险归来：${realmName}`, amount, type: 'income' });
                     } else if (key.includes('-STAR_BUY-')) {
                         const ts = key.match(/-(\d{13})$/)?.[1];
                         const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
@@ -10753,7 +11205,7 @@
                     }
                 });
                 return list.sort((a, b) => new Date(b.date) - new Date(a.date));
-            }, [starHistory, deferredActiveChild, tasks]);
+            }, [starHistory, deferredActiveChild, tasks, adventureRealms]);
 
             // --- 宠物属性衰减 ---
             useEffect(() => {
@@ -10828,6 +11280,373 @@
                     if (petNotifTimerRef.current) clearTimeout(petNotifTimerRef.current);
                 }
             }, [petData, activeChild, activePet, petNotif]);
+
+            // ==================== 探险系统核心逻辑 ====================
+            const showToast = useCallback((msg) => { alert(msg); }, []);
+
+            // 获取当前探险加成状态（供倍率面板使用）
+            const getAdventureMultiplierStatus = useCallback((realmId, overridePetId) => {
+                const h = adventureHelpers;
+                const cfg = adventureConfig;
+                if (!h || !cfg) return null;
+
+                const petId = overridePetId || activePet[deferredActiveChild];
+                if (!petId) return null;
+                const pet = petData[deferredActiveChild]?.[petId];
+                if (!pet) return null;
+
+                const realm = adventureRealms.find(r => r.id === realmId);
+                const recentDays = cfg.recentDays || 7;
+
+                // 日均基础值
+                const dailyGoldBase = h.calcDailyGoldBase(checkins, wheelHistory, tasks, deferredActiveChild, recentDays);
+                const dailyXPBase = h.calcDailyXPBase(checkins, tasks, deferredActiveChild, recentDays);
+
+                // 打卡完成率
+                const completionRate = h.calcCompletionRate(tasks, checkins, deferredActiveChild, recentDays);
+
+                // 连续打卡天数
+                const streakDays = h.calcStreakDays(tasks, checkins, deferredActiveChild);
+
+                // 亲密度
+                const bondValue = pet.stats ? Math.round((pet.stats.fullness + pet.stats.cleanliness + pet.stats.mood) / 3) : 0;
+                const bondLevel = h.getBondLevel(bondValue);
+
+                // 元素克制
+                const petCatalogEntry = petCatalog.find(c => c.id === petId);
+                const petElement = petCatalogEntry?.attributes?.element || 'none';
+                const realmElement = realm?.element || 'none';
+                const elemStrong = petElements[petElement]?.strong;
+                const elementBonus = (elemStrong === realmElement) ? cfg.elementBonus : 0;
+
+                // 打卡连击加成
+                const streakBonus = { gold: 0, xp: 0, stars: 0 };
+                const streakThresholds = Object.keys(cfg.streakBonuses || {}).map(Number).sort((a, b) => b - a);
+                for (const t of streakThresholds) {
+                    if (streakDays >= t) { Object.assign(streakBonus, cfg.streakBonuses[t]); break; }
+                }
+
+                // 宠物技能加成
+                const skillBonus = (cfg.petAdventureSkills || {})[petId] || { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: false };
+
+                // 综合倍率
+                const goldMul = 1 + bondLevel.itemBonus + streakBonus.gold + skillBonus.goldBoost + elementBonus;
+                const xpMul = 1 + bondLevel.itemBonus + streakBonus.xp + skillBonus.xpBoost + elementBonus;
+                const starsMul = 1 + streakBonus.stars + skillBonus.starBoost;
+
+                // 门控状态
+                let gateStatus = 'normal';
+                let gateMultiplier = 1;
+                if (completionRate < cfg.gateThresholdWarning) {
+                    gateStatus = 'blocked';
+                } else if (completionRate < cfg.gateThresholdNormal) {
+                    gateStatus = 'warning';
+                    gateMultiplier = cfg.gateMultiplier;
+                }
+
+                // 今日已探险次数
+                const todayKey = new Date().toISOString().split('T')[0];
+                const advStats = petAdventureStats[deferredActiveChild] || {};
+                const todayCount = (advStats.dailyCounts || {})[todayKey] || 0;
+
+                return {
+                    dailyGoldBase: Math.round(dailyGoldBase),
+                    dailyXPBase: Math.round(dailyXPBase),
+                    completionRate,
+                    streakDays,
+                    bondValue,
+                    bondLevelName: bondLevel.name,
+                    bondItemBonus: bondLevel.itemBonus,
+                    petElement,
+                    realmElement,
+                    elementBonus,
+                    streakBonus,
+                    skillBonus,
+                    goldMul: Math.round(goldMul * 100) / 100,
+                    xpMul: Math.round(xpMul * 100) / 100,
+                    starsMul: Math.round(starsMul * 100) / 100,
+                    gateStatus,
+                    gateMultiplier,
+                    todayCount,
+                    maxPerDay: cfg.maxPerDay,
+                };
+            }, [deferredActiveChild, activePet, petData, petAdventureStats, checkins, wheelHistory, tasks, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms]);
+
+            // 开始探险
+            const handleStartAdventure = useCallback((realmId, selectedPetId) => {
+                const h = adventureHelpers;
+                const cfg = adventureConfig;
+                if (!h || !cfg) return showToast('探险系统未就绪');
+
+                const petId = selectedPetId || activePet[deferredActiveChild];
+                if (!petId) return showToast('请先选择一只宠物！');
+
+                const pet = petData[deferredActiveChild]?.[petId];
+                if (!pet) return showToast('宠物数据异常');
+
+                const realm = adventureRealms.find(r => r.id === realmId);
+                if (!realm) return showToast('未知领域');
+
+                // 等级和时代检查（从 checkins 计算经验值再推导）
+                let totalXP = 0;
+                const childCheckins = checkins[deferredActiveChild] || {};
+                const childTasks = tasks[deferredActiveChild] || [];
+                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, rec) => sum + Object.keys(rec).length, 0);
+                totalXP += totalCheckinsCount * 10;
+                childTasks.forEach(task => {
+                    const rec = childCheckins[task.id] || {};
+                    totalXP += Object.keys(rec).length * (task.reward || 1);
+                });
+                const lvlInfo = getLevelInfo(totalXP);
+
+                if (lvlInfo.level < realm.unlockLevel) return showToast(`需要达到 ${realm.unlockLevel} 级才能探险`);
+                const eraOrder = (typeof ERA_ORDER !== 'undefined') ? ERA_ORDER : ['远古之路', '文明初曙', '周·礼制与争鸣', '秦·铁血与一统', '汉·雄风与凿空西域', '魏晋隋唐·融合与登科', '五代·乱世更迭', '宋·文道昌盛', '元·四海交融', '明·日月重开'];
+                if (realm.unlockEra && eraOrder.indexOf(lvlInfo.era) < eraOrder.indexOf(realm.unlockEra)) return showToast(`需要先到达「${realm.unlockEra}」时代`);
+
+                // 已有探险进行中检查（同一只宠物不能重复出发）
+                const myAdvs = (Array.isArray(petAdventures[deferredActiveChild]) ? petAdventures[deferredActiveChild] : []).filter(a => a.status === 'active');
+                if (myAdvs.some(a => a.petId === petId)) return showToast('这只宠物正在探险中，不能重复出发！');
+
+                // 今日次数检查
+                const todayKey = new Date().toISOString().split('T')[0];
+                const advStats = petAdventureStats[deferredActiveChild] || {};
+                const todayCount = (advStats.dailyCounts || {})[todayKey] || 0;
+                if (todayCount >= cfg.maxPerDay) return showToast(`今日探险次数已用完（${cfg.maxPerDay} 次/天）`);
+
+                // 门控检查
+                const recentDays = cfg.recentDays || 7;
+                const completionRate = h.calcCompletionRate(tasks, checkins, deferredActiveChild, recentDays);
+                if (completionRate < cfg.gateThresholdWarning) {
+                    const refuseDialogs = adventureRefuseDialogs || [];
+                    const dialog = refuseDialogs[Math.floor(Math.random() * refuseDialogs.length)] || '学习不够努力，无法探险！';
+                    return showToast(dialog);
+                }
+
+                // 星星检查与扣除
+                const currentStars = stars[deferredActiveChild] || 0;
+                if (currentStars < realm.starCost) return showToast(`星星不够！需要 ${realm.starCost} ⭐，当前 ${currentStars} ⭐`);
+
+                setStars(prev => ({ ...prev, [deferredActiveChild]: currentStars - realm.starCost }));
+                setStarHistory(prev => ({ ...prev, [`${deferredActiveChild}-STAR_ADVENTURE_START-${realmId}-${Date.now()}`]: -realm.starCost }));
+
+                // 计算时间（含技能缩短）
+                const skillBonus = (cfg.petAdventureSkills || {})[petId] || { timeReduce: 0 };
+                const actualDuration = Math.round(realm.duration * (1 - skillBonus.timeReduce));
+
+                // 创建探险记录
+                const adventure = {
+                    id: 'adv_' + Date.now(),
+                    realmId,
+                    petId,
+                    startTime: Date.now(),
+                    expectedEndTime: Date.now() + actualDuration,
+                    status: 'active',
+                    starCost: realm.starCost,
+                };
+
+                setPetAdventures(prev => {
+                    const arr = Array.isArray(prev[deferredActiveChild]) ? prev[deferredActiveChild] : [];
+                    return { ...prev, [deferredActiveChild]: [...arr, adventure] };
+                });
+
+                // 更新统计
+                setPetAdventureStats(prev => {
+                    const childStats = { ...(prev[deferredActiveChild] || {}) };
+                    childStats.totalAdventures = (childStats.totalAdventures || 0) + 1;
+                    childStats[`${realmId}Count`] = (childStats[`${realmId}Count`] || 0) + 1;
+                    childStats.totalStarsSpent = (childStats.totalStarsSpent || 0) + realm.starCost;
+                    childStats.dailyCounts = { ...(childStats.dailyCounts || {}), [todayKey]: todayCount + 1 };
+                    return { ...prev, [deferredActiveChild]: childStats };
+                });
+
+                showToast(`${realm.icon} ${pet.nickname || petId} 出发前往「${realm.name}」！预计 ${Math.round(actualDuration / 3600000)} 小时后归来`);
+            }, [deferredActiveChild, activePet, petData, petAdventures, petAdventureStats, stars, tasks, checkins, adventureHelpers, adventureConfig, adventureRealms, adventureRefuseDialogs, setStars, setStarHistory, setPetAdventures, setPetAdventureStats, showToast]);
+
+            // 完成探险（结算奖励）
+            const handleCompleteAdventure = useCallback((childName, adventureId) => {
+                const h = adventureHelpers;
+                const cfg = adventureConfig;
+                if (!h || !cfg) return;
+
+                const advArr = Array.isArray(petAdventures[childName]) ? petAdventures[childName] : [];
+                const adv = adventureId ? advArr.find(a => a.id === adventureId) : advArr.find(a => a.status === 'active' && Date.now() >= a.expectedEndTime);
+                if (!adv || adv.status !== 'active') return;
+                if (Date.now() < adv.expectedEndTime) return;
+
+                const realm = adventureRealms.find(r => r.id === adv.realmId);
+                if (!realm) return;
+
+                const recentDays = cfg.recentDays || 7;
+                const petId = adv.petId;
+                const pet = petData[childName]?.[petId];
+                const petName = pet?.nickname || petId;
+
+                // 计算基础值
+                const dailyGoldBase = h.calcDailyGoldBase(checkins, wheelHistory, tasks, childName, recentDays);
+                const dailyXPBase = h.calcDailyXPBase(checkins, tasks, childName, recentDays);
+
+                // 计算打卡率和门控
+                const completionRate = h.calcCompletionRate(tasks, checkins, childName, recentDays);
+                let gateMultiplier = 1;
+                if (completionRate < cfg.gateThresholdNormal) {
+                    gateMultiplier = cfg.gateMultiplier;
+                }
+
+                // 计算加成
+                const streakDays = h.calcStreakDays(tasks, checkins, childName);
+                const bondValue = pet?.stats ? Math.round((pet.stats.fullness + pet.stats.cleanliness + pet.stats.mood) / 3) : 0;
+
+                // 元素克制
+                const petCatalogEntry = petCatalog.find(c => c.id === petId);
+                const petElement = petCatalogEntry?.attributes?.element || 'none';
+                const elemStrong = petElements[petElement]?.strong;
+                const elementBonus = (elemStrong === realm.element) ? cfg.elementBonus : 0;
+
+                // 亲密度等级
+                const bondLevel = h.getBondLevel(bondValue);
+
+                // 打卡连击
+                const streakBonus = { gold: 0, xp: 0, stars: 0 };
+                const streakThresholds = Object.keys(cfg.streakBonuses || {}).map(Number).sort((a, b) => b - a);
+                for (const t of streakThresholds) {
+                    if (streakDays >= t) { Object.assign(streakBonus, cfg.streakBonuses[t]); break; }
+                }
+
+                // 宠物技能
+                const skillBonus = (cfg.petAdventureSkills || {})[petId] || { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0, eventShield: false };
+
+                // 综合倍率
+                const multipliers = {
+                    gold: 1 + bondLevel.itemBonus + streakBonus.gold + skillBonus.goldBoost + elementBonus,
+                    xp: 1 + bondLevel.itemBonus + streakBonus.xp + skillBonus.xpBoost + elementBonus,
+                    stars: 1 + streakBonus.stars + skillBonus.starBoost,
+                };
+
+                // 计算宝物数量
+                const lootCount = h.calcLootCount(realm, bondValue);
+
+                // 抽取宝物
+                const rolledItems = h.rollLoot(adv.realmId, lootCount);
+
+                // 随机事件
+                const event = h.rollEvent(skillBonus.eventShield);
+
+                // 结算宝物
+                const result = h.resolveLoot(rolledItems, dailyGoldBase, dailyXPBase, multipliers, gateMultiplier, event);
+
+                // 应用奖励（金元宝→wheelHistory，纯经验→xpHistory，星星→starHistory）
+                const advTs = Date.now();
+                if (result.totalGold > 0) {
+                    setWheelHistory(prev => ({ ...prev, [`${childName}-ADVENTURE_GOLD-${adv.realmId}-${advTs}`]: result.totalGold }));
+                }
+                if (result.totalXP > 0) {
+                    setXpHistory(prev => ({ ...prev, [`${childName}-ADVENTURE_XP-${adv.realmId}-${advTs}`]: result.totalXP }));
+                }
+                if (result.totalStars > 0) {
+                    setStarHistory(prev => ({ ...prev, [`${childName}-STAR_ADVENTURE_REWARD-${adv.realmId}-${advTs}`]: result.totalStars }));
+                }
+
+                // 更新宠物属性（探险消耗）
+                if (pet) {
+                    const hours = Math.round((adv.expectedEndTime - adv.startTime) / 3600000);
+                    setPetData(prev => {
+                        const childPets = { ...(prev[childName] || {}) };
+                        const p = { ...childPets[petId] };
+                        p.stats = {
+                            fullness: Math.max(0, p.stats.fullness - hours * cfg.hungerPerHour),
+                            cleanliness: Math.max(0, p.stats.cleanliness - hours * cfg.cleanlinessPerHour),
+                            mood: Math.min(100, p.stats.mood + hours * cfg.moodPerHour),
+                        };
+                        childPets[petId] = p;
+                        return { ...prev, [childName]: childPets };
+                    });
+                }
+
+                // 生成日志
+                const lootSummary = h.generateLootSummary(result.items);
+                const story = h.generateStory(adv.realmId, petName, lootSummary);
+
+                const logEntry = {
+                    id: `adv-${Date.now()}`,
+                    realmId: adv.realmId,
+                    realmName: realm.name,
+                    realmIcon: realm.icon,
+                    petId,
+                    petName,
+                    startTime: adv.startTime,
+                    endTime: Date.now(),
+                    items: result.items,
+                    totalGold: result.totalGold,
+                    totalXP: result.totalXP,
+                    totalStars: result.totalStars,
+                    event: result.event ? { name: result.event.name, icon: result.event.icon, desc: result.event.desc } : null,
+                    story,
+                    completionRate,
+                    gateMultiplier,
+                };
+
+                setPetAdventureLog(prev => {
+                    const childLog = [...(prev[childName] || [])];
+                    childLog.unshift(logEntry);
+                    if (childLog.length > cfg.logRetention) childLog.length = cfg.logRetention;
+                    return { ...prev, [childName]: childLog };
+                });
+
+                // 更新统计
+                setPetAdventureStats(prev => {
+                    const childStats = { ...(prev[childName] || {}) };
+                    childStats.totalGoldEarned = (childStats.totalGoldEarned || 0) + result.totalGold;
+                    childStats.totalXPEarned = (childStats.totalXPEarned || 0) + result.totalXP;
+                    childStats.totalStarsEarned = (childStats.totalStarsEarned || 0) + result.totalStars;
+                    return { ...prev, [childName]: childStats };
+                });
+
+                // 更新探险状态为已完成（数组内元素替换）
+                setPetAdventures(prev => {
+                    const arr = Array.isArray(prev[childName]) ? prev[childName] : [];
+                    return { ...prev, [childName]: arr.map(a => a.id === adv.id ? { ...a, status: 'completed', result: logEntry } : a) };
+                });
+
+                // 触发成就检查
+                if (typeof checkAchievements === 'function') {
+                    checkAchievements('adventure_complete', { realmId: adv.realmId, petId, totalGold: result.totalGold, totalXP: result.totalXP, totalStars: result.totalStars });
+                }
+            }, [petAdventures, petData, checkins, wheelHistory, tasks, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms, setWheelHistory, setXpHistory, setStarHistory, setPetData, setPetAdventureLog, setPetAdventureStats, setPetAdventures, checkAchievements]);
+
+            // 自动检测探险完成（遍历所有 active 探险）
+            useEffect(() => {
+                const advArr = Array.isArray(petAdventures[deferredActiveChild]) ? petAdventures[deferredActiveChild] : [];
+                const activeAdvs = advArr.filter(a => a.status === 'active');
+                if (!activeAdvs.length) return;
+
+                const timers = activeAdvs.map(adv => {
+                    const remaining = adv.expectedEndTime - Date.now();
+                    if (remaining <= 0) {
+                        handleCompleteAdventure(deferredActiveChild, adv.id);
+                        return null;
+                    }
+                    return setTimeout(() => handleCompleteAdventure(deferredActiveChild, adv.id), remaining + 1000);
+                });
+
+                return () => timers.forEach(t => t && clearTimeout(t));
+            }, [petAdventures, deferredActiveChild, handleCompleteAdventure]);
+
+            // 立即召回探险（放弃，不获得奖励，星星不退还）
+            const handleCancelAdventure = useCallback((adventureId) => {
+                const advArr = Array.isArray(petAdventures[deferredActiveChild]) ? petAdventures[deferredActiveChild] : [];
+                const adv = adventureId ? advArr.find(a => a.id === adventureId) : advArr.find(a => a.status === 'active');
+                if (!adv || adv.status !== 'active') return;
+
+                const pet = petData[deferredActiveChild]?.[adv.petId];
+                const petName = pet?.nickname || adv.petId;
+                if (!confirm(`确定要召回「${petName}」吗？\n\n已消耗的星星不会退还，探险奖励将被放弃。`)) return;
+
+                setPetAdventures(prev => {
+                    const arr = Array.isArray(prev[deferredActiveChild]) ? prev[deferredActiveChild] : [];
+                    return { ...prev, [deferredActiveChild]: arr.filter(a => a.id !== adv.id) };
+                });
+                showToast(`${petName} 已召回`);
+            }, [deferredActiveChild, petAdventures, petData, setPetAdventures, showToast]);
 
             // 辅助函数：从key中提取13位时间戳
             const extractTimestamp = (key) => {
@@ -11017,6 +11836,13 @@
                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
                         name = '退款';
                         type = value >= 0 ? 'income' : 'expense';
+                    } else if (key.includes('ADVENTURE_GOLD')) {
+                        const ts = extractTimestamp(key);
+                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        const realmId = key.match(/-ADVENTURE_GOLD-([^-]+)-/)?.[1] || '';
+                        const realm = adventureRealms.find(r => r.id === realmId);
+                        name = `探险归来：${realm ? realm.name : '探险'}`;
+                        type = 'income';
                     } else if (key.includes('-EARLY-')) {
                         // 提前达成完赛奖励
                         const parts = key.split('-EARLY-');
@@ -11044,7 +11870,7 @@
                 // 过滤无效日期并按日期排序
                 const validList = list.filter(t => t.date && t.date.match(/\d{4}-\d{2}-\d{2}/));
                 return validList.sort((a, b) => new Date(b.date) - new Date(a.date));
-            }, [tasks, checkins, wheelHistory, deferredActiveChild, activeBuffs]);
+            }, [tasks, checkins, wheelHistory, deferredActiveChild, activeBuffs, adventureRealms]);
 
             // --- 经验值计算与升级逻辑 ---
             const currentXP = useMemo(() => {
@@ -11151,14 +11977,18 @@
                          name = '双倍符加成';
                     } else if (key.includes('BOX_XP')) {
                          name = '盲盒经验包';
-                    } else if (key.includes('XP_WHEEL')) { // <--- 在这里添加这个分支
+                    } else if (key.includes('XP_WHEEL')) {
 						 name = '经验值大转盘';
+					} else if (key.includes('ADVENTURE_XP')) {
+                         const realmId = parts[2];
+                         const realm = adventureRealms.find(r => r.id === realmId);
+                         name = `探险经验：${realm ? realm.name : '探险'}`;
 					}
                     list.push({ id: key, date: date, name: name, amount: value });
                 });
 
                 return list.sort((a, b) => new Date(b.date) - new Date(a.date));
-            }, [transactions, achievements, deferredActiveChild, xpHistory, checkins, tasks, repairedCheckins]);
+            }, [transactions, achievements, deferredActiveChild, xpHistory, checkins, tasks, repairedCheckins, adventureRealms]);
             
             const currentLevelInfo = getLevelInfo(currentXP);
 
@@ -11913,6 +12743,8 @@
                     ownedPets: extraData.ownedPets || (typeof ownedPets !== 'undefined' ? ownedPets : undefined),
                     petData: extraData.petData || (typeof petData !== 'undefined' ? petData : undefined),
                     petStats: extraData.petStats || (typeof petStats !== 'undefined' ? petStats : undefined),
+                    petAdventureStats: extraData.petAdventureStats || (typeof petAdventureStats !== 'undefined' ? petAdventureStats : undefined),
+                    petAdventureLog: extraData.petAdventureLog || (typeof petAdventureLog !== 'undefined' ? petAdventureLog : undefined),
                 });
 
                 if (result.hasNew) {
@@ -14399,6 +15231,8 @@
 					  ownedPets={ownedPets}
 					  petData={petData}
 					  petStats={petStats}
+					  petAdventureStats={petAdventureStats}
+					  petAdventureLog={petAdventureLog}
                   />
 				  <PetModal
 				      show={showPet}
@@ -14427,6 +15261,14 @@
 				      lowPerfMode={window.__lowPerf || false}
 				      checkAchievements={checkAchievements}
 				      setStarHistory={setStarHistory}
+				      petAdventures={petAdventures}
+				      setPetAdventures={setPetAdventures}
+				      petAdventureLog={petAdventureLog}
+				      petAdventureStats={petAdventureStats}
+				      handleStartAdventure={handleStartAdventure}
+				      handleCancelAdventure={handleCancelAdventure}
+				      getAdventureMultiplierStatus={getAdventureMultiplierStatus}
+				      showToast={showToast}
 				  />
 				  <CompletedWallModal 
 					show={showCompletedWall} 
