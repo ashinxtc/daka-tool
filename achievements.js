@@ -154,11 +154,11 @@ AchievementSystem.BADGES = [
     { id: 'pet_first',         name: '初次邂逅',   desc: '领养第一只宠物',                    rarity: 'common',    category: '宠物' },
     { id: 'pet_collector_3',   name: '小小收藏家', desc: '拥有 3 只不同的宠物',               rarity: 'rare',      category: '宠物' },
     { id: 'pet_collector_all', name: '百兽之王',   desc: '收集所有宠物',                      rarity: 'legendary', category: '宠物' },
-    { id: 'pet_max_bond',      name: '灵魂羁绊',   desc: '与任意宠物达到「最佳搭档」等级',     rarity: 'epic',      category: '宠物' },
-    { id: 'pet_max_bond_5',    name: '心意相通',   desc: '与任意宠物达到「灵魂伴侣」等级',     rarity: 'legendary', category: '宠物' },
+    { id: 'pet_max_bond',      name: '灵魂羁绊',   desc: '与任意宠物达到「英武」等级',     rarity: 'epic',      category: '宠物' },
+    { id: 'pet_max_bond_5',    name: '心意相通',   desc: '与任意宠物达到「至尊」等级',     rarity: 'legendary', category: '宠物' },
     { id: 'pet_feed_100',      name: '饲养达人',   desc: '累计喂食 100 次',                  rarity: 'rare',      category: '宠物' },
     { id: 'pet_bath_50',       name: '清洁专家',   desc: '累计洗澡 50 次',                   rarity: 'rare',      category: '宠物' },
-    { id: 'pet_all_5',         name: '五福临门',   desc: '拥有 5 只达到「好伙伴」等级的宠物',  rarity: 'epic',      category: '宠物' },
+    { id: 'pet_all_5',         name: '五福临门',   desc: '拥有 5 只达到「灵动」等级的宠物',  rarity: 'epic',      category: '宠物' },
     { id: 'pet_legendary',     name: '天命所归',   desc: '领养一只神品宠物',                  rarity: 'epic',      category: '宠物' },
     { id: 'pet_rename',        name: '赐名之恩',   desc: '为宠物修改名字',                    rarity: 'common',    category: '宠物' },
 
@@ -614,7 +614,7 @@ AchievementSystem.checkAchievements = (triggerType, context, data) => {
         const childPetData = petData?.[activeChild] || {};
 
         const getGrowthStageLocal = (catalogEntry, interactionCount) => {
-            if (!catalogEntry?.growthStages) return { level: 1, name: '初相识', threshold: 0, size: 'w-20 h-20' };
+            if (!catalogEntry?.growthStages) return { level: 1, name: '初生', threshold: 0, size: 'w-20 h-20' };
             let current = catalogEntry.growthStages[0];
             for (const stage of catalogEntry.growthStages) {
                 if (interactionCount >= stage.threshold) current = stage;

@@ -15,30 +15,32 @@ const ADVENTURE_CONFIG = {
     gateThresholdNormal: 0.5,           // 全额收益打卡率门槛
     gateThresholdWarning: 0.3,          // 收益减半打卡率门槛
     gateMultiplier: 0.5,                // 减半时的倍率
-    elementBonus: 0.2,                  // 元素克制加成 20%
+    elementBonus: 0.1,                  // 元素克制加成 10%
     // 打卡连击加成
     streakBonuses: {
-        3:  { gold: 0.10, xp: 0,   stars: 0 },
-        7:  { gold: 0.20, xp: 0.10, stars: 0 },
-        14: { gold: 0.30, xp: 0.20, stars: 0.10 },
-        30: { gold: 0.50, xp: 0.50, stars: 0.50 },
+        3:  { gold: 0.05, xp: 0,    stars: 0 },
+        7:  { gold: 0.10, xp: 0.05, stars: 0 },
+        14: { gold: 0.15, xp: 0.10, stars: 0.05 },
+        30: { gold: 0.25, xp: 0.25, stars: 0.25 },
     },
     // 亲密度等级定义
     bondLevels: [
-        { min: 0,  max: 20,  name: '陌生',     itemBonus: 0,    rareBonus: 0 },
-        { min: 21, max: 40,  name: '初识',     itemBonus: 0.10, rareBonus: 0.05 },
-        { min: 41, max: 60,  name: '熟悉',     itemBonus: 0.20, rareBonus: 0.05 },
-        { min: 61, max: 80,  name: '好伙伴',   itemBonus: 0.30, rareBonus: 0.10 },
-        { min: 81, max: 95,  name: '最佳搭档', itemBonus: 0.40, rareBonus: 0.15 },
-        { min: 96, max: 100, name: '灵魂伴侣', itemBonus: 0.50, rareBonus: 0.25 },
+        { min: 0,  max: 20,  name: '陌生',     itemBonus: 0,     rareBonus: 0 },
+        { min: 21, max: 40,  name: '初识',     itemBonus: 0.05,  rareBonus: 0.025 },
+        { min: 41, max: 60,  name: '熟悉',     itemBonus: 0.10,  rareBonus: 0.025 },
+        { min: 61, max: 80,  name: '好伙伴',   itemBonus: 0.15,  rareBonus: 0.05 },
+        { min: 81, max: 95,  name: '最佳搭档', itemBonus: 0.20,  rareBonus: 0.075 },
+        { min: 96, max: 100, name: '灵魂伴侣', itemBonus: 0.25,  rareBonus: 0.125 },
     ],
     // 宠物技能探险联动
     petAdventureSkills: {
-        'teddy':          { goldBoost: 0.20, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: false, skillName: '鼓励叫声' },
-        'border-collie':  { goldBoost: 0, xpBoost: 0.50, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: false, skillName: '学习气场' },
+        'teddy':          { goldBoost: 0.10, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: false, skillName: '鼓励叫声' },
+        'border-collie':  { goldBoost: 0, xpBoost: 0.25, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: false, skillName: '学习气场' },
         'angora-rabbit':  { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: true,  skillName: '蓬松拥抱' },
-        't-rex':          { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0.15, timeReduce: 0, eventShield: false, skillName: '远古咆哮' },
-        'capybara':       { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0.10, eventShield: false, skillName: '禅意气息' },
+        't-rex':          { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0.075, timeReduce: 0, eventShield: false, skillName: '远古咆哮' },
+        'capybara':       { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0.05, eventShield: false, skillName: '禅意气息' },
+        'husky':          { goldBoost: 0, xpBoost: 0.15, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: false, skillName: '狼嚎' },
+        'lizard':         { goldBoost: 0, xpBoost: 0, starBoost: 0, rareBoost: 0, timeReduce: 0, eventShield: true,  skillName: '隐身术' },
     },
 };
 
@@ -555,10 +557,12 @@ const ADVENTURE_HELPERS = {
             totalGold += dayGold;
         }
 
-        // 加上 wheelHistory 中近 N 天的正向收入
+        // 加上 wheelHistory 中近 N 天的正向收入（排除进贡和探险等非学习所得）
         if (wheelHistory) {
             Object.keys(wheelHistory).forEach(function(key) {
                 if (!key.startsWith(childName)) return;
+                if (key.indexOf('TRIBUTE_') !== -1) return;
+                if (key.indexOf('ADVENTURE_') !== -1) return;
                 var value = wheelHistory[key];
                 if (value > 0) {
                     var ts = key.match(/-(\d{13})$/);
