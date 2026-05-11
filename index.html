@@ -1877,6 +1877,15 @@
             return dates;
         };
 
+        const getMonthDates = (year, month) => {
+            const dates = [];
+            const daysInMonth = new Date(year, month, 0).getDate();
+            for (let d = 1; d <= daysInMonth; d++) {
+                dates.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+            }
+            return dates;
+        };
+
         const getLevelInfo = (xp) => {
             for (let i = LEVELS.length - 1; i >= 0; i--) {
                 if (xp >= LEVELS[i].xp) return LEVELS[i];
@@ -6997,7 +7006,12 @@
                     showToast(`🔓 已开启第 ${nextSlot} 个栏位（-${slotStatus.cost} ⭐）`);
                 }
                 if (level < catalog.unlockLevel) return showToast(`需要达到 ${catalog.unlockLevel} 级才能领养`);
-                if (catalog.era && currentEra !== catalog.era) return showToast(`需要解锁「${catalog.era}」时代`);
+                if (catalog.era) {
+                    const eraOrder = (typeof ERA_ORDER !== 'undefined') ? ERA_ORDER : ['远古之路','文明初曙','周·礼制与争鸣','秦·铁血与一统','汉·雄风与凿空西域','魏晋隋唐·融合与登科','五代·乱世更迭','宋·文道昌盛','元·四海交融','明·日月重开'];
+                    const myIdx = eraOrder.indexOf(currentEra);
+                    const reqIdx = eraOrder.indexOf(catalog.era);
+                    if (reqIdx > myIdx) return showToast(`需要解锁「${catalog.era}」时代`);
+                }
                 if (remainingStars < catalog.price) return showToast(`星星不够啦！需要 ${catalog.price} ⭐，当前只有 ${remainingStars} ⭐`);
 
                 if (catalog.price > 0) {
@@ -11043,7 +11057,8 @@
 				}
 			}, [activeChild, stats]); // 依赖项包含 activeChild，切换账户就会触发
 		
-			const [viewMode, setViewMode] = useState('calendar'); 
+			const [viewMode, setViewMode] = useState('calendar');
+			const [calendarViewMonth, setCalendarViewMonth] = useState(null); // null=当月, {year, month}
             const [showSettings, setShowSettings] = useState(false);
             const [editingEntry, setEditingEntry] = useState(null);
             const [sortBy, setSortBy] = useState('default'); 
@@ -11430,8 +11445,14 @@
                     const { start, end } = getCurrentWeekRange();
                     return getDatesInRange(start, end);
                 }
+                if (viewMode === 'calendar') {
+                    const now = new Date();
+                    const y = calendarViewMonth ? calendarViewMonth.year : now.getFullYear();
+                    const mo = calendarViewMonth ? calendarViewMonth.month : now.getMonth() + 1;
+                    return getMonthDates(y, mo);
+                }
                 return dates;
-            }, [viewMode, dates]);
+            }, [viewMode, dates, calendarViewMonth]);
 
             const sortedTasks = useMemo(() => {
                 const currentTasks = [...ongoingTasks]; // 【修改】只拿进行中的任务去渲染首页卡片
@@ -13617,22 +13638,25 @@
             }, [weekendSettings.enabled, weekendSettings.lastSettledWeekend, activeChild, tasks, checkins, weekendSettings.coreThreshold, weekendSettings.dailyThreshold]);
 
             const scrollToToday = () => {
-                if (todayRef.current && scrollContainerRef.current) {
-                    const container = scrollContainerRef.current;
-                    const element = todayRef.current;
-                    const offsetLeft = element.offsetLeft;
-                    const containerWidth = container.clientWidth;
-                    const elementWidth = element.clientWidth;
-                    container.scrollTo({ left: offsetLeft - containerWidth / 2 + elementWidth / 2, behavior: 'smooth' });
-                }
+                setCalendarViewMonth(null);
+                setTimeout(() => {
+                    if (todayRef.current && scrollContainerRef.current) {
+                        const container = scrollContainerRef.current;
+                        const element = todayRef.current;
+                        const offsetLeft = element.offsetLeft;
+                        const containerWidth = container.clientWidth;
+                        const elementWidth = element.clientWidth;
+                        container.scrollTo({ left: offsetLeft - containerWidth / 2 + elementWidth / 2, behavior: 'smooth' });
+                    }
+                }, 50);
             };
 
             // 计算今天的碎片完成情况（用于惊喜大转盘）：支持按比例 / 按数量 / 按每日必做
             const todayFragmentStats = useMemo(() => {
                 const today = getLocalDateKey(0);
                 const childTasks = tasks[activeChild] || [];
-                const activeTasks = childTasks.filter(t => !t.startDate || today >= t.startDate);
-                const activeDailyMust = childTasks.filter(t => t.frequencyType === 'daily_must').filter(t => !t.startDate || today >= t.startDate);
+                const activeTasks = childTasks.filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
+                const activeDailyMust = childTasks.filter(t => t.frequencyType === 'daily_must').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
                 let completedCount = 0;
                 let requiredCount = 1;
                 if (wheelSettings.thresholdType === 'daily_must') {
@@ -15238,7 +15262,27 @@
                     {(viewMode === 'calendar' || viewMode === 'week') && <button onClick={scrollToToday} className="mr-2 px-2 py-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-md transition-colors transition-transform flex items-center gap-1" title="定位到今天"><Locate className="w-4 h-4" /></button>}
                     <button onClick={() => setViewMode('today')} className={`px-3 py-1.5 rounded-md transition-colors transition-transform ${viewMode === 'today' ? 'bg-white shadow text-gray-800' : 'text-gray-400'}`}>今日</button>
                     <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 rounded-md transition-colors transition-transform ${viewMode === 'week' ? 'bg-white shadow text-gray-800' : 'text-gray-400'}`}>本周</button>
-                    <button onClick={() => setViewMode('calendar')} className={`px-3 py-1.5 rounded-md transition-colors transition-transform ${viewMode === 'calendar' ? 'bg-white shadow text-gray-800' : 'text-gray-400'}`}>本月</button>
+                    <div className="flex items-center">
+                        <button onClick={() => {
+                            setViewMode('calendar');
+                            const m = calendarViewMonth || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+                            if (m.month === 1) setCalendarViewMonth({ year: m.year - 1, month: 12 });
+                            else setCalendarViewMonth({ year: m.year, month: m.month - 1 });
+                        }} className={`px-1.5 py-1.5 rounded-md transition-colors ${viewMode === 'calendar' ? 'text-gray-600 hover:bg-white' : 'text-gray-300'}`} title="上个月">◀</button>
+                        <button onClick={() => { setViewMode('calendar'); setCalendarViewMonth(null); }} className={`px-3 py-1.5 rounded-md transition-colors transition-transform ${viewMode === 'calendar' ? 'bg-white shadow text-gray-800' : 'text-gray-400'}`}>
+                            {viewMode === 'calendar' && calendarViewMonth ? `${calendarViewMonth.month}月` : '本月'}
+                        </button>
+                        <button onClick={() => {
+                            setViewMode('calendar');
+                            const m = calendarViewMonth || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+                            const now = new Date();
+                            const isCurrentMonth = m.year === now.getFullYear() && m.month === now.getMonth() + 1;
+                            if (!isCurrentMonth) {
+                                if (m.month === 12) setCalendarViewMonth({ year: m.year + 1, month: 1 });
+                                else setCalendarViewMonth({ year: m.year, month: m.month + 1 });
+                            }
+                        }} className={`px-1.5 py-1.5 rounded-md transition-colors ${viewMode === 'calendar' ? (calendarViewMonth && !(calendarViewMonth.year === new Date().getFullYear() && calendarViewMonth.month === new Date().getMonth() + 1) ? 'text-gray-600 hover:bg-white' : 'text-gray-300 cursor-default') : 'text-gray-300'}`} title="下个月">▶</button>
+                    </div>
                     </div>
                     </div>
 
