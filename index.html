@@ -6476,7 +6476,7 @@
             });
         };
 
-        const PetHomeView = ({ theme, activeChild, petData, setPetData, ownedPets, activePet, petCooldowns, setPetCooldowns, petStats, setPetStats, stars, setStars, setStarHistory, petMusicOn, lowPerfMode, checkAchievements }) => {
+        const PetHomeView = ({ theme, activeChild, petData, setPetData, ownedPets, activePet, petCooldowns, setPetCooldowns, petStats, setPetStats, totalStars, setStarHistory, petMusicOn, lowPerfMode, checkAchievements }) => {
             const petId = activePet[activeChild];
             const myOwned = ownedPets[activeChild] || [];
 
@@ -6684,7 +6684,7 @@
                                     const lastAction = petCooldowns[activeChild]?.[petId]?.[btn.key] || 0;
                                     const onCooldown = Date.now() - lastAction < action.cooldown;
                                     const cdRemaining = onCooldown ? Math.ceil((action.cooldown - (Date.now() - lastAction)) / 60000) : 0;
-                                    const currentStars = stars[activeChild] || 0;
+                                    const currentStars = totalStars;
                                     const canAfford = currentStars >= action.starCost;
                                     const disabled = onCooldown || !canAfford;
 
@@ -6696,7 +6696,6 @@
                                                     if (disabled) return;
                                                     playActionAnim(btn.key);
                                                     if (action.starCost > 0) {
-                                                        setStars(prev => ({ ...prev, [activeChild]: currentStars - action.starCost }));
                                                         setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_PET_${btn.key}-${petId}-${Date.now()}`]: -action.starCost }));
                                                     }
                                                     setPetData(prev => {
@@ -6951,11 +6950,11 @@
             },
         };
 
-        const PetShopView = ({ theme, activeChild, level, currentEra, ownedPets, setOwnedPets, petData, setPetData, activePet, setActivePet, stars, setStars, setStarHistory, petStats, setPetStats, checkAchievements, showToast, petSlots, setPetSlots, currentStreak, recentCheckinRate }) => {
+        const PetShopView = ({ theme, activeChild, level, currentEra, ownedPets, setOwnedPets, petData, setPetData, activePet, setActivePet, totalStars, setStarHistory, petStats, setPetStats, checkAchievements, showToast, petSlots, setPetSlots, currentStreak, recentCheckinRate }) => {
             const [filter, setFilter] = useState('all');
             const [showSlotDialog, setShowSlotDialog] = useState(false);
             const myOwned = ownedPets[activeChild] || [];
-            const currentStars = stars[activeChild] || 0;
+            const currentStars = totalStars;
 
             // 栏位状态
             const unlockedSlots = (petSlots[activeChild] || PetSlotSystem.FREE_SLOTS);
@@ -6973,7 +6972,6 @@
             // 手动解锁栏位（从弹窗触发）
             const handleUnlockSlot = () => {
                 if (!nextSlotStatus.canUnlock) return;
-                setStars(prev => ({ ...prev, [activeChild]: currentStars - nextSlotStatus.cost }));
                 setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_PET_SLOT-${Date.now()}`]: -nextSlotStatus.cost }));
                 setPetSlots(prev => ({ ...prev, [activeChild]: nextSlot }));
                 showToast(`🔓 已开启第 ${nextSlot} 个栏位（-${nextSlotStatus.cost} ⭐）`);
@@ -7000,7 +6998,6 @@
                     }
                     // 自动扣星星解锁栏位
                     remainingStars = currentStars - slotStatus.cost;
-                    setStars(prev => ({ ...prev, [activeChild]: remainingStars }));
                     setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_PET_SLOT-${Date.now()}`]: -slotStatus.cost }));
                     setPetSlots(prev => ({ ...prev, [activeChild]: nextSlot }));
                     showToast(`🔓 已开启第 ${nextSlot} 个栏位（-${slotStatus.cost} ⭐）`);
@@ -7015,7 +7012,6 @@
                 if (remainingStars < catalog.price) return showToast(`星星不够啦！需要 ${catalog.price} ⭐，当前只有 ${remainingStars} ⭐`);
 
                 if (catalog.price > 0) {
-                    setStars(prev => ({ ...prev, [activeChild]: remainingStars - catalog.price }));
                     setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_PET_BUY-${petId}-${Date.now()}`]: -catalog.price }));
                     setPetStats(prev => ({
                         ...prev,
@@ -7220,14 +7216,14 @@
         };
 
         // ==================== 探险视图组件 ====================
-        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, stars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast }) => {
+        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast }) => {
             const [selectedRealm, setSelectedRealm] = useState(null);
             const [showGuide, setShowGuide] = useState(false);
             const [now, setNow] = useState(Date.now());
             const [selectedPetForAdventure, setSelectedPetForAdventure] = useState(null);
             const [lootTooltip, setLootTooltip] = useState(null); // { realmId, source: 'hover'|'click' }
 
-            const currentStars = stars[activeChild] || 0;
+            const currentStars = totalStars;
             const advArr = Array.isArray(petAdventures[activeChild]) ? petAdventures[activeChild] : [];
             const activeAdvs = advArr.filter(a => a.status === 'active');
             const completedAdvs = advArr.filter(a => a.status === 'completed' && a.result);
@@ -7655,13 +7651,13 @@
             );
         };
 
-        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, stars, setStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, petSlots, setPetSlots, checkins, tasks }) => {
+        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, totalStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, petSlots, setPetSlots, checkins, tasks }) => {
             if (!show) return null;
 
             const [currentTab, setCurrentTab] = useState('home');
             const myOwned = ownedPets[activeChild] || [];
             const petId = activePet[activeChild];
-            const currentStarsCount = stars[activeChild] || 0;
+            const currentStarsCount = totalStars;
 
             // 计算连续打卡天数和近7天打卡率（供栏位系统使用）
             const { slotStreak, slotCheckinRate } = React.useMemo(() => {
@@ -7739,9 +7735,9 @@
 
                         {/* 内容区 */}
                         <div className="flex-1 overflow-y-auto px-5 pb-5">
-                            {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} stars={stars} setStars={setStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} />}
-                            {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} stars={stars} setStars={setStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} petSlots={petSlots} setPetSlots={setPetSlots} currentStreak={slotStreak} recentCheckinRate={slotCheckinRate * 100} />}
-                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} stars={stars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} />}
+                            {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} totalStars={totalStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} />}
+                            {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} totalStars={totalStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} petSlots={petSlots} setPetSlots={setPetSlots} currentStreak={slotStreak} recentCheckinRate={slotCheckinRate * 100} />}
+                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} />}
                             {currentTab === 'album' && <PetAlbumView theme={theme} activeChild={activeChild} ownedPets={ownedPets} petData={petData} />}
                         </div>
                     </div>
@@ -10319,7 +10315,6 @@
 		setActiveSilenceMutes,      // 静音/禁言状态
 		setHistoricalEventProgress, // 历史事件进度
 		setDailyEventTypeCounts,    // 每日分类事件计数
-		setStars,                   // 星星余额
 		setStarHistory,             // 星星收支记录
 		setPetData,                 // 宠物运行时数据
 		setOwnedPets,               // 已拥有宠物
@@ -10492,7 +10487,6 @@
 				if (setDailyEventTypeCounts) setDailyEventTypeCounts(prev => { const n = {}; Object.keys(prev || {}).forEach(k => { if (!k.startsWith('TESTER') && !k.startsWith(activeChild)) n[k] = prev[k]; }); return n; });
 
 				// 星星货币系统
-				if (setStars) setStars(prev => ({ ...prev, [activeChild]: 0 }));
 				if (setStarHistory) setStarHistory(clearFilter);
 
 				// 宠物系统
@@ -11171,7 +11165,6 @@
             const [redeemedCoupons, setRedeemedCoupons] = useStickyState({}, 'app_coupons_v1');
 
             // --- 星星货币系统 ---
-            const [stars, setStars] = useStickyState({}, 'app_stars_v1');
             const [starHistory, setStarHistory] = useStickyState({}, 'app_star_history_v1');
 
             // --- 宠物系统状态 ---
@@ -11547,11 +11540,10 @@
                     if (!key.startsWith(deferredActiveChild + '-STAR_')) return;
                     const amount = history[key];
                     if (key.includes('-STAR_CHECKIN-')) {
-                        const parts = key.split('-STAR_CHECKIN-');
-                        const rest = parts[1] || '';
-                        const lastDash = rest.lastIndexOf('-');
-                        const taskId = rest.substring(0, lastDash);
-                        const date = rest.substring(lastDash + 1);
+                        const match = key.match(/-STAR_CHECKIN-(.+)-(\d{4}-\d{2}-\d{2})$/);
+                        if (!match) return;
+                        const taskId = match[1];
+                        const date = match[2];
                         const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
                         const taskName = task ? task.name : '打卡';
                         list.push({ id: key, date, name: `打卡：${taskName}`, amount, type: 'income' });
@@ -11801,10 +11793,9 @@
                 }
 
                 // 星星检查与扣除
-                const currentStars = stars[deferredActiveChild] || 0;
+                const currentStars = totalStars;
                 if (currentStars < realm.starCost) return showToast(`星星不够！需要 ${realm.starCost} ⭐，当前 ${currentStars} ⭐`);
 
-                setStars(prev => ({ ...prev, [deferredActiveChild]: currentStars - realm.starCost }));
                 setStarHistory(prev => ({ ...prev, [`${deferredActiveChild}-STAR_ADVENTURE_START-${realmId}-${Date.now()}`]: -realm.starCost }));
 
                 // 计算时间（含技能缩短）
@@ -11838,7 +11829,7 @@
                 });
 
                 showToast(`${realm.icon} ${pet.nickname || petId} 出发前往「${realm.name}」！预计 ${Math.round(actualDuration / 3600000)} 小时后归来`);
-            }, [deferredActiveChild, activePet, petData, petAdventures, petAdventureStats, stars, tasks, checkins, currentXP, adventureHelpers, adventureConfig, adventureRealms, adventureRefuseDialogs, setStars, setStarHistory, setPetAdventures, setPetAdventureStats, showToast]);
+            }, [deferredActiveChild, activePet, petData, petAdventures, petAdventureStats, totalStars, tasks, checkins, currentXP, adventureHelpers, adventureConfig, adventureRealms, adventureRefuseDialogs, setStarHistory, setPetAdventures, setPetAdventureStats, showToast]);
 
             // 完成探险（结算奖励）
             const handleCompleteAdventure = useCallback((childName, adventureId) => {
@@ -12654,7 +12645,6 @@
                 else if (item.type === 'buy_stars') {
                     const amount = item.starAmount || 0;
                     if (amount > 0) {
-                        setStars(prev => ({ ...prev, [activeChild]: (prev[activeChild] || 0) + amount }));
                         setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_BUY-${item.id}-${Date.now()}`]: amount }));
                         confetti({ particleCount: 60, spread: 50, origin: { y: 0.5 }, colors: ['#fbbf24', '#f59e0b'] });
                         alert(`✨ 获得 ${amount} 颗星星！`);
@@ -14165,7 +14155,6 @@
                 const STAR_PER_CHECKIN = 3;
                 const starKey = `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
                 if (!starHistory[starKey]) {
-                    setStars(prev => ({ ...prev, [activeChild]: (prev[activeChild] || 0) + STAR_PER_CHECKIN }));
                     setStarHistory(prev => ({ ...prev, [starKey]: STAR_PER_CHECKIN }));
                 }
 
@@ -15657,8 +15646,7 @@
 				      setPetStats={setPetStats}
 				      petMusicOn={petMusicOn}
 				      setPetMusicOn={setPetMusicOn}
-				      stars={stars}
-				      setStars={setStars}
+				      totalStars={totalStars}
 				      level={currentLevelInfo?.level || 1}
 				      currentEra={currentLevelInfo?.era || ""}
 				      achievements={achievements}
@@ -15878,7 +15866,6 @@
 				setActiveSilenceMutes={setActiveSilenceMutes}
 				setHistoricalEventProgress={setHistoricalEventProgress}
 				setDailyEventTypeCounts={setDailyEventTypeCounts}
-				setStars={setStars}
 				setStarHistory={setStarHistory}
 				setPetData={setPetData}
 				setOwnedPets={setOwnedPets}
