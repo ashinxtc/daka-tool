@@ -2475,7 +2475,10 @@
                     petAdventures: localStorage.getItem('app_pet_adventures_v1'),
                     petAdventureLog: localStorage.getItem('app_pet_adventure_log_v1'),
                     petAdventureStats: localStorage.getItem('app_pet_adventure_stats_v1'),
-                    petSlots: localStorage.getItem('app_pet_slots_v1')
+                    petSlots: localStorage.getItem('app_pet_slots_v1'),
+                    evilPenaltyLog: localStorage.getItem('app_evil_penalty_log_v1'),
+                    evilAutoTrigger: localStorage.getItem('app_evil_auto_trigger'),
+                    pendingEvilPenalty: localStorage.getItem('app_pending_evil_penalty_v1')
                 };
                 
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2561,7 +2564,10 @@
                                                       key === 'petAdventures' ? 'app_pet_adventures_v1' :
                                                       key === 'petAdventureLog' ? 'app_pet_adventure_log_v1' :
                                                       key === 'petAdventureStats' ? 'app_pet_adventure_stats_v1' :
-                                                      key === 'petSlots' ? 'app_pet_slots_v1' : null;
+                                                      key === 'petSlots' ? 'app_pet_slots_v1' :
+                                                      key === 'evilPenaltyLog' ? 'app_evil_penalty_log_v1' :
+                                                      key === 'evilAutoTrigger' ? 'app_evil_auto_trigger' :
+                                                      key === 'pendingEvilPenalty' ? 'app_pending_evil_penalty_v1' : null;
                                     
                                     if (storageKey) {
                                         localStorage.setItem(storageKey, data[key]);
@@ -7864,7 +7870,7 @@
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
                     <div className="relative bg-slate-900 rounded-3xl w-full max-w-md p-6 shadow-2xl overflow-hidden flex flex-col items-center border border-red-900/50 evil-glow">
                         <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-red-900 to-transparent -z-0 opacity-50"></div>
-                        <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 bg-gray-800/50 rounded-full hover:bg-gray-700 text-gray-400"><XIcon className="w-5 h-5" /></button>
+                        {isDemo && <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 bg-gray-800/50 rounded-full hover:bg-gray-700 text-gray-400"><XIcon className="w-5 h-5" /></button>}
                         <div className="z-10 text-center mb-6 mt-4">
                             <h2 className="text-2xl font-black text-red-500 mb-1 flex items-center justify-center gap-2 tracking-widest uppercase"><Skull className="w-6 h-6 animate-pulse" /> {isDemo ? '测试模式 (不扣分)' : '命运的审判'}</h2>
                             <p className="text-gray-400 text-xs tracking-wider">{isDemo ? '仅供测试转盘概率与动画效果' : '接受惩罚吧，这是对懒惰的代价...'}</p>
@@ -7926,7 +7932,7 @@
             );
         };
 
-        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags }) => {
+        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags }) => {
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState('parent');
             const SETTINGS_TABS = [
@@ -8448,6 +8454,44 @@
 										</div>
 									</div>
 
+									{/* 打卡即时奖励配置 */}
+									<div className="flex items-center gap-2 flex-wrap">
+										<span className="text-xs font-bold text-pink-500">🎁 打卡奖励:</span>
+										<button
+											type="button"
+											onClick={() => updateTaskSetting(task.id, 'onCheckinReward', '')}
+											className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${
+												!task.onCheckinReward
+													? 'bg-gray-100 text-gray-600 border-gray-300 shadow-sm'
+													: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+											}`}
+										>
+											无
+										</button>
+										<button
+											type="button"
+											onClick={() => updateTaskSetting(task.id, 'onCheckinReward', 'wheel_gold')}
+											className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${
+												task.onCheckinReward === 'wheel_gold'
+													? 'bg-amber-50 text-amber-600 border-amber-200 shadow-sm'
+													: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+											}`}
+										>
+											💰 幸运大转盘（金元宝）
+										</button>
+										<button
+											type="button"
+											onClick={() => updateTaskSetting(task.id, 'onCheckinReward', 'wheel_xp')}
+											className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${
+												task.onCheckinReward === 'wheel_xp'
+													? 'bg-blue-50 text-blue-600 border-blue-200 shadow-sm'
+													: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+											}`}
+										>
+											✨ 幸运大转盘（经验）
+										</button>
+									</div>
+
 									<div className="pr-8">
 										<input type="text" value={task.name} onChange={(e) => updateTaskSetting(task.id, 'name', e.target.value)} className="font-bold text-lg bg-transparent border-b border-dashed border-gray-300 focus:border-indigo-500 focus:outline-none w-full mb-2" />
 										<input type="text" value={task.targetGoal || ''} onChange={(e) => updateTaskSetting(task.id, 'targetGoal', e.target.value)} placeholder="输入具体目标内容..." className="text-sm bg-transparent border-b border-dashed border-gray-200 w-full text-gray-500 focus:outline-none" />
@@ -8629,6 +8673,27 @@
                       <section className="bg-slate-900 text-gray-300 p-5 rounded-2xl border border-red-900 shadow-sm">
                             <h3 className="font-bold text-red-500 mb-4 flex items-center gap-2"><Skull className="w-5 h-5" /> 惩罚机制 (家长专用)</h3>
                             <p className="text-xs text-gray-500 mb-4">注意：此功能仅供特殊情况下使用，转出的结果将直接扣除金元宝。</p>
+
+                            {/* 自动惩罚开关 */}
+                            <div className="mb-4 p-3 bg-gray-800 rounded-xl border border-gray-700">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-sm font-bold text-orange-400 flex items-center gap-2">⚡ 自动惩罚</div>
+                                        <div className="text-[11px] text-gray-500 mt-1">前一天所有「每日必做」任务均未完成时，隔天首次打卡自动触发邪恶转盘</div>
+                                    </div>
+                                    <button
+                                        onClick={() => setEvilAutoTrigger(!evilAutoTrigger)}
+                                        className={`relative w-12 h-6 rounded-full transition-colors ${evilAutoTrigger ? 'bg-red-600' : 'bg-gray-600'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${evilAutoTrigger ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                                    </button>
+                                </div>
+                                {evilAutoTrigger && (
+                                    <div className="mt-2 text-[10px] text-yellow-500/80 bg-yellow-900/20 px-2 py-1 rounded">
+                                        💡 已开启：青铜守护盾可自动抵消惩罚
+                                    </div>
+                                )}
+                            </div>
                             <div className="grid grid-cols-1 gap-3 mb-4">
                                 {evilWheelConfig.map((item, idx) => (
                                     <div key={item.id} className="flex items-center gap-3 bg-gray-800 p-3 rounded-xl border border-gray-700 shadow-sm">
@@ -11152,6 +11217,9 @@
             const [achievements, setAchievements] = useStickyState({}, 'app_achievements_v1');
             const [stats, setStats] = useStickyState({}, 'app_stats_v1');
             const [evilWheelConfig, setEvilWheelConfig] = useStickyState(DEFAULT_EVIL_WHEEL_CONFIG, 'app_evil_wheel_config');
+            const [evilAutoTrigger, setEvilAutoTrigger] = useStickyState(false, 'app_evil_auto_trigger');
+            const [evilPenaltyLog, setEvilPenaltyLog] = useStickyState({}, 'app_evil_penalty_log_v1');
+            const [pendingEvilPenalty, setPendingEvilPenalty] = useStickyState(false, 'app_pending_evil_penalty_v1');
             
             const [randomEventHistory, setRandomEventHistory] = useStickyState({}, 'app_random_event_history');
             const [dailyRandomCounts, setDailyRandomCounts] = useStickyState({}, 'app_daily_random_counts');
@@ -13486,55 +13554,7 @@
                     alert("✅ 背包检查完毕。\n\n未发现明显的丢失记录 (系统只补发背包中数量为0但有购买记录的商品)。\n\n如果确实还有问题，请尝试重新购买一次以激活数据。");
                 }
             };
-			
-			// --- 【新增】压线大师成就自动补漏机制 ---
-			useEffect(() => {
-				const checkRetroactiveDeadline = () => {
-					const today = getLocalDateKey(0);
-					
-					// 1. 检查今日是否已触发过转盘 (金币转盘 或 经验转盘)
-					const goldKey = `${activeChild}-${today}`;
-					const xpKey = `${activeChild}-XP_WHEEL-${today}`;
-					const isWheelTriggeredToday = wheelHistory[goldKey] || xpHistory[xpKey];
-					
-					// 2. 检查是否已拥有该成就
-					const currentAch = achievements[activeChild] || {};
-					const hasDeadlineMaster = currentAch['deadline_master'];
-					
-					// 3. 触发条件：今天触发了转盘 + 还没有这个成就
-					if (isWheelTriggeredToday && !hasDeadlineMaster) {
-						// 防止刷新页面重复弹窗，使用 sessionStorage 标记本次会话已检查
-						const sessionKey = `checked_deadline_v2_${activeChild}_${today}`;
-						if (sessionStorage.getItem(sessionKey)) return;
-						
-						// 延迟 1.5秒 执行，避免和页面加载冲突
-						setTimeout(() => {
-							// 标记已检查
-							sessionStorage.setItem(sessionKey, 'true');
-							
-							// 弹出询问框 (因为无法获取精确时间，需人工确认)
-							const confirmed = window.confirm(
-								"🛡️ 【成就补漏助手】\n\n检测到孩子今日已完成任务并触发大转盘，但未获得「压线大师」成就。\n\n由于系统未能记录历史精确时间，请人工确认：\n孩子是否是在截止时间前 5 分钟内完成的？\n\n如果是 (受Bug影响未触发)，请点击【确定】立即补发。"
-							);
-							
-							if (confirmed) {
-								// 调用成就检查函数，强制传入 isDeadlineClose=true
-								// 注意：根据之前的修复，这个参数是在第二个参数 context 中
-								checkAchievements('checkin', { 
-									isWheelTriggered: true, 
-									isDeadlineClose: true // 核心：告诉系统满足时间条件
-								}, {});
-								
-								alert("✅ 已成功补发「压线大师」成就！");
-							}
-						}, 1500);
-					}
-				};
-				
-				checkRetroactiveDeadline();
-			// 依赖项：当历史记录、成就或当前孩子变化时重新检查
-			}, [wheelHistory, xpHistory, achievements, activeChild]);
-			
+
             useEffect(() => {
                 const profile = profiles.find(p => p.name === activeChild);
                 if (profile) {
@@ -14356,6 +14376,16 @@
                     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); 
                 }
 				
+				// 即时打卡奖励（在大满贯判定之前触发）
+				if (editingEntry.isNew) {
+					const taskOnCheckinReward = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId)?.onCheckinReward;
+					if (taskOnCheckinReward === 'wheel_gold') {
+						handleLaunchExtraWheel('gold');
+					} else if (taskOnCheckinReward === 'wheel_xp') {
+						handleLaunchExtraWheel('xp');
+					}
+				}
+
 				// 增加 isNew 判断，防止修改旧记录时重复触发事件
 				if (editingEntry.isNew) {
 					if (isToday) {
@@ -14451,6 +14481,49 @@
                 }, 3000); 
             };
 			
+            // 启动时检查：有未完成的惩罚转盘则自动打开
+            React.useEffect(() => {
+                if (pendingEvilPenalty) {
+                    setTimeout(() => handleLaunchEvilWheel(), 500);
+                }
+            }, []);
+
+            // 清理 wheelHistory 中被错误写入的 EVIL_PENALTY 对象（一次性修复）
+            React.useEffect(() => {
+                const keysToRemove = Object.keys(wheelHistory).filter(k => k.includes('-EVIL_PENALTY-'));
+                if (keysToRemove.length > 0) {
+                    setWheelHistory(prev => {
+                        const next = { ...prev };
+                        keysToRemove.forEach(k => delete next[k]);
+                        return next;
+                    });
+                }
+            }, []);
+
+            // 自动惩罚：检查昨日每日必做完成情况
+            React.useEffect(() => {
+                if (!evilAutoTrigger) return;
+                const yesterday = getLocalDateKey(-1);
+                const penaltyKey = `${activeChild}-EVIL_PENALTY-${yesterday}`;
+                if (evilPenaltyLog[penaltyKey]) return; // 已触发过
+
+                const yesterdayTasks = (tasks[activeChild] || [])
+                    .filter(t => t.frequencyType === 'daily_must')
+                    .filter(t => !t.startDate || yesterday >= t.startDate)
+                    .filter(t => !t.earlyCompleted);
+
+                if (yesterdayTasks.length === 0) return;
+
+                const completed = yesterdayTasks
+                    .filter(t => checkins[activeChild]?.[t.id]?.[yesterday]).length;
+
+                if (completed === 0) {
+                    setEvilPenaltyLog(prev => ({ ...prev, [penaltyKey]: Date.now() }));
+                    setPendingEvilPenalty(true);
+                    setTimeout(() => handleLaunchEvilWheel(), 500);
+                }
+            }, [checkins, activeChild, evilAutoTrigger]);
+
             const handleLaunchEvilWheel = () => {
                 setShowSettings(false); 
                 setIsEvilDemo(false);
@@ -14516,7 +14589,8 @@
 
                     setEvilWheelResult(resultItem);
                     setEvilWheelSpinning(false);
-                }, 3000); 
+                    if (!isEvilDemo) setPendingEvilPenalty(false);
+                }, 3000);
             };
 
             const removeCheckin = () => {
@@ -14561,7 +14635,9 @@
                     weeklyTargetCount: 3,
                     weeklyExtraPercentPerExtra: 10,
                     // 每日必做相关：默认周完成度 80% 视为达标
-                    dailyCompletionThresholdPercent: 80
+                    dailyCompletionThresholdPercent: 80,
+                    // 打卡即时奖励：默认无
+                    onCheckinReward: ''
                 };
                 setTasks(prev => ({ ...prev, [activeChild]: [...(prev[activeChild]||[]), newTask] }));
             };
@@ -15548,6 +15624,8 @@
                     handleAddTask={handleAddTask} 
                     evilWheelConfig={evilWheelConfig}
                     setEvilWheelConfig={setEvilWheelConfig}
+                    evilAutoTrigger={evilAutoTrigger}
+                    setEvilAutoTrigger={setEvilAutoTrigger}
                     onLaunchEvilWheel={handleLaunchEvilWheel}
                     onTestEvilWheel={handleTestEvilWheel}
 					onLaunchExtraWheel={(type, isDemo) => handleLaunchExtraWheel(type, isDemo)}
