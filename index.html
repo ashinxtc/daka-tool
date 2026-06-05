@@ -11610,7 +11610,6 @@
             const [aiReminderLog, setAiReminderLog] = useStickyState({}, 'app_ai_reminder_log_v1');
             const [aiBubbleMessage, setAiBubbleMessage] = React.useState('');
             const [aiBubbleVisible, setAiBubbleVisible] = React.useState(false);
-            const aiBubbleTimerRef = React.useRef(null);
 
             const [randomEventHistory, setRandomEventHistory] = useStickyState({}, 'app_random_event_history');
             const [dailyRandomCounts, setDailyRandomCounts] = useStickyState({}, 'app_daily_random_counts');
@@ -12108,8 +12107,6 @@
             const showAiBubble = React.useCallback((message) => {
                 setAiBubbleMessage(message);
                 setAiBubbleVisible(true);
-                if (aiBubbleTimerRef.current) clearTimeout(aiBubbleTimerRef.current);
-                aiBubbleTimerRef.current = setTimeout(() => setAiBubbleVisible(false), 15000);
             }, []);
 
             const checkAiReminders = React.useCallback(async () => {
