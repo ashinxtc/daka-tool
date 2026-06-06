@@ -2483,6 +2483,8 @@
                     petAdventureLog: localStorage.getItem('app_pet_adventure_log_v1'),
                     petAdventureStats: localStorage.getItem('app_pet_adventure_stats_v1'),
                     petSlots: localStorage.getItem('app_pet_slots_v1'),
+                    petMusic: localStorage.getItem('app_pet_music_v1'),
+                    petNotif: localStorage.getItem('app_pet_notif_v1'),
                     evilPenaltyLog: localStorage.getItem('app_evil_penalty_log_v1'),
                     evilAutoTrigger: localStorage.getItem('app_evil_auto_trigger'),
                     pendingEvilPenalty: localStorage.getItem('app_pending_evil_penalty_v1'),
@@ -2493,7 +2495,9 @@
                     aiDailyLimit: localStorage.getItem('app_ai_daily_limit'),
                     aiDailyUsage: localStorage.getItem('app_ai_daily_usage'),
                     aiChatHistory: localStorage.getItem('app_ai_chat_history'),
-                    aiReminderLog: localStorage.getItem('app_ai_reminder_log_v1')
+                    aiReminderLog: localStorage.getItem('app_ai_reminder_log_v1'),
+                    syncCode: localStorage.getItem('app_sync_code'),
+                    syncLastTime: localStorage.getItem('app_sync_last_time')
                 };
                 
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2580,6 +2584,8 @@
                                                       key === 'petAdventureLog' ? 'app_pet_adventure_log_v1' :
                                                       key === 'petAdventureStats' ? 'app_pet_adventure_stats_v1' :
                                                       key === 'petSlots' ? 'app_pet_slots_v1' :
+                                                      key === 'petMusic' ? 'app_pet_music_v1' :
+                                                      key === 'petNotif' ? 'app_pet_notif_v1' :
                                                       key === 'evilPenaltyLog' ? 'app_evil_penalty_log_v1' :
                                                       key === 'evilAutoTrigger' ? 'app_evil_auto_trigger' :
                                                       key === 'pendingEvilPenalty' ? 'app_pending_evil_penalty_v1' :
@@ -2590,7 +2596,9 @@
                                                       key === 'aiDailyLimit' ? 'app_ai_daily_limit' :
                                                       key === 'aiDailyUsage' ? 'app_ai_daily_usage' :
                                                       key === 'aiChatHistory' ? 'app_ai_chat_history' :
-                                                      key === 'aiReminderLog' ? 'app_ai_reminder_log_v1' : null;
+                                                      key === 'aiReminderLog' ? 'app_ai_reminder_log_v1' :
+                                                      key === 'syncCode' ? 'app_sync_code' :
+                                                      key === 'syncLastTime' ? 'app_sync_last_time' : null;
                                     
                                     if (storageKey) {
                                         localStorage.setItem(storageKey, data[key]);
@@ -8184,7 +8192,7 @@
             );
         };
 
-        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage }) => {
+        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud }) => {
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState('parent');
             const SETTINGS_TABS = [
@@ -8196,6 +8204,7 @@
                 { id: 'evil', label: '惩罚', icon: '⚠️' },
                 { id: 'homeworkExam', label: '作业与考试', icon: '📝' },
                 { id: 'ai', label: 'AI助手', icon: '🤖' },
+                { id: 'sync', label: '同步', icon: '☁️' },
                 { id: 'data', label: '数据', icon: '💾' }
             ];
 			if (!showSettings) return null;
@@ -8496,6 +8505,59 @@
                                 {deepseekApiKey && aiEnabled && (
                                     <div className="text-center text-xs text-green-600 bg-green-50 p-2 rounded-lg border border-green-200">
                                         ✅ AI 功能已就绪
+                                    </div>
+                                )}
+                            </div>
+                       </section>
+                       )}
+
+                       {activeSettingsTab === 'sync' && (
+                       <section className="bg-sky-50/50 p-5 rounded-2xl border border-sky-100 shadow-sm">
+                            <h3 className="font-bold text-sky-800 mb-4 flex items-center gap-2"><span className="text-xl">☁️</span> 数据云同步</h3>
+                            <p className="text-sm text-sky-700/80 mb-4">输入同步码后数据自动同步到云端，多设备共享。</p>
+
+                            <div className="space-y-4">
+                                <div className="p-3 bg-white rounded-xl border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 block mb-1">同步码</label>
+                                    <input type="text" value={syncCode} onChange={(e) => setSyncCode(e.target.value)} placeholder="自定义，如：小明2024" maxLength={32} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-sky-400" />
+                                    <div className="text-[10px] text-gray-400 mt-1">4-32个字符，在所有设备上输入相同的同步码即可绑定</div>
+                                </div>
+
+                                {/* 状态指示 */}
+                                {syncCode && (
+                                    <div className={`p-3 rounded-xl border text-sm ${
+                                        syncStatus === 'syncing' ? 'bg-blue-50 border-blue-200 text-blue-600' :
+                                        syncStatus === 'success' ? 'bg-green-50 border-green-200 text-green-600' :
+                                        syncStatus === 'error' ? 'bg-red-50 border-red-200 text-red-600' :
+                                        'bg-gray-50 border-gray-200 text-gray-500'
+                                    }`}>
+                                        {syncStatus === 'syncing' && '⏳ 同步中...'}
+                                        {syncStatus === 'success' && '✅ 同步成功！'}
+                                        {syncStatus === 'error' && '❌ 同步失败，请检查网络'}
+                                        {!syncStatus && (
+                                            <div className="flex items-center justify-between">
+                                                <span>自动同步已启用</span>
+                                                {syncLastTime && <span className="text-xs text-gray-400">上次：{new Date(syncLastTime).toLocaleString('zh-CN')}</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* 手动操作按钮 */}
+                                <div className="flex gap-2">
+                                    <button onClick={syncToCloud} disabled={!syncCode || syncStatus === 'syncing'}
+                                        className="flex-1 px-4 py-2 bg-sky-500 text-white text-sm font-bold rounded-lg hover:bg-sky-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
+                                        ⬆️ 手动上传
+                                    </button>
+                                    <button onClick={syncFromCloud} disabled={!syncCode || syncStatus === 'syncing'}
+                                        className="flex-1 px-4 py-2 bg-indigo-500 text-white text-sm font-bold rounded-lg hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
+                                        ⬇️ 手动下载
+                                    </button>
+                                </div>
+
+                                {!syncCode && (
+                                    <div className="text-center text-xs text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                                        ⚠️ 请输入同步码开启自动同步
                                     </div>
                                 )}
                             </div>
@@ -9037,7 +9099,7 @@
                        </section>
                        )}
                     </div>
-                    <div className="p-4 border-t bg-white/80 backdrop-blur border-gray-100 text-right shrink-0"><button onClick={() => { clearNewTaskFlags(); setShowSettings(false); }} className={`px-8 py-2.5 ${theme.primaryBg} ${theme.primaryBgHover} text-white rounded-full font-medium shadow-lg transition transform active:scale-95`}>保存并退出</button></div>
+                    <div className="p-4 border-t bg-white/80 backdrop-blur border-gray-100 text-right shrink-0"><button onClick={() => { clearNewTaskFlags(); setShowSettings(false); triggerSyncUpload(); }} className={`px-8 py-2.5 ${theme.primaryBg} ${theme.primaryBgHover} text-white rounded-full font-medium shadow-lg transition transform active:scale-95`}>保存并退出</button></div>
                   </div>
                 </div>
             );
@@ -11611,6 +11673,14 @@
             const [aiBubbleMessage, setAiBubbleMessage] = React.useState('');
             const [aiBubbleVisible, setAiBubbleVisible] = React.useState(false);
 
+            // --- 云同步状态 ---
+            const SYNC_URL = 'https://daka-sync.2378385593.workers.dev';
+            const [syncCode, setSyncCode] = useStickyState('', 'app_sync_code');
+            const [syncLastTime, setSyncLastTime] = useStickyState(null, 'app_sync_last_time');
+            const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
+            const syncDebounceRef = React.useRef(null);
+            const syncDownloadingRef = React.useRef(false);
+
             const [randomEventHistory, setRandomEventHistory] = useStickyState({}, 'app_random_event_history');
             const [dailyRandomCounts, setDailyRandomCounts] = useStickyState({}, 'app_daily_random_counts');
             // 历史事件进度：记录每个孩子已触发的历史事件 id 列表（按顺序推进，不重复）
@@ -13767,6 +13837,107 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             }, [inventory, activeChild, checkins, wheelHistory]);
 
             // --- AI 服务层 ---
+            // --- 云同步功能 ---
+            const SYNC_PREFIXES = ['app_']; // 只同步 app_ 开头的键
+
+            const collectSyncData = () => {
+                const data = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (SYNC_PREFIXES.some(p => key.startsWith(p))) {
+                        data[key] = localStorage.getItem(key);
+                    }
+                }
+                data._syncTs = Date.now();
+                return data;
+            };
+
+            const syncToCloud = async () => {
+                if (!syncCode) return;
+                setSyncStatus('syncing');
+                try {
+                    const data = collectSyncData();
+                    const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    if (!resp.ok) throw new Error('上传失败');
+                    setSyncLastTime(Date.now());
+                    setSyncStatus('success');
+                    setTimeout(() => setSyncStatus(''), 3000);
+                } catch (e) {
+                    console.error('Sync upload failed:', e);
+                    setSyncStatus('error');
+                    setTimeout(() => setSyncStatus(''), 3000);
+                }
+            };
+
+            const mergeSyncData = (cloudData) => {
+                let merged = 0;
+                Object.entries(cloudData).forEach(([key, cloudVal]) => {
+                    if (key === '_syncTs') return;
+                    const localVal = localStorage.getItem(key);
+                    if (localVal === null) {
+                        // 本地无，写入云端数据
+                        localStorage.setItem(key, cloudVal);
+                        merged++;
+                    } else if (localVal !== cloudVal) {
+                        // 两边都有但不同，取更新的（简单策略：云端覆盖本地）
+                        localStorage.setItem(key, cloudVal);
+                        merged++;
+                    }
+                });
+                return merged;
+            };
+
+            const syncFromCloud = async () => {
+                if (!syncCode) return;
+                setSyncStatus('syncing');
+                syncDownloadingRef.current = true;
+                try {
+                    const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
+                    if (resp.status === 404) {
+                        // 云端无数据，上传本地数据
+                        await syncToCloud();
+                        return;
+                    }
+                    if (!resp.ok) throw new Error('下载失败');
+                    const cloudData = await resp.json();
+                    const merged = mergeSyncData(cloudData);
+                    setSyncLastTime(Date.now());
+                    setSyncStatus('success');
+                    setTimeout(() => setSyncStatus(''), 3000);
+                    if (merged > 0) {
+                        // 有数据合并，刷新页面加载新数据
+                        setTimeout(() => window.location.reload(), 1000);
+                    }
+                } catch (e) {
+                    console.error('Sync download failed:', e);
+                    setSyncStatus('error');
+                    setTimeout(() => setSyncStatus(''), 3000);
+                } finally {
+                    syncDownloadingRef.current = false;
+                }
+            };
+
+            // 防抖上传：操作后 10 秒自动上传
+            const triggerSyncUpload = React.useCallback(() => {
+                if (!syncCode || syncDownloadingRef.current) return;
+                if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+                syncDebounceRef.current = setTimeout(() => syncToCloud(), 10000);
+            }, [syncCode]);
+
+            // 页面加载时自动下载 + 定期检查
+            React.useEffect(() => {
+                if (!syncCode) return;
+                // 页面加载时下载
+                const timer = setTimeout(() => syncFromCloud(), 1500);
+                // 每 30 分钟检查一次
+                const interval = setInterval(() => syncFromCloud(), 1800000);
+                return () => { clearTimeout(timer); clearInterval(interval); };
+            }, [syncCode]);
+
             // 每日用量检查与重置
             const checkAiQuota = () => {
                 const today = getLocalDateKey(0);
@@ -14890,8 +15061,7 @@ ${context}
                 newCheckins[activeChild] = { ...childData, [editingEntry.taskId]: { ...taskData, [editingEntry.date]: parseInt(duration) } };
                 setCheckins(newCheckins);
                 setEditingEntry(null);
-
-				// 【新增：埋点记录打卡】
+                triggerSyncUpload(); // 自动云同步				// 【新增：埋点记录打卡】
                 const currentTask = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId);
                 if (currentTask) {
                     // 1. 计算当前时刻的真实倍率
@@ -16533,6 +16703,12 @@ ${context}
 					aiDailyLimit={aiDailyLimit}
 					setAiDailyLimit={setAiDailyLimit}
 					aiDailyUsage={aiDailyUsage}
+					syncCode={syncCode}
+					setSyncCode={setSyncCode}
+					syncLastTime={syncLastTime}
+					syncStatus={syncStatus}
+					syncToCloud={syncToCloud}
+					syncFromCloud={syncFromCloud}
                   />
 
                   {/* AI 学习助手浮窗 */}
