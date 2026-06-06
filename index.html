@@ -12109,6 +12109,21 @@
                 setAiBubbleVisible(true);
             }, []);
 
+            // 辅助：AI 发送气泡（每种类型每日限一次，每日最多3种）
+            const trySendAiReminder = async (type, prompt, userMsg, log, today) => {
+                const typeKey = `reminder_${type}_${today}`;
+                if (log[typeKey]) return false;
+                const todayTypes = Object.keys(log).filter(k => k.startsWith('reminder_') && k.endsWith(`_${today}`)).length;
+                if (todayTypes >= 3) return false;
+                const reply = await callDeepSeekAPI(prompt, userMsg || '跟我说句话吧', []);
+                if (reply) {
+                    showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80));
+                    setAiReminderLog(prev => ({ ...prev, [typeKey]: true, lastReminderDate: today }));
+                    return true;
+                }
+                return false;
+            };
+
             const checkAiReminders = React.useCallback(async () => {
                 if (!aiEnabled || !deepseekApiKey) return;
                 const today = getLocalDateKey(0);
@@ -12116,24 +12131,29 @@
                 const childTasks = (tasks[activeChild] || []);
                 const activeTasks = childTasks.filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
                 const todayCheckins = checkins[activeChild] || {};
+                const now = new Date();
+                const hour = now.getHours();
 
-                // 1. 每日问候：新的一天首次打开，有未完成任务
+                // === 优先级 1：每日问候 ===
                 if (log.lastReminderDate !== today || !log.todayGreetDone) {
                     const completed = activeTasks.filter(t => todayCheckins[t.id]?.[today]).length;
                     if (activeTasks.length > 0 && completed < activeTasks.length) {
                         const remaining = activeTasks.length - completed;
-                        const prompt = buildAssistantSystemPrompt(activeChild) + `\n\n现在是新的一天，${activeChild}还有${remaining}个任务未完成。请用温暖的语气给一个简短的今日问候和任务提醒（50字以内），不要用引号。`;
-                        const reply = await callDeepSeekAPI(prompt, '给我一个今日问候', []);
-                        if (reply) {
-                            showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80));
-                            setAiReminderLog(prev => ({ ...prev, lastReminderDate: today, todayGreetDone: true }));
-                            return; // 每次只触发一种提醒
+                        // 附带天气信息
+                        let weatherNote = '';
+                        if (realWeather) {
+                            const desc = realWeather.weathercode <= 3 ? '晴天' : realWeather.weathercode <= 48 ? '多云' : '雨天';
+                            weatherNote = `今天外面${desc}，`;
                         }
+                        const prompt = buildAssistantSystemPrompt(activeChild) + `\n\n${weatherNote}${activeChild}还有${remaining}个任务未完成。请用温暖的语气给一个简短的今日问候和任务提醒（50字以内），不要用引号。`;
+                        const sent = await trySendAiReminder('greet', prompt, '给我一个今日问候', log, today);
+                        setAiReminderLog(prev => ({ ...prev, lastReminderDate: today, todayGreetDone: true }));
+                        if (sent) return;
                     }
                     setAiReminderLog(prev => ({ ...prev, lastReminderDate: today, todayGreetDone: true }));
                 }
 
-                // 2. 久未打卡提醒：≥2天没有打卡
+                // === 优先级 2：久未打卡提醒 ===
                 if (!log.inactivityReminded || log.inactivityReminded !== today) {
                     let lastActive = '';
                     childTasks.forEach(t => {
@@ -12144,14 +12164,117 @@
                     if (lastActive && lastActive < getLocalDateKey(-1)) {
                         const daysSince = Math.floor((new Date(today) - new Date(lastActive)) / 86400000);
                         const prompt = buildAssistantSystemPrompt(activeChild) + `\n\n${activeChild}已经${daysSince}天没有打卡了。请用温和、不批评的语气给一个简短的提醒和鼓励（50字以内），让ta重新开始学习。不要用引号。`;
-                        const reply = await callDeepSeekAPI(prompt, '提醒我回来学习', []);
-                        if (reply) {
-                            showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80));
-                            setAiReminderLog(prev => ({ ...prev, inactivityReminded: today }));
+                        const sent = await trySendAiReminder('inactivity', prompt, '提醒我回来学习', log, today);
+                        if (sent) { setAiReminderLog(prev => ({ ...prev, inactivityReminded: today })); return; }
+                    }
+                }
+
+                // === 优先级 3：截止前冲刺提醒（deadlineHour 前 1 小时） ===
+                if (hour >= (wheelSettings.deadlineHour || 18) - 1 && hour < (wheelSettings.deadlineHour || 18)) {
+                    const remaining = activeTasks.filter(t => !todayCheckins[t.id]?.[today]).length;
+                    if (remaining > 0) {
+                        const prompt = `你是小星老师。${activeChild}今天还有${remaining}个任务没完成，快到截止时间了。请用紧迫但鼓励的语气提醒（40字以内），不要用引号。`;
+                        const sent = await trySendAiReminder('deadline', prompt, '截止提醒', log, today);
+                        if (sent) return;
+                    }
+                }
+
+                // === 优先级 4：周工资提醒 ===
+                if (weeklyPayrollToClaim) {
+                    const weekKey = weeklyPayrollToClaim.weekKey;
+                    const payrollKey = `payroll_${weekKey}`;
+                    if (!log[payrollKey]) {
+                        const prompt = `你是小星老师。${activeChild}上周的学习工资已经到账了，金额是${weeklyPayrollToClaim.totalReward}金元宝。请用开心的语气提醒ta去领取（40字以内），不要用引号。`;
+                        const sent = await trySendAiReminder('payroll', prompt, '工资提醒', log, today);
+                        if (sent) { setAiReminderLog(prev => ({ ...prev, [payrollKey]: true })); return; }
+                    }
+                }
+
+                // === 优先级 5：升级临近提醒 ===
+                const nextLevel = getNextLevelInfo(getLevelInfo(currentXP).level);
+                if (nextLevel) {
+                    const xpNeeded = nextLevel.xp - currentXP;
+                    const xpForLevel = nextLevel.xp - (getLevelInfo(currentXP).xp || 0);
+                    const progress = xpForLevel > 0 ? (1 - xpNeeded / xpForLevel) : 0;
+                    if (progress >= 0.85 && xpNeeded > 0) {
+                        const levelKey = `level_approach_${nextLevel.level}`;
+                        if (!log[levelKey]) {
+                            const prompt = `你是小星老师。${activeChild}距离下一级（${nextLevel.name || 'Lv.'+nextLevel.level}）只差${xpNeeded}经验了。请用兴奋的语气鼓励ta再加把劲（40字以内），不要用引号。`;
+                            const sent = await trySendAiReminder('level_approach', prompt, '升级提醒', log, today);
+                            if (sent) { setAiReminderLog(prev => ({ ...prev, [levelKey]: true })); return; }
                         }
                     }
                 }
-            }, [aiEnabled, deepseekApiKey, aiReminderLog, tasks, activeChild, checkins, callDeepSeekAPI, showAiBubble]);
+
+                // === 优先级 6：宠物状态关怀 ===
+                const petId = activePet[activeChild];
+                const pet = petId ? petData[activeChild]?.[petId] : null;
+                if (pet) {
+                    const petName = pet.nickname || '宠物';
+                    const lowStat = pet.stats.fullness < 30 ? '饱食度' : pet.stats.cleanliness < 30 ? '清洁度' : pet.stats.mood < 30 ? '心情' : null;
+                    if (lowStat) {
+                        const prompt = `你是小星老师。${activeChild}的宠物${petName}的${lowStat}有点低了。请用温柔的语气提醒ta去照顾宠物（30字以内），不要用引号。`;
+                        const sent = await trySendAiReminder('pet_care', prompt, '宠物关怀', log, today);
+                        if (sent) return;
+                    }
+                }
+
+                // === 优先级 7：Buff 到期提醒 ===
+                const buffs = activeBuffs[activeChild] || {};
+                if (buffs.investMultiplier > 1 && buffs.investExpire) {
+                    const daysLeft = Math.ceil((new Date(buffs.investExpire) - new Date(today)) / 86400000);
+                    if (daysLeft <= 1 && daysLeft >= 0) {
+                        const prompt = `你是小星老师。${activeChild}的投资卡（${buffs.investMultiplier}倍加成）快到期了。请用提醒的语气鼓励ta趁现在多打卡（30字以内），不要用引号。`;
+                        const sent = await trySendAiReminder('buff_expiry', prompt, 'buff到期提醒', log, today);
+                        if (sent) return;
+                    }
+                }
+
+                // === 优先级 8：周末冲刺提醒 ===
+                if (weekendSettings?.enabled) {
+                    const dayOfWeek = now.getDay();
+                    // 周五傍晚预告
+                    if (dayOfWeek === 5 && hour >= 15) {
+                        const weekKey = `weekend_preview_${today}`;
+                        if (!log[weekKey]) {
+                            const prompt = `你是小星老师。明天就是周末冲刺了！请用期待的语气提醒${activeChild}准备好（30字以内），不要用引号。`;
+                            const sent = await trySendAiReminder('weekend_preview', prompt, '周末预告', log, today);
+                            if (sent) { setAiReminderLog(prev => ({ ...prev, [weekKey]: true })); return; }
+                        }
+                    }
+                    // 周日进度提醒
+                    if (dayOfWeek === 0 && hour >= 14) {
+                        const dailyMust = childTasks.filter(t => t.frequencyType === 'daily_must').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
+                        const coreTasks = childTasks.filter(t => t.type === 'core').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
+                        const coreDone = coreTasks.filter(t => todayCheckins[t.id]?.[today]).length;
+                        if (coreTasks.length > 0 && coreDone < coreTasks.length) {
+                            const prompt = `你是小星老师。今天是周日，周末冲刺还差${coreTasks.length - coreDone}个核心任务就达标了。请用鼓励的语气提醒${activeChild}加油完成（40字以内），不要用引号。`;
+                            const sent = await trySendAiReminder('weekend_urge', prompt, '周末冲刺提醒', log, today);
+                            if (sent) return;
+                        }
+                    }
+                }
+
+                // === 优先级 9：每周进步回顾（周日） ===
+                if (now.getDay() === 0) {
+                    const weekKey = `weekly_review_${getLocalDateKey(0)}`;
+                    if (!log[weekKey]) {
+                        // 计算本周数据
+                        let weekDays = 0, weekMinutes = 0;
+                        for (let i = 0; i < 7; i++) {
+                            const d = getLocalDateKey(-i);
+                            const dayHas = childTasks.some(t => todayCheckins[t.id]?.[d]);
+                            if (dayHas) { weekDays++; }
+                            childTasks.forEach(t => { weekMinutes += todayCheckins[t.id]?.[d] || 0; });
+                        }
+                        if (weekDays > 0) {
+                            const prompt = `你是小星老师。本周${activeChild}打卡了${weekDays}天，共学习${weekMinutes}分钟。请用简短的话给一个周回顾和鼓励（50字以内），不要用引号。`;
+                            const sent = await trySendAiReminder('weekly_review', prompt, '周回顾', log, today);
+                            if (sent) { setAiReminderLog(prev => ({ ...prev, [weekKey]: true })); return; }
+                        }
+                    }
+                }
+            }, [aiEnabled, deepseekApiKey, aiReminderLog, tasks, activeChild, checkins, callDeepSeekAPI, showAiBubble, realWeather, weeklyPayrollToClaim, currentXP, activeBuffs, activePet, petData, weekendSettings, wheelSettings]);
 
             // App 启动时和每30分钟检查 AI 提醒
             React.useEffect(() => {
@@ -15088,6 +15211,24 @@ ${context}
 								setAiReminderLog(prev => ({ ...prev, [dailyDoneKey]: true }));
 							}
 						});
+					} else {
+						// 时间敏感提醒（早起/深夜）
+						const now = new Date();
+						const hour = now.getHours();
+						const timeKey = `time_${today}`;
+						if (!log[timeKey]) {
+							if (hour < 9) {
+								const prompt = `你是小星老师。${activeChild}一大早就起来学习打卡了！请用惊喜的语气表扬ta的勤奋（30字以内），不要用引号。`;
+								callDeepSeekAPI(prompt, '表扬早起学习', []).then(reply => {
+									if (reply) { showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80)); setAiReminderLog(prev => ({ ...prev, [timeKey]: true })); }
+								});
+							} else if (hour >= 22) {
+								const prompt = `你是小星老师。${activeChild}这么晚了还在学习打卡。请用关心的语气提醒ta注意休息（30字以内），不要用引号。`;
+								callDeepSeekAPI(prompt, '关心深夜学习', []).then(reply => {
+									if (reply) { showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80)); setAiReminderLog(prev => ({ ...prev, [timeKey]: true })); }
+								});
+							}
+						}
 					}
 				}
             };
