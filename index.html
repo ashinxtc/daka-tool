@@ -11680,6 +11680,7 @@
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
             const syncDebounceRef = React.useRef(null);
             const syncDownloadingRef = React.useRef(false);
+            const lastSyncedHashRef = React.useRef('');
 
             const [randomEventHistory, setRandomEventHistory] = useStickyState({}, 'app_random_event_history');
             const [dailyRandomCounts, setDailyRandomCounts] = useStickyState({}, 'app_daily_random_counts');
@@ -13838,7 +13839,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // --- AI 服务层 ---
             // --- 云同步功能 ---
-            const SYNC_PREFIXES = ['app_']; // 只同步 app_ 开头的键
+            const SYNC_PREFIXES = ['app_'];
+
+            const hashSyncData = (data) => {
+                const keys = Object.keys(data).filter(k => k !== '_syncTs').sort();
+                let h = keys.length;
+                for (const k of keys) { h = ((h << 5) - h + (data[k] || '').length) | 0; }
+                return String(h);
+            };
 
             const collectSyncData = () => {
                 const data = {};
@@ -13863,6 +13871,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         body: JSON.stringify(data)
                     });
                     if (!resp.ok) throw new Error('上传失败');
+                    lastSyncedHashRef.current = hashSyncData(data);
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
@@ -13873,24 +13882,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
             };
 
-            const mergeSyncData = (cloudData) => {
-                let merged = 0;
-                Object.entries(cloudData).forEach(([key, cloudVal]) => {
-                    if (key === '_syncTs') return;
-                    const localVal = localStorage.getItem(key);
-                    if (localVal === null) {
-                        // 本地无，写入云端数据
-                        localStorage.setItem(key, cloudVal);
-                        merged++;
-                    } else if (localVal !== cloudVal) {
-                        // 两边都有但不同，取更新的（简单策略：云端覆盖本地）
-                        localStorage.setItem(key, cloudVal);
-                        merged++;
-                    }
-                });
-                return merged;
-            };
-
             const syncFromCloud = async () => {
                 if (!syncCode) return;
                 setSyncStatus('syncing');
@@ -13898,18 +13889,39 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 try {
                     const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
                     if (resp.status === 404) {
-                        // 云端无数据，上传本地数据
                         await syncToCloud();
                         return;
                     }
                     if (!resp.ok) throw new Error('下载失败');
                     const cloudData = await resp.json();
-                    const merged = mergeSyncData(cloudData);
+                    const cloudHash = hashSyncData(cloudData);
+
+                    // 哈希相同则跳过（数据没变化，防止循环刷新）
+                    if (cloudHash === lastSyncedHashRef.current) {
+                        setSyncLastTime(Date.now());
+                        setSyncStatus('success');
+                        setTimeout(() => setSyncStatus(''), 3000);
+                        syncDownloadingRef.current = false;
+                        return;
+                    }
+
+                    // 写入云端数据
+                    let merged = 0;
+                    Object.entries(cloudData).forEach(([key, cloudVal]) => {
+                        if (key === '_syncTs') return;
+                        const localVal = localStorage.getItem(key);
+                        if (localVal === null || localVal !== cloudVal) {
+                            localStorage.setItem(key, cloudVal);
+                            merged++;
+                        }
+                    });
+
+                    lastSyncedHashRef.current = cloudHash;
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
+
                     if (merged > 0) {
-                        // 有数据合并，刷新页面加载新数据
                         setTimeout(() => window.location.reload(), 1000);
                     }
                 } catch (e) {
@@ -13931,9 +13943,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             // 页面加载时自动下载 + 定期检查
             React.useEffect(() => {
                 if (!syncCode) return;
-                // 页面加载时下载
-                const timer = setTimeout(() => syncFromCloud(), 1500);
-                // 每 30 分钟检查一次
+                // 页面加载时先上传本地数据，再下载（保护本地新数据不被覆盖）
+                const timer = setTimeout(() => {
+                    syncToCloud().then(() => syncFromCloud());
+                }, 1500);
                 const interval = setInterval(() => syncFromCloud(), 1800000);
                 return () => { clearTimeout(timer); clearInterval(interval); };
             }, [syncCode]);
