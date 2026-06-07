@@ -11674,7 +11674,7 @@
             const [aiBubbleVisible, setAiBubbleVisible] = React.useState(false);
 
             // --- 云同步状态 ---
-            const SYNC_URL = 'https://daka-sync.2378385593.workers.dev';
+            const SYNC_URL = 'https://sync.daka-tool.top';
             const [syncCode, setSyncCode] = useStickyState('', 'app_sync_code');
             const [syncLastTime, setSyncLastTime] = useStickyState(null, 'app_sync_last_time');
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
