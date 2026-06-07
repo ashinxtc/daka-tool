@@ -6796,6 +6796,16 @@
                                                         return { ...prev, [activeChild]: s };
                                                     });
                                                     checkAchievements('pet_' + btn.key, { petId });
+                                                    // AI 互动反应（异步，不阻塞动画）
+                                                    if (aiEnabled && deepseekApiKey) {
+                                                        const personality = petPersonalities[petId] || {};
+                                                        const petName2 = pet.nickname || '宠物';
+                                                        const actionNames = { feed: '喂食', bath: '洗澡', play: '玩耍', sleep: '哄你睡觉', pet: '摸头' };
+                                                        const prompt = `你是${petName2}，${activeChild}的宠物。性格：${personality.personality || '可爱'}。说话风格：${personality.speech_style || '可爱'}。主人刚对你做了「${actionNames[btn.key] || btn.key}」。请说一句反应的话（20字以内），不要用引号。`;
+                                                        callDeepSeekAPI(prompt, '跟我说句话吧', []).then(reply => {
+                                                            if (reply) setAiPetDialog(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 40));
+                                                        });
+                                                    }
                                                     setTimeout(() => {
                                                         setPetData(prev => {
                                                             const childPets = { ...(prev[activeChild] || {}) };
@@ -7288,12 +7298,13 @@
         };
 
         // ==================== 探险视图组件 ====================
-        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast }) => {
+        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, aiEnabled, deepseekApiKey, callDeepSeekAPI }) => {
             const [selectedRealm, setSelectedRealm] = useState(null);
             const [showGuide, setShowGuide] = useState(false);
             const [now, setNow] = useState(Date.now());
             const [selectedPetForAdventure, setSelectedPetForAdventure] = useState(null);
             const [lootTooltip, setLootTooltip] = useState(null); // { realmId, source: 'hover'|'click' }
+            const [adventurePetDialog, setAdventurePetDialog] = useState('');
 
             const currentStars = totalStars;
             const advArr = Array.isArray(petAdventures[activeChild]) ? petAdventures[activeChild] : [];
@@ -7547,7 +7558,29 @@
                                                             const realmElemStrong = petElements[petElem]?.strong;
                                                             const elemMatch = realmElemStrong === realm.element ? '克制 ✅' : (petElements[realm.element]?.strong === petElem ? '被克 ⚠️' : '');
                                                             return (
-                                                                <button key={pid} onClick={(e) => { e.stopPropagation(); if (!isAdventuring) setSelectedPetForAdventure(pid); }}
+                                                                <div key={pid} className="flex flex-col items-center">
+                                                                <button onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (!isAdventuring) {
+                                                                            setSelectedPetForAdventure(pid);
+                                                                            // AI 探险对话
+                                                                            if (aiEnabled && deepseekApiKey) {
+                                                                                const personality = (petPersonalities[pid] || {});
+                                                                                const petName = p?.nickname || cat?.name || '宠物';
+                                                                                const mood = p?.stats?.mood || 50;
+                                                                                const fullness = p?.stats?.fullness || 50;
+                                                                                const elemRelation = realmElemStrong === realm.element ? '你克制这个领域' : (petElements[realm.element]?.strong === petElem ? '你被这个领域克制' : '没有属性关系');
+                                                                                const prompt = `你是${petName}，${activeChild}的宠物。性格：${personality.personality || '可爱'}。说话风格：${personality.speech_style || '可爱'}。你的元素是${petElements[petElem]?.name || '无'}。探险领域是${realm.name}（${petElements[realm.element]?.name || '无'}属性）。${elemRelation}。心情${mood}/100。请说一句关于这次探险的话（25字以内），不要用引号。`;
+                                                                                setAdventurePetDialog('...');
+                                                                                callDeepSeekAPI(prompt, '说说你的想法', []).then(reply => {
+                                                                                    if (reply) setAdventurePetDialog(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 50));
+                                                                                    else setAdventurePetDialog('');
+                                                                                });
+                                                                            } else {
+                                                                                setAdventurePetDialog('');
+                                                                            }
+                                                                        }
+                                                                    }}
                                                                     disabled={isAdventuring}
                                                                     className={`flex flex-col items-center px-3 py-2 rounded-xl border text-[10px] transition-all ${isAdventuring ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' : isPetSelected ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200'}`}>
                                                                     <div className="w-10 h-10 flex items-center justify-center">
@@ -7559,7 +7592,16 @@
                                                                     <span className="font-bold text-gray-700 mt-0.5 truncate max-w-[48px]">{p?.nickname || cat?.name || pid}</span>
                                                                     {isAdventuring ? <span className="text-[8px] text-gray-400">探险中</span> : elemMatch ? <span className={`text-[8px] ${elemMatch.includes('✅') ? 'text-emerald-500' : 'text-red-400'}`}>{elemMatch}</span> : null}
                                                                 </button>
-                                                            );
+                                                                {/* 宠物探险对话气泡 */}
+                                                                {isPetSelected && adventurePetDialog && (
+                                                                    <div className="mt-1 max-w-[180px]">
+                                                                        <div className="bg-white rounded-2xl rounded-bl-md px-2.5 py-1.5 shadow-sm border border-gray-100 relative">
+                                                                            <p className="text-[10px] text-gray-600 leading-relaxed">{adventurePetDialog}</p>
+                                                                            <div className="absolute left-[-5px] top-1.5 w-0 h-0 border-r-[5px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent"></div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>);
                                                         })}
                                                     </div>
                                                 </div>
@@ -7809,7 +7851,7 @@
                         <div className="flex-1 overflow-y-auto px-5 pb-5">
                             {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} totalStars={totalStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} aiEnabled={aiEnabled} aiPetEnabled={aiPetEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} />}
                             {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} totalStars={totalStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} petSlots={petSlots} setPetSlots={setPetSlots} currentStreak={slotStreak} recentCheckinRate={slotCheckinRate * 100} />}
-                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} />}
+                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} aiEnabled={aiEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} />}
                             {currentTab === 'album' && <PetAlbumView theme={theme} activeChild={activeChild} ownedPets={ownedPets} petData={petData} />}
                         </div>
                     </div>
@@ -7953,10 +7995,9 @@
                     recognition.onresult = (event) => {
                         const transcript = Array.from(event.results).map(r => r[0].transcript).join('');
                         setInput(transcript);
-                        // 最终结果时自动发送
                         if (event.results[event.results.length - 1].isFinal) {
                             setIsRecording(false);
-                            sendMessage(transcript);
+                            sendMessageRef.current(transcript);
                         }
                     };
                     recognition.onerror = () => setIsRecording(false);
@@ -7985,11 +8026,12 @@
 
             React.useEffect(() => { scrollToBottom(); }, [history.length, show]);
 
+            const sendMessageRef = React.useRef(null);
+
             const sendMessage = async (text) => {
                 if (!text.trim() || isLoading) return;
                 const userMsg = { id: `msg_${Date.now()}`, role: 'user', text: text.trim(), timestamp: Date.now(), childName: activeChild };
 
-                // 添加用户消息并获取最新历史
                 let latestHistory;
                 setAiChatHistory(prev => {
                     const updated = [...(prev[activeChild] || []).slice(-49), userMsg];
@@ -7999,24 +8041,29 @@
                 setInput('');
                 setIsLoading(true);
 
-                // 调用 AI（使用包含最新用户消息的历史）
-                const systemPrompt = buildAssistantSystemPrompt(activeChild);
-                const reply = await callDeepSeekAPI(systemPrompt, text, latestHistory || history);
+                try {
+                    const systemPrompt = buildAssistantSystemPrompt(activeChild);
+                    const reply = await callDeepSeekAPI(systemPrompt, text, latestHistory || history);
 
-                const aiMsg = {
-                    id: `msg_${Date.now() + 1}`,
-                    role: 'assistant',
-                    text: reply || '抱歉，我现在有点忙，等会儿再聊吧~ 😊',
-                    timestamp: Date.now(),
-                    childName: activeChild
-                };
+                    const aiMsg = {
+                        id: `msg_${Date.now() + 1}`,
+                        role: 'assistant',
+                        text: reply || '抱歉，我现在有点忙，等会儿再聊吧~ 😊',
+                        timestamp: Date.now(),
+                        childName: activeChild
+                    };
 
-                setAiChatHistory(prev => ({
-                    ...prev,
-                    [activeChild]: [...(prev[activeChild] || []).slice(-49), aiMsg]
-                }));
-                setIsLoading(false);
+                    setAiChatHistory(prev => ({
+                        ...prev,
+                        [activeChild]: [...(prev[activeChild] || []).slice(-49), aiMsg]
+                    }));
+                } finally {
+                    setIsLoading(false);
+                }
             };
+
+            // 保持 ref 指向最新 sendMessage（修复语音识别闭包问题）
+            sendMessageRef.current = sendMessage;
 
             const quickQuestions = [
                 { icon: '📊', text: '帮我看看最近的学习情况吧' },
@@ -8192,7 +8239,7 @@
             );
         };
 
-        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud }) => {
+        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload }) => {
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState('parent');
             const SETTINGS_TABS = [
@@ -11728,23 +11775,28 @@
             }, []);
 
             // --- 宠物提醒通知状态 ---
-            const [petNotif, setPetNotif] = useStickyState(null, 'app_pet_notif_v1');
+            const [petNotif, setPetNotif] = useStickyState({}, 'app_pet_notif_v1');
             const [petNotifVisible, setPetNotifVisible] = useState(false);
             const petNotifTimerRef = useRef(null);
 
+            // 当前孩子的通知
+            const currentPetNotif = petNotif?.[activeChild] || null;
+
             // 红点逻辑：通知存在 + 未解决 + 已过 10 分钟
             const petNotifDot = useMemo(() => {
-                if (!petNotif || petNotif.resolved) return false;
-                return Date.now() - petNotif.ts > 10 * 60 * 1000;
-            }, [petNotif]);
+                const n = petNotif?.[activeChild];
+                if (!n || n.resolved) return false;
+                return Date.now() - n.ts > 10 * 60 * 1000;
+            }, [petNotif, activeChild]);
 
             // 重新显示气泡并重置计时
             const showPetNotifBubble = useCallback(() => {
-                if (!petNotif || petNotif.resolved) return;
+                const n = petNotif?.[activeChild];
+                if (!n || n.resolved) return;
                 setPetNotifVisible(true);
                 if (petNotifTimerRef.current) clearTimeout(petNotifTimerRef.current);
                 petNotifTimerRef.current = setTimeout(() => setPetNotifVisible(false), 10 * 60 * 1000);
-            }, [petNotif]);
+            }, [petNotif, activeChild]);
 
             // --- 新增：密码与测试模式状态 ---
             const [settingsPassword, setSettingsPassword] = useStickyState('', 'app_settings_password');
@@ -12151,27 +12203,87 @@
             // --- 宠物状态提醒（通知系统） ---
             // 每 30 分钟检测一次，命中条件则创建通知并显示气泡
             useEffect(() => {
-                const checkPetStatus = () => {
+                const checkPetStatus = async () => {
                     const petId = activePet[activeChild];
                     if (!petId) return;
                     const pet = petData[activeChild]?.[petId];
                     if (!pet) return;
                     // 已有未解决通知则不重复创建
-                    if (petNotif && !petNotif.resolved) return;
-                    for (const cfg of PET_NOTIF_CONFIG) {
-                        if (cfg.condition(pet)) {
-                            const notif = { type: cfg.type, message: '🐾 ' + cfg.message(pet), ts: Date.now(), resolved: false };
-                            setPetNotif(notif);
-                            setPetNotifVisible(true);
-                            if (petNotifTimerRef.current) clearTimeout(petNotifTimerRef.current);
-                            petNotifTimerRef.current = setTimeout(() => setPetNotifVisible(false), 10 * 60 * 1000);
-                            break;
+                    if (petNotif[activeChild] && !petNotif[activeChild].resolved) return;
+
+                    const cat = (typeof PET_CATALOG !== 'undefined' ? PET_CATALOG : []).find(c => c.id === petId);
+                    const petName = pet.nickname || cat?.name || '宠物';
+                    const today = getLocalDateKey(0);
+
+                    // 扩展触发条件（原有 3 种 + 新增 2 种）
+                    let triggeredType = null;
+                    let sceneDesc = '';
+                    if (pet.stats.fullness < 20) {
+                        triggeredType = 'hungry'; sceneDesc = '你的饱食度非常低，肚子很饿';
+                    } else if (pet.stats.mood < 20) {
+                        triggeredType = 'sad'; sceneDesc = '你的心情很低落，很不开心';
+                    } else if (pet.stats.cleanliness < 20) {
+                        triggeredType = 'dirty'; sceneDesc = '你身上脏兮兮的，需要洗澡';
+                    } else if (pet.stats.mood < 30) {
+                        triggeredType = 'grumpy'; sceneDesc = '你有点不开心，想闹脾气';
+                    } else {
+                        // 催打卡检查
+                        const childTasks = (tasks[activeChild] || []).filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
+                        const completed = childTasks.filter(t => (checkins[activeChild]?.[t.id]?.[today])).length;
+                        if (childTasks.length > 0 && completed < childTasks.length) {
+                            // 检查距上次打卡是否 ≥ 3 小时
+                            let lastCheckinTime = 0;
+                            childTasks.forEach(t => {
+                                const record = checkins[activeChild]?.[t.id] || {};
+                                Object.keys(record).forEach(date => {
+                                    if (date === today) lastCheckinTime = Date.now(); // 简化处理
+                                });
+                            });
+                            if (completed === 0) {
+                                triggeredType = 'nag'; sceneDesc = '主人今天还没有打卡学习，你在催促主人';
+                            }
                         }
                     }
+
+                    if (!triggeredType) return;
+
+                    // AI 生成消息
+                    let message = '';
+                    if (aiEnabled && deepseekApiKey) {
+                        try {
+                            const personality = petPersonalities[petId] || {};
+                            const prompt = `你是${petName}，${activeChild}的宠物。
+性格：${personality.personality || '可爱活泼'}
+说话风格：${personality.speech_style || '语气可爱'}
+当前状态：心情${pet.stats.mood}/100，饱食${pet.stats.fullness}/100，清洁${pet.stats.cleanliness}/100
+情况：${sceneDesc}
+请用符合你性格的方式，对主人说一句话（30字以内）。不要用引号。`;
+                            const reply = await callDeepSeekAPI(prompt, '跟我说句话吧', []);
+                            if (reply) message = reply.replace(/^[""「]|[""」]$/g, '').slice(0, 60);
+                        } catch (e) { /* fallback to static */ }
+                    }
+
+                    // 回退：静态消息
+                    if (!message) {
+                        const staticMsgs = {
+                            hungry: `${petName}肚子好饿，快去喂食吧！`,
+                            sad: `${petName}心情很低落，快去陪陪它吧！`,
+                            dirty: `${petName}身上脏兮兮的，快去洗香香！`,
+                            grumpy: `${petName}有点不开心了，快去看看吧！`,
+                            nag: `${petName}在等你打卡学习哦！`
+                        };
+                        message = staticMsgs[triggeredType] || `${petName}想你了！`;
+                    }
+
+                    const notif = { type: triggeredType, message: `${petName}：${message}`, ts: Date.now(), resolved: false };
+                    setPetNotif(prev => ({ ...prev, [activeChild]: notif }));
+                    setPetNotifVisible(true);
+                    if (petNotifTimerRef.current) clearTimeout(petNotifTimerRef.current);
+                    petNotifTimerRef.current = setTimeout(() => setPetNotifVisible(false), 10 * 60 * 1000);
                 };
                 const timer = setInterval(checkPetStatus, 1800000);
                 return () => clearInterval(timer);
-            }, [activeChild, activePet, petData, petNotif]);
+            }, [activeChild, activePet, petData, petNotif, aiEnabled, deepseekApiKey, tasks, checkins]);
 
             // --- AI 小星老师主动提醒 ---
             const showAiBubble = React.useCallback((message) => {
@@ -12356,14 +12468,15 @@
 
             // 宠物数据变化时检查通知是否已解决
             useEffect(() => {
-                if (!petNotif || petNotif.resolved) return;
+                const n = petNotif?.[activeChild];
+                if (!n || n.resolved) return;
                 const petId = activePet[activeChild];
                 if (!petId) return;
                 const pet = petData[activeChild]?.[petId];
                 if (!pet) return;
-                const cfg = PET_NOTIF_CONFIG.find(c => c.type === petNotif.type);
+                const cfg = PET_NOTIF_CONFIG.find(c => c.type === n.type);
                 if (cfg && cfg.resolve(pet)) {
-                    setPetNotif(null);
+                    setPetNotif(prev => { const next = { ...prev }; delete next[activeChild]; return next; });
                     setPetNotifVisible(false);
                     if (petNotifTimerRef.current) clearTimeout(petNotifTimerRef.current);
                 }
@@ -13871,6 +13984,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         body: JSON.stringify(data)
                     });
                     if (!resp.ok) throw new Error('上传失败');
+                    localStorage.setItem('_sync_last_hash', hashSyncPayload(data));
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
@@ -15237,6 +15351,7 @@ ${context}
 				}
 				
                 let isWheelTriggered = false;
+                let isDeadlineClose = false;
                 if (editingEntry.date === today && now.getHours() < wheelSettings.deadlineHour) {
                     const historyKey = `${activeChild}-${today}`;
                     if (!wheelHistory[historyKey]) {
@@ -15306,8 +15421,7 @@ ${context}
 
 				// --- 新增：压线大师逻辑判定 ---
 				// --- 【新增/修改】压线大师判定逻辑 (动态读取设置) ---
-                let isDeadlineClose = false;
-                
+
                 // 必须满足：是今天 + 触发了转盘 + 当前时间在截止时间前
                 if (isToday && isWheelTriggered) {
                     const deadline = new Date();
@@ -16619,9 +16733,9 @@ ${context}
 									<span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 border border-white rounded-full animate-ping"></span>
 								)}
 							</button>
-							{petNotifVisible && petNotif && !petNotif.resolved && (
+							{petNotifVisible && currentPetNotif && !currentPetNotif.resolved && (
 								<div className="bg-white px-3 py-2 rounded-xl rounded-bl-none shadow-lg text-xs font-bold text-gray-700 mb-2 border border-gray-100 max-w-[200px]">
-									{petNotif.message}
+									{currentPetNotif.message}
 								</div>
 							)}
 						</div>
@@ -16722,6 +16836,7 @@ ${context}
 					syncStatus={syncStatus}
 					syncToCloud={syncToCloud}
 					syncFromCloud={syncFromCloud}
+					triggerSyncUpload={triggerSyncUpload}
                   />
 
                   {/* AI 学习助手浮窗 */}
