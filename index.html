@@ -7779,7 +7779,7 @@
                 if (!h || !checkins || !tasks) return { slotStreak: 0, slotCheckinRate: 0 };
                 try {
                     const streak = h.calcStreakDays(tasks, checkins, activeChild);
-                    const rate = h.calcCompletionRate(tasks, checkins, activeChild, 7);
+                    const rate = h.calcCompletionRate(tasks, checkins, activeChild, 7, { exemptedDays });
                     return { slotStreak: streak, slotCheckinRate: rate };
                 } catch (e) { return { slotStreak: 0, slotCheckinRate: 0 }; }
             }, [checkins, tasks, activeChild]);
@@ -12504,7 +12504,7 @@
                 const dailyXPBase = h.calcDailyXPBase(checkins, tasks, deferredActiveChild, recentDays);
 
                 // 打卡完成率
-                const completionRate = h.calcCompletionRate(tasks, checkins, deferredActiveChild, recentDays);
+                const completionRate = h.calcCompletionRate(tasks, checkins, deferredActiveChild, recentDays, { exemptedDays });
 
                 // 连续打卡天数
                 const streakDays = h.calcStreakDays(tasks, checkins, deferredActiveChild);
@@ -12607,7 +12607,7 @@
 
                 // 门控检查
                 const recentDays = cfg.recentDays || 7;
-                const completionRate = h.calcCompletionRate(tasks, checkins, deferredActiveChild, recentDays);
+                const completionRate = h.calcCompletionRate(tasks, checkins, deferredActiveChild, recentDays, { exemptedDays });
                 if (completionRate < cfg.gateThresholdWarning) {
                     const refuseDialogs = adventureRefuseDialogs || [];
                     const dialog = refuseDialogs[Math.floor(Math.random() * refuseDialogs.length)] || '学习不够努力，无法探险！';
@@ -12677,7 +12677,7 @@
                 const dailyXPBase = h.calcDailyXPBase(checkins, tasks, childName, recentDays);
 
                 // 计算打卡率和门控
-                const completionRate = h.calcCompletionRate(tasks, checkins, childName, recentDays);
+                const completionRate = h.calcCompletionRate(tasks, checkins, childName, recentDays, { exemptedDays });
                 let gateMultiplier = 1;
                 if (completionRate < cfg.gateThresholdNormal) {
                     gateMultiplier = cfg.gateMultiplier;
