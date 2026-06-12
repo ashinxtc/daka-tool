@@ -7972,6 +7972,48 @@
             );
         };
 
+        // 企业微信家长消息面板
+        const FamilyMessagePanel = ({ show, onClose, messages, activeChild, onSendReply, aiReply, isLoadingAi }) => {
+            const [input, setInput] = React.useState('');
+            if (!show) return null;
+            const unread = messages.filter(m => !m.read && m.direction === 'parent_to_child');
+            return (
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-2xl w-full max-w-lg max-h-[70vh] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white flex justify-between items-center">
+                            <h3 className="font-bold flex items-center gap-2">💌 家长消息 {unread.length > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{unread.length} 条未读</span>}</h3>
+                            <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full">✕</button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+                            {messages.length === 0 && <p className="text-center text-gray-400 text-sm py-8">暂无消息</p>}
+                            {messages.map((msg, i) => (
+                                <div key={msg.id || i} className={`p-3 rounded-xl ${msg.direction === 'parent_to_child' ? 'bg-green-50 border border-green-200 mr-8' : 'bg-blue-50 border border-blue-200 ml-8'}`}>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-xs font-bold text-gray-600">{msg.direction === 'parent_to_child' ? '👨‍👩‍👧 家长' : '🧒 ' + activeChild}</span>
+                                        <span className="text-[10px] text-gray-400">{new Date(msg.timestamp).toLocaleString('zh-CN')}</span>
+                                    </div>
+                                    <p className="text-sm text-gray-800">{msg.content}</p>
+                                </div>
+                            ))}
+                            {aiReply && (
+                                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                    <div className="text-xs font-bold text-amber-600 mb-1">⭐ 小星老师说</div>
+                                    <p className="text-sm text-amber-800">{aiReply}</p>
+                                </div>
+                            )}
+                            {isLoadingAi && <div className="text-center text-xs text-gray-400">小星老师正在思考...</div>}
+                        </div>
+                        <div className="p-3 border-t bg-white flex gap-2">
+                            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && input.trim()) { onSendReply(input.trim()); setInput(''); } }}
+                                placeholder="给家长回复..." className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:border-green-400" />
+                            <button onClick={() => { if (input.trim()) { onSendReply(input.trim()); setInput(''); } }}
+                                className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-bold">发送</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         // AI 学习助手聊天抽屉
         const ChatDrawer = ({ show, onClose, theme, activeChild, aiChatHistory, setAiChatHistory, callDeepSeekAPI, buildAssistantSystemPrompt, aiEnabled, deepseekApiKey, aiChatEnabled }) => {
             const [input, setInput] = React.useState('');
@@ -8239,7 +8281,10 @@
             );
         };
 
-        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload }) => {
+        // 企业微信 Worker 地址（全局常量，SettingsModal 和主 App 共用）
+        const WECOM_API_URL = 'https://daka-wecom.2378385593.workers.dev';
+
+        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus }) => {
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState('parent');
             const SETTINGS_TABS = [
@@ -8252,6 +8297,7 @@
                 { id: 'homeworkExam', label: '作业与考试', icon: '📝' },
                 { id: 'ai', label: 'AI助手', icon: '🤖' },
                 { id: 'sync', label: '同步', icon: '☁️' },
+                { id: 'wecom', label: '企业微信', icon: '💬' },
                 { id: 'data', label: '数据', icon: '💾' }
             ];
 			if (!showSettings) return null;
@@ -8605,6 +8651,95 @@
                                 {!syncCode && (
                                     <div className="text-center text-xs text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
                                         ⚠️ 请输入同步码开启自动同步
+                                    </div>
+                                )}
+                            </div>
+                       </section>
+                       )}
+
+                       {activeSettingsTab === 'wecom' && (
+                       <section className="bg-green-50/50 p-5 rounded-2xl border border-green-100 shadow-sm">
+                            <h3 className="font-bold text-green-800 mb-4 flex items-center gap-2"><span className="text-xl">💬</span> 企业微信亲子互动</h3>
+                            <p className="text-sm text-green-700/80 mb-4">通过企业微信，将孩子的学习进展推送给家长，家长也可以给孩子留言鼓励。</p>
+
+                            <div className="space-y-4">
+                                {/* 总开关 */}
+                                <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
+                                    <div>
+                                        <div className="font-bold text-gray-700 text-sm">启用企业微信推送</div>
+                                        <div className="text-xs text-gray-500">开启后，孩子的学习成就将自动推送到企业微信群</div>
+                                    </div>
+                                    <button onClick={() => setWecomEnabled(!wecomEnabled)} className={`relative w-12 h-6 rounded-full transition-colors ${wecomEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                                        <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${wecomEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                                    </button>
+                                </div>
+
+                                {/* Webhook Key */}
+                                <div className="p-3 bg-white rounded-xl border border-gray-200">
+                                    <label className="text-xs font-bold text-gray-500 block mb-1">群机器人 Webhook Key</label>
+                                    <input type="password" value={wecomWebhookKey} onChange={(e) => setWecomWebhookKey(e.target.value)} placeholder="从企业微信群机器人获取的 key" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-green-400 font-mono" />
+                                    <div className="text-[10px] text-gray-400 mt-1">在企业微信群聊 → 群机器人 → 添加机器人 → Webhook URL 中的 key 参数</div>
+                                </div>
+
+                                {/* 企业微信自建应用配置 */}
+                                <details className="bg-white rounded-xl border border-gray-200">
+                                    <summary className="p-3 cursor-pointer font-bold text-sm text-gray-600 hover:text-green-700">🔧 自建应用高级配置（接收家长消息用）</summary>
+                                    <div className="px-3 pb-3 space-y-3">
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 block mb-1">CorpID</label>
+                                            <input type="text" value={wecomCorpId} onChange={(e) => setWecomCorpId(e.target.value)} placeholder="企业 ID" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-green-400 font-mono" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 block mb-1">AgentID</label>
+                                            <input type="text" value={wecomAgentId} onChange={(e) => setWecomAgentId(e.target.value)} placeholder="自建应用 AgentID" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-green-400 font-mono" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 block mb-1">回调 Token</label>
+                                            <input type="text" value={wecomCallbackToken} onChange={(e) => setWecomCallbackToken(e.target.value)} placeholder="接收消息设置中的 Token" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-green-400 font-mono" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 block mb-1">回调 EncodingAESKey</label>
+                                            <input type="text" value={wecomCallbackAesKey} onChange={(e) => setWecomCallbackAesKey(e.target.value)} placeholder="43 字符" className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-green-400 font-mono" />
+                                        </div>
+                                        <div className="text-[10px] text-gray-400">回调 URL 设为：{WECOM_API_URL}/api/wecom/callback</div>
+                                    </div>
+                                </details>
+
+                                {/* 测试连接 */}
+                                <div className="flex gap-2">
+                                    <button onClick={async () => {
+                                        setWecomTestStatus('testing');
+                                        try {
+                                            const resp = await fetch(`${WECOM_API_URL}/api/wecom/test`);
+                                            const result = await resp.json();
+                                            setWecomTestStatus(result.ok ? 'success' : 'error');
+                                        } catch (e) {
+                                            setWecomTestStatus('error');
+                                        }
+                                        setTimeout(() => setWecomTestStatus(''), 5000);
+                                    }} disabled={!wecomWebhookKey}
+                                        className="flex-1 px-4 py-2 bg-green-500 text-white text-sm font-bold rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
+                                        {wecomTestStatus === 'testing' ? '⏳ 测试中...' : wecomTestStatus === 'success' ? '✅ 连接成功！' : wecomTestStatus === 'error' ? '❌ 连接失败' : '🔗 测试连接'}
+                                    </button>
+                                </div>
+
+                                {/* 配置指南 */}
+                                <details className="bg-green-50 rounded-xl border border-green-200">
+                                    <summary className="p-3 cursor-pointer font-bold text-sm text-green-700">📖 配置指南</summary>
+                                    <div className="px-3 pb-3 text-xs text-green-800 space-y-2">
+                                        <p><b>第一步：创建企业微信群</b></p>
+                                        <p>在企业微信中创建一个家庭群，邀请家长加入。</p>
+                                        <p><b>第二步：添加群机器人</b></p>
+                                        <p>群聊设置 → 群机器人 → 添加机器人 → 复制 Webhook URL 中的 key 参数，粘贴到上方。</p>
+                                        <p><b>第三步（可选）：创建自建应用</b></p>
+                                        <p>如需家长从企业微信给 APP 发消息（双向互动），需在企业微信管理后台创建自建应用，设置回调 URL，并配置以上高级参数。</p>
+                                        <p><b>同步码复用</b>：企业微信功能自动使用上方「同步」中设置的同步码作为家庭标识。</p>
+                                    </div>
+                                </details>
+
+                                {!wecomWebhookKey && (
+                                    <div className="text-center text-xs text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                                        ⚠️ 请先配置 Webhook Key 以启用企业微信推送
                                     </div>
                                 )}
                             </div>
@@ -9693,7 +9828,7 @@
         };
 
         // --- 独立弹窗：作业与考试成绩登记（仅登记，不含数据中心）---
-        const HomeworkExamRecordModal = ({ show, onClose, theme, activeChild, homeworkExamConfig, homeworkRecords, examRecords, setHomeworkRecords, setExamRecords, setWheelHistory }) => {
+        const HomeworkExamRecordModal = ({ show, onClose, theme, activeChild, homeworkExamConfig, homeworkRecords, examRecords, setHomeworkRecords, setExamRecords, setWheelHistory, pushWecomGrade }) => {
             if (!show) return null;
             const [tab, setTab] = useState('homework');
             const config = homeworkExamConfig || {};
@@ -9764,7 +9899,7 @@
                                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                                         <h3 className="font-black text-gray-800 mb-3">登记作业成绩</h3>
                                         {hwSubjects.length === 0 ? <p className="text-gray-400 text-sm">请在设置 → 作业与考试 中先添加科目和作业名称。</p> : (
-                                            <HomeworkRecordForm subjects={hwSubjects} itemsBySubject={hwItemsBySub} gradingMode={hwGradingMode} gradeOptions={GRADE_OPTIONS} onSave={(record) => { const gold = computeHomeworkGold(record); const ts = Date.now(); const historyKey = `${activeChild}-HOMEWORK-${ts}__${(record.subjectName || '')}__${(record.homeworkName || '')}`; setHomeworkRecords(prev => ({ ...prev, [activeChild]: [...((prev[activeChild]) || []), { ...record, id: 'hw_' + ts, earnedGold: gold, wheelHistoryKey: historyKey, createdAt: new Date().toISOString() }] })); if (gold > 0 && setWheelHistory) { setWheelHistory(prev => ({ ...prev, [historyKey]: gold })); updateStats(activeChild, 'gold_earn', gold, { source: 'homework', dateKey: getLocalDateKey(0) }); } }} />
+                                            <HomeworkRecordForm subjects={hwSubjects} itemsBySubject={hwItemsBySub} gradingMode={hwGradingMode} gradeOptions={GRADE_OPTIONS} onSave={(record) => { const gold = computeHomeworkGold(record); const ts = Date.now(); const historyKey = `${activeChild}-HOMEWORK-${ts}__${(record.subjectName || '')}__${(record.homeworkName || '')}`; setHomeworkRecords(prev => ({ ...prev, [activeChild]: [...((prev[activeChild]) || []), { ...record, id: 'hw_' + ts, earnedGold: gold, wheelHistoryKey: historyKey, createdAt: new Date().toISOString() }] })); if (gold > 0 && setWheelHistory) { setWheelHistory(prev => ({ ...prev, [historyKey]: gold })); updateStats(activeChild, 'gold_earn', gold, { source: 'homework', dateKey: getLocalDateKey(0) }); } if (pushWecomGrade) pushWecomGrade(activeChild, 'homework', record.subjectName || record.homeworkName || '作业', record.scoreOrGrade, record.date); }} />
                                         )}
                                     </div>
                                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -9783,7 +9918,7 @@
                                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                                         <h3 className="font-black text-gray-800 mb-3">登记考试成绩</h3>
                                         {hwSubjects.length === 0 || examTypes.length === 0 ? <p className="text-gray-400 text-sm">请在设置 → 作业与考试 中配置科目和考试类型。</p> : (
-                                            <ExamRecordForm subjects={hwSubjects} examTypes={examTypes} onSave={(record) => { const gold = computeExamGold(record.scoreOrGrade); const ts = Date.now(); const historyKey = `${activeChild}-EXAM-${ts}__${(record.subjectName || '')}__${(record.examTypeName || '')}`; setExamRecords(prev => ({ ...prev, [activeChild]: [...((prev[activeChild]) || []), { ...record, id: 'ex_' + ts, earnedGold: gold, wheelHistoryKey: historyKey, createdAt: new Date().toISOString() }] })); if (gold > 0 && setWheelHistory) { setWheelHistory(prev => ({ ...prev, [historyKey]: gold })); updateStats(activeChild, 'gold_earn', gold, { source: 'exam', dateKey: getLocalDateKey(0) }); } }} />
+                                            <ExamRecordForm subjects={hwSubjects} examTypes={examTypes} onSave={(record) => { const gold = computeExamGold(record.scoreOrGrade); const ts = Date.now(); const historyKey = `${activeChild}-EXAM-${ts}__${(record.subjectName || '')}__${(record.examTypeName || '')}`; setExamRecords(prev => ({ ...prev, [activeChild]: [...((prev[activeChild]) || []), { ...record, id: 'ex_' + ts, earnedGold: gold, wheelHistoryKey: historyKey, createdAt: new Date().toISOString() }] })); if (gold > 0 && setWheelHistory) { setWheelHistory(prev => ({ ...prev, [historyKey]: gold })); updateStats(activeChild, 'gold_earn', gold, { source: 'exam', dateKey: getLocalDateKey(0) }); } if (pushWecomGrade) pushWecomGrade(activeChild, 'exam', record.subjectName || '考试', record.scoreOrGrade, record.date); }} />
                                         )}
                                     </div>
                                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -11727,6 +11862,81 @@
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
             const syncDebounceRef = React.useRef(null);
             const syncDownloadingRef = React.useRef(false);
+
+            // --- 企业微信亲子互动状态 ---
+            const [wecomEnabled, setWecomEnabled] = useStickyState(false, 'app_wecom_enabled');
+            const [wecomWebhookKey, setWecomWebhookKey] = useStickyState('', 'app_wecom_webhook_key');
+            const [wecomCorpId, setWecomCorpId] = useStickyState('', 'app_wecom_corp_id');
+            const [wecomAgentId, setWecomAgentId] = useStickyState('', 'app_wecom_agent_id');
+            const [wecomCallbackToken, setWecomCallbackToken] = useStickyState('', 'app_wecom_callback_token');
+            const [wecomCallbackAesKey, setWecomCallbackAesKey] = useStickyState('', 'app_wecom_callback_aes_key');
+            const [wecomTestStatus, setWecomTestStatus] = React.useState('');
+            const [familyMessages, setFamilyMessages] = React.useState([]);
+            const [showFamilyPanel, setShowFamilyPanel] = React.useState(false);
+            const [familyAiReply, setFamilyAiReply] = React.useState('');
+            const [familyAiLoading, setFamilyAiLoading] = React.useState(false);
+            const [wecomPushLog, setWecomPushLog] = useStickyState({}, 'app_wecom_push_log');
+
+            // 家长消息轮询
+            React.useEffect(() => {
+                if (!wecomEnabled || !syncCode) return;
+                const fetchMessages = async () => {
+                    try {
+                        const resp = await fetch(`${WECOM_API_URL}/api/family/messages?code=${encodeURIComponent(syncCode)}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            setFamilyMessages(data.messages || []);
+                        }
+                    } catch (e) { /* 静默失败 */ }
+                };
+                fetchMessages();
+                const interval = setInterval(fetchMessages, 60000);
+                return () => clearInterval(interval);
+            }, [wecomEnabled, syncCode]);
+
+            // 清理过期的推送日志（保留最近 7 天）
+            React.useEffect(() => {
+                const cutoff = getLocalDateKey(-7);
+                const cleaned = {};
+                Object.entries(wecomPushLog).forEach(([k, v]) => {
+                    const match = k.match(/_(\d{4}-\d{2}-\d{2})$/);
+                    if (!match || match[1] >= cutoff) cleaned[k] = v;
+                });
+                if (Object.keys(cleaned).length !== Object.keys(wecomPushLog).length) {
+                    setWecomPushLog(cleaned);
+                }
+            }, []);
+
+            // 发送家长消息回复
+            const sendFamilyReply = async (content) => {
+                if (!syncCode || !content) return;
+                try {
+                    await fetch(`${WECOM_API_URL}/api/family/messages`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ syncCode, content, childName: activeChild })
+                    });
+                    setFamilyMessages(prev => [...prev, { id: 'local_' + Date.now(), from: activeChild, content, type: 'text', timestamp: Date.now(), direction: 'child_to_parent', read: true }]);
+                } catch (e) { console.warn('回复失败:', e); }
+            };
+
+            // 打开家长消息面板时，为最新未读消息生成 AI 鼓励
+            React.useEffect(() => {
+                if (!showFamilyPanel || !aiEnabled || !deepseekApiKey) return;
+                const unread = familyMessages.filter(m => !m.read && m.direction === 'parent_to_child');
+                if (unread.length === 0) return;
+                const latest = unread[unread.length - 1];
+                setFamilyAiLoading(true);
+                const prompt = buildAssistantSystemPrompt(activeChild)
+                    + `\n\n家长"${latest.from || '家长'}"给孩子发来消息：「${latest.content}」`
+                    + `\n请根据这个消息给孩子一个温暖的回应和鼓励（80字以内）。`;
+                callDeepSeekAPI(prompt, '回应家长的消息', []).then(reply => {
+                    if (reply) {
+                        setFamilyAiReply(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 120));
+                    }
+                    setFamilyAiLoading(false);
+                });
+            }, [showFamilyPanel, familyMessages]);
 
             const [randomEventHistory, setRandomEventHistory] = useStickyState({}, 'app_random_event_history');
             const [dailyRandomCounts, setDailyRandomCounts] = useStickyState({}, 'app_daily_random_counts');
@@ -14211,6 +14421,139 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
             };
 
+            // ===== 企业微信推送功能 =====
+
+            // 节流检查：每种事件类型每天只推一次
+            const canPushWecom = (eventType) => {
+                const today = getLocalDateKey(0);
+                const key = `wecom_push_${eventType}_${today}`;
+                if (wecomPushLog[key]) return false;
+                return true;
+            };
+
+            const markWecomPushed = (eventType) => {
+                const today = getLocalDateKey(0);
+                const key = `wecom_push_${eventType}_${today}`;
+                setWecomPushLog(prev => ({ ...prev, [key]: true }));
+            };
+
+            // 发送企业微信消息（通过 Webhook）
+            const sendWecomMessage = async (msgtype, content) => {
+                if (!wecomEnabled || !wecomWebhookKey || !syncCode) return;
+                try {
+                    const resp = await fetch(`${WECOM_API_URL}/api/wecom/send`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ syncCode, msgtype, content })
+                    });
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({}));
+                        console.warn('企业微信推送失败:', err.error);
+                    }
+                } catch (e) {
+                    console.warn('企业微信推送异常:', e);
+                }
+            };
+
+            // 事件1：每日必做全部完成
+            const pushWecomDailyDone = (childName, completedTasks) => {
+                if (!canPushWecom('dailyDone')) return;
+                const now = new Date();
+                const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+                const taskList = completedTasks.map(t => `- ✅ ${t.name}`).join('\n');
+                const content = `> 🎉 **${childName} 今日任务全部完成！**\n>\n> 📋 完成项目：\n${taskList}\n>\n> ⏰ 完成时间：${timeStr}\n> 💪 干得漂亮！今天的学习任务已全部拿下！`;
+                sendWecomMessage('markdown', content);
+                markWecomPushed('dailyDone');
+            };
+
+            // 事件2：成就解锁
+            const pushWecomAchievement = (childName, badge) => {
+                if (!canPushWecom('achievement')) return;
+                const rarityMap = { common: '普通', rare: '稀有', epic: '史诗', legendary: '传说' };
+                const content = `> 🏆 **${childName} 解锁新成就！**\n>\n> 🎖️ 「${badge.name}」— ${badge.desc}\n> 📂 分类：${badge.category} | 稀有度：${rarityMap[badge.rarity] || badge.rarity}\n>\n> 继续加油，还有更多成就等着你！`;
+                sendWecomMessage('markdown', content);
+                markWecomPushed('achievement');
+            };
+
+            // 事件3：等级提升
+            const pushWecomLevelUp = (childName, oldLevel, newLevel) => {
+                if (!canPushWecom('levelUp')) return;
+                const content = `> ⬆️ **${childName} 升级了！**\n>\n> 🎆 Lv.${oldLevel.level}「${oldLevel.name}」→ Lv.${newLevel.level}「${newLevel.name}」\n> 🏛️ 当前纪元：${newLevel.era}\n> 📝 ${newLevel.desc}\n>\n> 历史的车轮滚滚向前！`;
+                sendWecomMessage('markdown', content);
+                markWecomPushed('levelUp');
+            };
+
+            // 事件4/5：作业/考试成绩
+            const pushWecomGrade = (childName, type, subject, score, date) => {
+                const eventType = type === 'exam' ? 'examGrade' : 'homeworkGrade';
+                if (!canPushWecom(eventType)) return;
+                const icon = type === 'exam' ? '📝' : '📚';
+                const typeName = type === 'exam' ? '考试成绩' : '作业成绩';
+                const encouragement = score >= 90 ? '太棒了！继续保持！' : score >= 80 ? '很好！再接再厉！' : '继续努力，相信你会更好！';
+                const content = `> ${icon} **${childName} ${typeName}**\n>\n> 📚 ${subject}：${score}分\n> 📅 ${date}\n>\n> ${encouragement}`;
+                sendWecomMessage('markdown', content);
+                markWecomPushed(eventType);
+            };
+
+            // 事件6/7：里程碑
+            const pushWecomMilestone = (childName, type, count) => {
+                const eventType = `milestone_${type}_${count}`;
+                if (!canPushWecom(eventType)) return;
+                const icon = type === 'checkin' ? '🎯' : '💰';
+                const label = type === 'checkin' ? '打卡里程碑' : '财富里程碑';
+                const unit = type === 'checkin' ? '次打卡' : '金元宝';
+                sendWecomMessage('text', `${icon} ${childName} 达成${label}：累计${count} ${unit}！`);
+                markWecomPushed(eventType);
+            };
+
+            // 事件8：23:59 每日完成情况汇总（未全部完成时）
+            const pushWecomDailySummary = (childName, dailyMust, checkinsData) => {
+                if (!canPushWecom('dailySummary')) return;
+                const today = getLocalDateKey(0);
+                const completed = [];
+                const incomplete = [];
+                dailyMust.forEach(t => {
+                    if (checkinsData[childName]?.[t.id]?.[today]) {
+                        completed.push(t.name);
+                    } else {
+                        incomplete.push(t.name);
+                    }
+                });
+                if (incomplete.length === 0) return; // 全部完成时不推（事件1已覆盖）
+                const rate = Math.round((completed.length / dailyMust.length) * 100);
+                const completedList = completed.map(n => `- ✅ ${n}`).join('\n') || '- （无）';
+                const incompleteList = incomplete.map(n => `- ❌ ${n}`).join('\n');
+                const content = `> 📊 **${childName} 今日学习情况**\n> 📅 ${today}\n>\n> ✅ 已完成：\n${completedList}\n>\n> ❌ 未完成：\n${incompleteList}\n>\n> 完成度：${completed.length}/${dailyMust.length}（${rate}%）`;
+                sendWecomMessage('markdown', content);
+                markWecomPushed('dailySummary');
+            };
+
+            // 事件9：连续全部完成 ≥3 天
+            const pushWecomStreak = (childName, streakCount, startDate) => {
+                const milestones = [3, 7, 14, 30];
+                const milestone = milestones.find(m => m === streakCount);
+                if (!milestone) return;
+                const eventType = `streak_${streakCount}`;
+                if (!canPushWecom(eventType)) return;
+                const content = `> 🔥 **${childName} 连续${streakCount}天全部完成每日任务！**\n>\n> 这份坚持太了不起了！从 ${startDate} 到今天，\n> ${childName} 每一天都完成了所有必做学习任务。\n>\n> 坚持就是胜利，继续加油！💪`;
+                sendWecomMessage('markdown', content);
+                markWecomPushed(eventType);
+            };
+
+            // 计算连续全部完成 daily_must 的天数
+            const calcDailyMustStreak = (childName, tasksData, checkinsData) => {
+                const dailyMust = (tasksData[childName] || []).filter(t => t.frequencyType === 'daily_must');
+                if (dailyMust.length === 0) return { streak: 0, startDate: '' };
+                let streak = 0;
+                for (let i = 0; i < 365; i++) {
+                    const d = getLocalDateKey(-i);
+                    const allDone = dailyMust.every(t => checkinsData[childName]?.[t.id]?.[d]);
+                    if (allDone) streak++;
+                    else break;
+                }
+                return { streak, startDate: getLocalDateKey(-(streak - 1)) };
+            };
+
             // AI 学习助手 System Prompt
             const buildAssistantSystemPrompt = (childName) => {
                 const context = buildChildContext(childName);
@@ -14272,11 +14615,42 @@ ${context}
                     });
                     setUnlockQueue(prev => [...prev, ...result.unlockQueue]);
                     confetti({ particleCount: 200, spread: 100, origin: { y: 0.6 }, colors: ['#FFD700', '#FFA500'] });
+                    // 企业微信推送：成就解锁
+                    Object.keys(result.newBadges).forEach(badgeId => {
+                        const badge = AchievementSystem.BADGES.find(b => b.id === badgeId);
+                        if (badge) pushWecomAchievement(activeChild, badge);
+                    });
                 }
             };
             
             // 每次渲染都将最新的 checkAchievements 同步到 Ref，让 setTimeout 始终调用最新版本
             checkAchievementsRef.current = checkAchievements;
+
+            // 企业微信推送：等级提升检测
+            const wecomPrevLevelRef = React.useRef(null);
+            React.useEffect(() => {
+                if (!wecomEnabled || !deepseekApiKey) return;
+                const currentLevel = getLevelInfo(currentXP);
+                if (wecomPrevLevelRef.current !== null && currentLevel.level > wecomPrevLevelRef.current.level) {
+                    pushWecomLevelUp(activeChild, wecomPrevLevelRef.current, currentLevel);
+                }
+                wecomPrevLevelRef.current = currentLevel;
+            }, [currentXP, wecomEnabled, deepseekApiKey, activeChild]);
+
+            // 企业微信推送：23:59 每日完成情况汇总
+            React.useEffect(() => {
+                if (!wecomEnabled || !wecomWebhookKey || !syncCode) return;
+                const now = new Date();
+                const msUntil2359 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0) - now;
+                if (msUntil2359 < 0) return; // 已过 23:59
+                const timer = setTimeout(() => {
+                    const dailyMust = (tasks[activeChild] || []).filter(t => t.frequencyType === 'daily_must');
+                    if (dailyMust.length > 0) {
+                        pushWecomDailySummary(activeChild, dailyMust, checkins);
+                    }
+                }, msUntil2359);
+                return () => clearTimeout(timer);
+            }, [wecomEnabled, wecomWebhookKey, syncCode, activeChild, tasks, checkins]);
 
 			//大事纪数据核对与补全功能
 			const handleSyncMilestones = () => {
@@ -15393,9 +15767,11 @@ ${context}
                             description: `累计完成${count}次任务打卡`,
                             icon: '🎯'
                         }]);
+                        // 企业微信推送：打卡里程碑
+                        pushWecomMilestone(activeChild, 'checkin', count);
                     }
                 });
-                
+
                 // 检测财富里程碑
                 const currentGold = calculateTotalGold(newCheckins, wheelHistory, activeChild);
                 const milestoneGold = [500, 1000, 5000];
@@ -15413,6 +15789,8 @@ ${context}
                             description: `累计资产达到${amount}元宝`,
                             icon: '💰'
                         }]);
+                        // 企业微信推送：金元宝里程碑
+                        pushWecomMilestone(activeChild, 'gold', amount);
                     }
                 });
 
@@ -15508,6 +15886,13 @@ ${context}
 								setAiReminderLog(prev => ({ ...prev, [dailyDoneKey]: true }));
 							}
 						});
+						// 企业微信推送：每日必做全部完成
+							pushWecomDailyDone(activeChild, dailyMust);
+							// 企业微信推送：连续全部完成检测
+							const streakInfo = calcDailyMustStreak(activeChild, tasks, newCheckins);
+							if (streakInfo.streak >= 3) {
+								pushWecomStreak(activeChild, streakInfo.streak, streakInfo.startDate);
+							}
 					} else {
 						// 时间敏感提醒（早起/深夜）
 						const now = new Date();
@@ -16837,6 +17222,20 @@ ${context}
 					syncToCloud={syncToCloud}
 					syncFromCloud={syncFromCloud}
 					triggerSyncUpload={triggerSyncUpload}
+					wecomEnabled={wecomEnabled}
+					setWecomEnabled={setWecomEnabled}
+					wecomWebhookKey={wecomWebhookKey}
+					setWecomWebhookKey={setWecomWebhookKey}
+					wecomCorpId={wecomCorpId}
+					setWecomCorpId={setWecomCorpId}
+					wecomAgentId={wecomAgentId}
+					setWecomAgentId={setWecomAgentId}
+					wecomCallbackToken={wecomCallbackToken}
+					setWecomCallbackToken={setWecomCallbackToken}
+					wecomCallbackAesKey={wecomCallbackAesKey}
+					setWecomCallbackAesKey={setWecomCallbackAesKey}
+					wecomTestStatus={wecomTestStatus}
+					setWecomTestStatus={setWecomTestStatus}
                   />
 
                   {/* AI 学习助手浮窗 */}
@@ -16855,6 +17254,32 @@ ${context}
                             deepseekApiKey={deepseekApiKey}
                             aiChatEnabled={aiChatEnabled}
                         />
+                    </>
+                  )}
+
+                  {/* 企业微信家长消息 */}
+                  {wecomEnabled && syncCode && (
+                    <>
+                        <FamilyMessagePanel
+                            show={showFamilyPanel}
+                            onClose={() => setShowFamilyPanel(false)}
+                            messages={familyMessages}
+                            activeChild={activeChild}
+                            onSendReply={sendFamilyReply}
+                            aiReply={familyAiReply}
+                            isLoadingAi={familyAiLoading}
+                        />
+                        {/* 浮动消息按钮 */}
+                        {!showFamilyPanel && (() => {
+                            const unreadCount = familyMessages.filter(m => !m.read && m.direction === 'parent_to_child').length;
+                            return (
+                                <button onClick={() => setShowFamilyPanel(true)}
+                                    className="fixed bottom-24 right-4 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-xl flex items-center justify-center text-xl hover:scale-110 transition-transform">
+                                    💌
+                                    {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{unreadCount}</span>}
+                                </button>
+                            );
+                        })()}
                     </>
                   )}
 
@@ -17006,7 +17431,7 @@ ${context}
                       );
                   })()}
 				  {/* 作业与考试成绩登记弹窗（独立） */}
-                  <HomeworkExamRecordModal show={showHomeworkExamModal} onClose={() => setShowHomeworkExamModal(false)} theme={theme} activeChild={activeChild} homeworkExamConfig={homeworkExamConfig} homeworkRecords={homeworkRecords} examRecords={examRecords} setHomeworkRecords={setHomeworkRecords} setExamRecords={setExamRecords} setWheelHistory={setWheelHistory} />
+                  <HomeworkExamRecordModal show={showHomeworkExamModal} onClose={() => setShowHomeworkExamModal(false)} theme={theme} activeChild={activeChild} homeworkExamConfig={homeworkExamConfig} homeworkRecords={homeworkRecords} examRecords={examRecords} setHomeworkRecords={setHomeworkRecords} setExamRecords={setExamRecords} setWheelHistory={setWheelHistory} pushWecomGrade={pushWecomGrade} />
 				  {/* 学习数据中心弹窗 */}
                   <StatsModal 
                     show={showStats} 

@@ -493,25 +493,57 @@ const ADVENTURE_HELPERS = {
         return levels[0];
     },
 
-    // 计算打卡完成率
-    calcCompletionRate: function(tasks, checkins, childName, recentDays) {
+    // 本地日期格式化（替代 toISOString，避免时区问题）
+    _localDateKey: function(date) {
+        var y = date.getFullYear();
+        var m = String(date.getMonth() + 1).padStart(2, '0');
+        var d = String(date.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+    },
+
+    // 计算打卡完成率（优化版）
+    calcCompletionRate: function(tasks, checkins, childName, recentDays, extraData) {
         var now = new Date();
         var expected = 0;
         var actual = 0;
         var childTasks = tasks[childName] || [];
         var childCheckins = checkins[childName] || {};
+        var exemptedDays = (extraData && extraData.exemptedDays) ? extraData.exemptedDays : {};
+        var self = this;
 
         for (var d = 1; d <= recentDays; d++) {
             var date = new Date(now);
             date.setDate(date.getDate() - d);
-            var dateKey = date.toISOString().split('T')[0];
+            var dateKey = self._localDateKey(date);
+
+            // 跳过休息日（兼容数组和对象格式）
+            if (Array.isArray(exemptedDays) ? exemptedDays.indexOf(dateKey) >= 0 : !!exemptedDays[dateKey]) continue;
+
             childTasks.forEach(function(task) {
-                expected++;
+                // 跳过已退役的任务
+                if (task.earlyCompleted) return;
+                // 跳过任务开始日期之前的天数
+                if (task.startDate && dateKey < task.startDate) return;
+                // 跳过任务截止日期之后的天数
+                if (task.deadline && dateKey > task.deadline) return;
+
+                var freq = task.frequencyType || 'count';
                 var taskRecord = childCheckins[task.id] || {};
-                if (taskRecord[dateKey]) actual++;
+                var checked = taskRecord[dateKey] ? 1 : 0;
+
+                if (freq === 'weekly_optional') {
+                    // weekly_optional：每天 expected = weeklyTargetCount / 7
+                    var weeklyTarget = task.weeklyTargetCount || 3;
+                    expected += weeklyTarget / 7;
+                    actual += checked * (weeklyTarget / 7);
+                } else {
+                    // daily_must / count：每天1次
+                    expected++;
+                    actual += checked;
+                }
             });
         }
-        return expected > 0 ? actual / expected : 1;
+        return expected > 0 ? Math.min(1, actual / expected) : 1;
     },
 
     // 计算连续打卡天数
@@ -520,13 +552,17 @@ const ADVENTURE_HELPERS = {
         var childTasks = tasks[childName] || [];
         var childCheckins = checkins[childName] || {};
         var streak = 0;
+        var self = this;
 
         for (var d = 1; d <= 365; d++) {
             var date = new Date(now);
             date.setDate(date.getDate() - d);
-            var dateKey = date.toISOString().split('T')[0];
+            var dateKey = self._localDateKey(date);
             var dayCompleted = false;
             childTasks.forEach(function(task) {
+                if (task.earlyCompleted) return;
+                if (task.startDate && dateKey < task.startDate) return;
+                if (task.deadline && dateKey > task.deadline) return;
                 var taskRecord = childCheckins[task.id] || {};
                 if (taskRecord[dateKey]) dayCompleted = true;
             });
@@ -542,11 +578,12 @@ const ADVENTURE_HELPERS = {
         var totalGold = 0;
         var childTasks = tasks[childName] || [];
         var childCheckins = checkins[childName] || {};
+        var self = this;
 
         for (var d = 1; d <= recentDays; d++) {
             var date = new Date(now);
             date.setDate(date.getDate() - d);
-            var dateKey = date.toISOString().split('T')[0];
+            var dateKey = self._localDateKey(date);
             var dayGold = 0;
             childTasks.forEach(function(task) {
                 var taskRecord = childCheckins[task.id] || {};
@@ -586,11 +623,12 @@ const ADVENTURE_HELPERS = {
         var totalXP = 0;
         var childTasks = tasks[childName] || [];
         var childCheckins = checkins[childName] || {};
+        var self = this;
 
         for (var d = 1; d <= recentDays; d++) {
             var date = new Date(now);
             date.setDate(date.getDate() - d);
-            var dateKey = date.toISOString().split('T')[0];
+            var dateKey = self._localDateKey(date);
             childTasks.forEach(function(task) {
                 var taskRecord = childCheckins[task.id] || {};
                 if (taskRecord[dateKey]) {
