@@ -7108,7 +7108,7 @@
                 };
 
                 setPetData(prev => ({ ...prev, [activeChild]: { ...(prev[activeChild] || {}), [petId]: newPet } }));
-                setOwnedPets(prev => ({ ...prev, [activeChild]: [...(prev[activeChild] || []), petId] }));
+                setOwnedPets(prev => ({ ...prev, [aiBubbleChild]: [...(prev[aiBubbleChild] || []), petId] }));
                 if (!activePet[activeChild]) {
                     setActivePet(prev => ({ ...prev, [activeChild]: petId }));
                 }
@@ -8097,7 +8097,7 @@
 
                     setAiChatHistory(prev => ({
                         ...prev,
-                        [activeChild]: [...(prev[activeChild] || []).slice(-49), aiMsg]
+                        [aiBubbleChild]: [...(prev[aiBubbleChild] || []).slice(-49), aiMsg]
                     }));
                 } finally {
                     setIsLoading(false);
@@ -11854,6 +11854,7 @@
             const [aiReminderLog, setAiReminderLog] = useStickyState({}, 'app_ai_reminder_log_v1');
             const [aiBubbleMessage, setAiBubbleMessage] = React.useState('');
             const [aiBubbleVisible, setAiBubbleVisible] = React.useState(false);
+            const [aiBubbleChild, setAiBubbleChild] = React.useState('');
 
             // --- 云同步状态 ---
             const SYNC_URL = 'https://sync.daka-tool.top';
@@ -12499,18 +12500,19 @@
             const showAiBubble = React.useCallback((message) => {
                 setAiBubbleMessage(message);
                 setAiBubbleVisible(true);
-            }, []);
+                setAiBubbleChild(activeChild);
+            }, [activeChild]);
 
             // 辅助：AI 发送气泡（每种类型每日限一次，每日最多3种）
             const trySendAiReminder = async (type, prompt, userMsg, log, today) => {
-                const typeKey = `reminder_${type}_${today}`;
+                const typeKey = `reminder_${type}_${activeChild}_${today}`;
                 if (log[typeKey]) return false;
-                const todayTypes = Object.keys(log).filter(k => k.startsWith('reminder_') && k.endsWith(`_${today}`)).length;
+                const todayTypes = Object.keys(log).filter(k => k.startsWith(`reminder_`) && k.includes(`_${activeChild}_`) && k.endsWith(`_${today}`)).length;
                 if (todayTypes >= 3) return false;
                 const reply = await callDeepSeekAPI(prompt, userMsg || '跟我说句话吧', []);
                 if (reply) {
                     showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80));
-                    setAiReminderLog(prev => ({ ...prev, [typeKey]: true, lastReminderDate: today }));
+                    setAiReminderLog(prev => ({ ...prev, [typeKey]: true, [`lastReminderDate_${activeChild}`]: today }));
                     return true;
                 }
                 return false;
@@ -12527,7 +12529,7 @@
                 const hour = now.getHours();
 
                 // === 优先级 1：每日问候 ===
-                if (log.lastReminderDate !== today || !log.todayGreetDone) {
+                if (log[`lastReminderDate_${activeChild}`] !== today || !log[`todayGreetDone_${activeChild}`]) {
                     const completed = activeTasks.filter(t => todayCheckins[t.id]?.[today]).length;
                     if (activeTasks.length > 0 && completed < activeTasks.length) {
                         const remaining = activeTasks.length - completed;
@@ -12539,14 +12541,14 @@
                         }
                         const prompt = buildAssistantSystemPrompt(activeChild) + `\n\n${weatherNote}${activeChild}还有${remaining}个任务未完成。请用温暖的语气给一个简短的今日问候和任务提醒（50字以内），不要用引号。`;
                         const sent = await trySendAiReminder('greet', prompt, '给我一个今日问候', log, today);
-                        setAiReminderLog(prev => ({ ...prev, lastReminderDate: today, todayGreetDone: true }));
+                        setAiReminderLog(prev => ({ ...prev, [`lastReminderDate_${activeChild}`]: today, [`todayGreetDone_${activeChild}`]: true }));
                         if (sent) return;
                     }
-                    setAiReminderLog(prev => ({ ...prev, lastReminderDate: today, todayGreetDone: true }));
+                    setAiReminderLog(prev => ({ ...prev, [`lastReminderDate_${activeChild}`]: today, [`todayGreetDone_${activeChild}`]: true }));
                 }
 
                 // === 优先级 2：久未打卡提醒 ===
-                if (!log.inactivityReminded || log.inactivityReminded !== today) {
+                if (!log[`inactivityReminded_${activeChild}`] || log[`inactivityReminded_${activeChild}`] !== today) {
                     let lastActive = '';
                     childTasks.forEach(t => {
                         Object.keys(todayCheckins[t.id] || {}).forEach(date => {
@@ -12557,7 +12559,7 @@
                         const daysSince = Math.floor((new Date(today) - new Date(lastActive)) / 86400000);
                         const prompt = buildAssistantSystemPrompt(activeChild) + `\n\n${activeChild}已经${daysSince}天没有打卡了。请用温和、不批评的语气给一个简短的提醒和鼓励（50字以内），让ta重新开始学习。不要用引号。`;
                         const sent = await trySendAiReminder('inactivity', prompt, '提醒我回来学习', log, today);
-                        if (sent) { setAiReminderLog(prev => ({ ...prev, inactivityReminded: today })); return; }
+                        if (sent) { setAiReminderLog(prev => ({ ...prev, [`inactivityReminded_${activeChild}`]: today })); return; }
                     }
                 }
 
@@ -12589,7 +12591,7 @@
                     const xpForLevel = nextLevel.xp - (getLevelInfo(currentXP).xp || 0);
                     const progress = xpForLevel > 0 ? (1 - xpNeeded / xpForLevel) : 0;
                     if (progress >= 0.85 && xpNeeded > 0) {
-                        const levelKey = `level_approach_${nextLevel.level}`;
+                        const levelKey = `level_approach_${activeChild}_${nextLevel.level}`;
                         if (!log[levelKey]) {
                             const prompt = `你是小星老师。${activeChild}距离下一级（${nextLevel.name || 'Lv.'+nextLevel.level}）只差${xpNeeded}经验了。请用兴奋的语气鼓励ta再加把劲（40字以内），不要用引号。`;
                             const sent = await trySendAiReminder('level_approach', prompt, '升级提醒', log, today);
@@ -12627,7 +12629,7 @@
                     const dayOfWeek = now.getDay();
                     // 周五傍晚预告
                     if (dayOfWeek === 5 && hour >= 15) {
-                        const weekKey = `weekend_preview_${today}`;
+                        const weekKey = `weekend_preview_${activeChild}_${today}`;
                         if (!log[weekKey]) {
                             const prompt = `你是小星老师。明天就是周末冲刺了！请用期待的语气提醒${activeChild}准备好（30字以内），不要用引号。`;
                             const sent = await trySendAiReminder('weekend_preview', prompt, '周末预告', log, today);
@@ -12649,7 +12651,7 @@
 
                 // === 优先级 9：每周进步回顾（周日） ===
                 if (now.getDay() === 0) {
-                    const weekKey = `weekly_review_${getLocalDateKey(0)}`;
+                    const weekKey = `weekly_review_${activeChild}_${getLocalDateKey(0)}`;
                     if (!log[weekKey]) {
                         // 计算本周数据
                         let weekDays = 0, weekMinutes = 0;
@@ -13655,7 +13657,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         setXpHistory(prev => ({ ...prev, [key]: reward }));
                         alert(`🎁 运气不错！获得了 20 XP 经验包！`);
                     } else if (roll < 0.9) {
-                        setRedeemedCoupons(prev => ({...prev, [activeChild]: [...(prev[activeChild]||[]), {name: '神秘兑换券', icon: '🎫', date: today}]}));
+                        setRedeemedCoupons(prev => ({...prev, [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {name: '神秘兑换券', icon: '🎫', date: today}]}));
                         alert(`🎁 哇！开出了通用兑换券一张！`);
                     } else {
                         const reward = 200;
@@ -13687,7 +13689,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const recordId = `real_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [activeChild]: [...(prev[activeChild]||[]), {
+                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {
                             id: recordId,
                             itemId: item.id,
                             name: item.name,
@@ -13776,7 +13778,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const recordId = `parent_help_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [activeChild]: [...(prev[activeChild]||[]), {
+                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {
                             id: recordId,
                             itemId: item.id,
                             name: item.name,
@@ -13804,7 +13806,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const recordId = `parent_monitor_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [activeChild]: [...(prev[activeChild]||[]), {
+                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {
                             id: recordId,
                             itemId: item.id,
                             name: item.name,
@@ -13847,7 +13849,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 else if (item.type === 'help_card') {
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [activeChild]: [...(prev[activeChild]||[]), {name: item.name, icon: item.icon, date: today}]
+                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {name: item.name, icon: item.icon, date: today}]
                     }));
                     confetti({ particleCount: 60, spread: 50, colors: ['#06b6d4', '#22d3ee'] });
                     alert(`📦 诸葛锦囊已激活！\n\n请在「兑换记录」中向家长出示。家长必须耐心讲解10分钟，且不能发火。`);
@@ -13855,7 +13857,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 else if (item.type === 'reduce_homework') {
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [activeChild]: [...(prev[activeChild]||[]), {name: item.name, icon: item.icon, date: today}]
+                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {name: item.name, icon: item.icon, date: today}]
                     }));
                     confetti({ particleCount: 80, spread: 60, colors: ['#14b8a6', '#2dd4bf'] });
                     alert(`✂️ 听写豁免券已激活！\n\n请在「兑换记录」中向家长出示。今天的听写任务量减半！`);
@@ -14423,17 +14425,17 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // ===== 企业微信推送功能 =====
 
-            // 节流检查：每种事件类型每天只推一次
-            const canPushWecom = (eventType) => {
+            // 节流检查：每种事件类型每孩子每天只推一次
+            const canPushWecom = (eventType, childName) => {
                 const today = getLocalDateKey(0);
-                const key = `wecom_push_${eventType}_${today}`;
+                const key = `wecom_push_${eventType}_${childName}_${today}`;
                 if (wecomPushLog[key]) return false;
                 return true;
             };
 
-            const markWecomPushed = (eventType) => {
+            const markWecomPushed = (eventType, childName) => {
                 const today = getLocalDateKey(0);
-                const key = `wecom_push_${eventType}_${today}`;
+                const key = `wecom_push_${eventType}_${childName}_${today}`;
                 setWecomPushLog(prev => ({ ...prev, [key]: true }));
             };
 
@@ -14457,58 +14459,58 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // 事件1：每日必做全部完成
             const pushWecomDailyDone = (childName, completedTasks) => {
-                if (!canPushWecom('dailyDone')) return;
+                if (!canPushWecom('dailyDone', childName)) return;
                 const now = new Date();
                 const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
                 const taskList = completedTasks.map(t => `- ✅ ${t.name}`).join('\n');
                 const content = `> 🎉 **${childName} 今日任务全部完成！**\n>\n> 📋 完成项目：\n${taskList}\n>\n> ⏰ 完成时间：${timeStr}\n> 💪 干得漂亮！今天的学习任务已全部拿下！`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed('dailyDone');
+                markWecomPushed('dailyDone', childName);
             };
 
             // 事件2：成就解锁
             const pushWecomAchievement = (childName, badge) => {
-                if (!canPushWecom('achievement')) return;
+                if (!canPushWecom('achievement', childName)) return;
                 const rarityMap = { common: '普通', rare: '稀有', epic: '史诗', legendary: '传说' };
                 const content = `> 🏆 **${childName} 解锁新成就！**\n>\n> 🎖️ 「${badge.name}」— ${badge.desc}\n> 📂 分类：${badge.category} | 稀有度：${rarityMap[badge.rarity] || badge.rarity}\n>\n> 继续加油，还有更多成就等着你！`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed('achievement');
+                markWecomPushed('achievement', childName);
             };
 
             // 事件3：等级提升
             const pushWecomLevelUp = (childName, oldLevel, newLevel) => {
-                if (!canPushWecom('levelUp')) return;
+                if (!canPushWecom('levelUp', childName)) return;
                 const content = `> ⬆️ **${childName} 升级了！**\n>\n> 🎆 Lv.${oldLevel.level}「${oldLevel.name}」→ Lv.${newLevel.level}「${newLevel.name}」\n> 🏛️ 当前纪元：${newLevel.era}\n> 📝 ${newLevel.desc}\n>\n> 历史的车轮滚滚向前！`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed('levelUp');
+                markWecomPushed('levelUp', childName);
             };
 
             // 事件4/5：作业/考试成绩
             const pushWecomGrade = (childName, type, subject, score, date) => {
                 const eventType = type === 'exam' ? 'examGrade' : 'homeworkGrade';
-                if (!canPushWecom(eventType)) return;
+                if (!canPushWecom(eventType, childName)) return;
                 const icon = type === 'exam' ? '📝' : '📚';
                 const typeName = type === 'exam' ? '考试成绩' : '作业成绩';
                 const encouragement = score >= 90 ? '太棒了！继续保持！' : score >= 80 ? '很好！再接再厉！' : '继续努力，相信你会更好！';
                 const content = `> ${icon} **${childName} ${typeName}**\n>\n> 📚 ${subject}：${score}分\n> 📅 ${date}\n>\n> ${encouragement}`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed(eventType);
+                markWecomPushed(eventType, childName);
             };
 
             // 事件6/7：里程碑
             const pushWecomMilestone = (childName, type, count) => {
                 const eventType = `milestone_${type}_${count}`;
-                if (!canPushWecom(eventType)) return;
+                if (!canPushWecom(eventType, childName)) return;
                 const icon = type === 'checkin' ? '🎯' : '💰';
                 const label = type === 'checkin' ? '打卡里程碑' : '财富里程碑';
                 const unit = type === 'checkin' ? '次打卡' : '金元宝';
                 sendWecomMessage('text', `${icon} ${childName} 达成${label}：累计${count} ${unit}！`);
-                markWecomPushed(eventType);
+                markWecomPushed(eventType, childName);
             };
 
             // 事件8：23:59 每日完成情况汇总（未全部完成时）
             const pushWecomDailySummary = (childName, dailyMust, checkinsData) => {
-                if (!canPushWecom('dailySummary')) return;
+                if (!canPushWecom('dailySummary', childName)) return;
                 const today = getLocalDateKey(0);
                 const completed = [];
                 const incomplete = [];
@@ -14525,7 +14527,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const incompleteList = incomplete.map(n => `- ❌ ${n}`).join('\n');
                 const content = `> 📊 **${childName} 今日学习情况**\n> 📅 ${today}\n>\n> ✅ 已完成：\n${completedList}\n>\n> ❌ 未完成：\n${incompleteList}\n>\n> 完成度：${completed.length}/${dailyMust.length}（${rate}%）`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed('dailySummary');
+                markWecomPushed('dailySummary', childName);
             };
 
             // 事件9：连续全部完成 ≥3 天
@@ -14534,10 +14536,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const milestone = milestones.find(m => m === streakCount);
                 if (!milestone) return;
                 const eventType = `streak_${streakCount}`;
-                if (!canPushWecom(eventType)) return;
+                if (!canPushWecom(eventType, childName)) return;
                 const content = `> 🔥 **${childName} 连续${streakCount}天全部完成每日任务！**\n>\n> 这份坚持太了不起了！从 ${startDate} 到今天，\n> ${childName} 每一天都完成了所有必做学习任务。\n>\n> 坚持就是胜利，继续加油！💪`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed(eventType);
+                markWecomPushed(eventType, childName);
             };
 
             // 计算连续全部完成 daily_must 的天数
@@ -15863,19 +15865,19 @@ ${context}
 					}
 					const log = aiReminderLog || {};
 					const milestones = [3, 7, 14, 30, 50, 100];
-					const milestone = milestones.find(m => streak >= m && (log.lastCelebratedStreak || 0) < m);
+					const milestone = milestones.find(m => streak >= m && (log[`lastCelebratedStreak_${activeChild}`] || 0) < m);
 					// 今日必做全部完成
 					const today = getLocalDateKey(0);
 					const dailyMust = (tasks[activeChild] || []).filter(t => t.frequencyType === 'daily_must').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
 					const allDailyDone = dailyMust.length > 0 && dailyMust.every(t => newCheckins[activeChild]?.[t.id]?.[today]);
-					const dailyDoneKey = `dailyDone_${today}`;
+					const dailyDoneKey = `dailyDone_${activeChild}_${today}`;
 
 					if (milestone) {
 						const prompt = `你是小星老师。${activeChild}已经连续打卡${streak}天了！请用热情的语气给一段简短的庆祝鼓励（40字以内），提到连续${streak}天这个数字。不要用引号。`;
 						callDeepSeekAPI(prompt, '庆祝我的连续打卡', []).then(reply => {
 							if (reply) {
 								showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80));
-								setAiReminderLog(prev => ({ ...prev, lastCelebratedStreak: streak }));
+								setAiReminderLog(prev => ({ ...prev, [`lastCelebratedStreak_${activeChild}`]: streak }));
 							}
 						});
 					} else if (allDailyDone && !log[dailyDoneKey]) {
@@ -15897,7 +15899,7 @@ ${context}
 						// 时间敏感提醒（早起/深夜）
 						const now = new Date();
 						const hour = now.getHours();
-						const timeKey = `time_${today}`;
+						const timeKey = `time_${activeChild}_${today}`;
 						if (!log[timeKey]) {
 							if (hour < 9) {
 								const prompt = `你是小星老师。${activeChild}一大早就起来学习打卡了！请用惊喜的语气表扬ta的勤奋（30字以内），不要用引号。`;
@@ -16154,7 +16156,7 @@ ${context}
                     // 打卡即时奖励：默认无
                     onCheckinReward: ''
                 };
-                setTasks(prev => ({ ...prev, [activeChild]: [...(prev[activeChild]||[]), newTask] }));
+                setTasks(prev => ({ ...prev, [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), newTask] }));
             };
 
             const clearNewTaskFlags = () => {
@@ -17072,7 +17074,7 @@ ${context}
 							{aiChatEnabled && (
 								<div className="relative">
 									{/* AI 对话气泡 */}
-									{aiBubbleVisible && aiBubbleMessage && (
+									{aiBubbleVisible && aiBubbleMessage && aiBubbleChild === activeChild && (
 										<div className="fixed right-16 lg:right-20 z-[46] max-w-[200px] animate-in fade-in slide-in-from-right-2 duration-300" style={{ bottom: `${chatBottomPx + 16}px` }}>
 											<div className="bg-white rounded-2xl rounded-br-md px-3 py-2 shadow-lg border border-gray-100 relative">
 												<p className="text-xs text-gray-700 leading-relaxed">{aiBubbleMessage}</p>
@@ -17083,14 +17085,15 @@ ${context}
 									<button
 										onClick={() => {
 											// 将气泡消息写入对话历史（仅写入一次）
-											if (aiBubbleMessage && aiBubbleVisible) {
-												const aiMsg = { id: `msg_ai_${Date.now()}`, role: 'assistant', text: aiBubbleMessage, timestamp: Date.now(), childName: activeChild };
+											if (aiBubbleMessage && aiBubbleVisible && aiBubbleChild) {
+												const aiMsg = { id: `msg_ai_${Date.now()}`, role: 'assistant', text: aiBubbleMessage, timestamp: Date.now(), childName: aiBubbleChild };
 												setAiChatHistory(prev => ({
 													...prev,
-													[activeChild]: [...(prev[activeChild] || []).slice(-49), aiMsg]
+													[aiBubbleChild]: [...(prev[aiBubbleChild] || []).slice(-49), aiMsg]
 												}));
 												setAiBubbleVisible(false);
 												setAiBubbleMessage('');
+												setAiBubbleChild('');
 											}
 											setShowChatDrawer(true);
 										}}
