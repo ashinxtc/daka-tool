@@ -14488,14 +14488,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // 事件4/5：作业/考试成绩
             const pushWecomGrade = (childName, type, subject, score, date) => {
-                const eventType = type === 'exam' ? 'examGrade' : 'homeworkGrade';
-                if (!canPushWecom(eventType, childName)) return;
+                // 用唯一 key 去重（每次录入都推，不用每天一次限制）
+                const uniqueKey = `wecom_grade_${type}_${childName}_${Date.now()}`;
+                if (!wecomEnabled || !wecomWebhookKey || !syncCode) return;
                 const icon = type === 'exam' ? '📝' : '📚';
                 const typeName = type === 'exam' ? '考试成绩' : '作业成绩';
                 const encouragement = score >= 90 ? '太棒了！继续保持！' : score >= 80 ? '很好！再接再厉！' : '继续努力，相信你会更好！';
                 const content = `> ${icon} **${childName} ${typeName}**\n>\n> 📚 ${subject}：${score}分\n> 📅 ${date}\n>\n> ${encouragement}`;
                 sendWecomMessage('markdown', content);
-                markWecomPushed(eventType, childName);
             };
 
             // 事件6/7：里程碑
@@ -14630,30 +14630,54 @@ ${context}
             checkAchievementsRef.current = checkAchievements;
 
             // 企业微信推送：等级提升检测
-            const wecomPrevLevelRef = React.useRef(null);
+            const wecomPrevLevelRef = React.useRef({ child: null, level: null });
             React.useEffect(() => {
                 if (!wecomEnabled || !deepseekApiKey) return;
                 const currentLevel = getLevelInfo(currentXP);
-                if (wecomPrevLevelRef.current !== null && currentLevel.level > wecomPrevLevelRef.current.level) {
-                    pushWecomLevelUp(activeChild, wecomPrevLevelRef.current, currentLevel);
+                // 切换孩子时重置，不触发升级推送
+                if (wecomPrevLevelRef.current.child !== activeChild) {
+                    wecomPrevLevelRef.current = { child: activeChild, level: currentLevel.level };
+                    return;
                 }
-                wecomPrevLevelRef.current = currentLevel;
+                if (wecomPrevLevelRef.current.level !== null && currentLevel.level > wecomPrevLevelRef.current.level) {
+                    const oldLevel = LEVELS.find(l => l.level === wecomPrevLevelRef.current.level) || { level: wecomPrevLevelRef.current.level, name: '', era: '', desc: '' };
+                    pushWecomLevelUp(activeChild, oldLevel, currentLevel);
+                }
+                wecomPrevLevelRef.current = { child: activeChild, level: currentLevel.level };
             }, [currentXP, wecomEnabled, deepseekApiKey, activeChild]);
 
-            // 企业微信推送：23:59 每日完成情况汇总
+            // 企业微信推送：23:59 每日完成情况汇总（覆盖所有孩子）
             React.useEffect(() => {
                 if (!wecomEnabled || !wecomWebhookKey || !syncCode) return;
                 const now = new Date();
+                const today = getLocalDateKey(0);
                 const msUntil2359 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0) - now;
-                if (msUntil2359 < 0) return; // 已过 23:59
+                if (msUntil2359 < 0) {
+                    // 已过 23:59：检查是否需要补发汇总
+                    const log = aiReminderLog || {};
+                    Object.keys(tasks).forEach(childName => {
+                        const summaryKey = `wecom_push_dailySummary_${childName}_${today}`;
+                        if (log[summaryKey]) return; // 已推过
+                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must');
+                        if (dailyMust.length > 0) {
+                            const allDone = dailyMust.every(t => checkins[childName]?.[t.id]?.[today]);
+                            if (!allDone) {
+                                pushWecomDailySummary(childName, dailyMust, checkins);
+                            }
+                        }
+                    });
+                    return;
+                }
                 const timer = setTimeout(() => {
-                    const dailyMust = (tasks[activeChild] || []).filter(t => t.frequencyType === 'daily_must');
-                    if (dailyMust.length > 0) {
-                        pushWecomDailySummary(activeChild, dailyMust, checkins);
-                    }
+                    Object.keys(tasks).forEach(childName => {
+                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must');
+                        if (dailyMust.length > 0) {
+                            pushWecomDailySummary(childName, dailyMust, checkins);
+                        }
+                    });
                 }, msUntil2359);
                 return () => clearTimeout(timer);
-            }, [wecomEnabled, wecomWebhookKey, syncCode, activeChild, tasks, checkins]);
+            }, [wecomEnabled, wecomWebhookKey, syncCode, tasks, checkins]);
 
 			//大事纪数据核对与补全功能
 			const handleSyncMilestones = () => {
@@ -15877,13 +15901,6 @@ ${context}
 								setAiReminderLog(prev => ({ ...prev, [dailyDoneKey]: true }));
 							}
 						});
-						// 企业微信推送：每日必做全部完成
-							pushWecomDailyDone(activeChild, dailyMust);
-							// 企业微信推送：连续全部完成检测
-							const streakInfo = calcDailyMustStreak(activeChild, tasks, newCheckins);
-							if (streakInfo.streak >= 3) {
-								pushWecomStreak(activeChild, streakInfo.streak, streakInfo.startDate);
-							}
 					} else {
 						// 时间敏感提醒（早起/深夜）
 						const now = new Date();
@@ -15901,6 +15918,18 @@ ${context}
 									if (reply) { showAiBubble(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 80)); setAiReminderLog(prev => ({ ...prev, [timeKey]: true })); }
 								});
 							}
+						}
+					}
+					// 企业微信推送：每日必做全部完成（独立于 AI 气泡逻辑）
+					if (allDailyDone) {
+						const wecomDailyDoneKey = `wecom_dailyDone_${activeChild}_${today}`;
+						if (!log[wecomDailyDoneKey]) {
+							pushWecomDailyDone(activeChild, dailyMust);
+							const streakInfo = calcDailyMustStreak(activeChild, tasks, newCheckins);
+							if (streakInfo.streak >= 3) {
+								pushWecomStreak(activeChild, streakInfo.streak, streakInfo.startDate);
+							}
+							setAiReminderLog(prev => ({ ...prev, [wecomDailyDoneKey]: true }));
 						}
 					}
 				}
