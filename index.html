@@ -9316,7 +9316,7 @@
                                     <>
                                         <label className="text-xs text-gray-500 block mb-1 text-center">补签当日完成的分钟数</label>
                                         <div className="mb-3 relative">
-                                            <input type="number" min="1" max="999" value={val} onChange={(e) => setVal(e.target.value)} className={`w-full text-center text-3xl font-black border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 rounded-lg bg-amber-50/50 border border-amber-100`} placeholder="30" />
+                                            <input type="number" min="1" max="999" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); useRepairCard(editingEntry, val); } }} className={`w-full text-center text-3xl font-black border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 rounded-lg bg-amber-50/50 border border-amber-100`} placeholder="30" />
                                             <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
                                         </div>
                                         <button onClick={() => useRepairCard(editingEntry, val)} className="w-full py-2.5 bg-amber-100 text-amber-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-amber-200"><span className="text-lg">🔥</span> 使用普罗米修斯之火补签（{val || 0} 分钟）</button>
@@ -9325,7 +9325,7 @@
                             </div>
                         ) : (
                             <div className="mb-6 relative">
-                                <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} className={`w-full text-center text-4xl font-black border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 placeholder-gray-200`} placeholder="30" />
+                                <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveCheckin(val); } }} className={`w-full text-center text-4xl font-black border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 placeholder-gray-200`} placeholder="30" />
                                 <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
                             </div>
                         )}
@@ -11741,6 +11741,8 @@
 			const [calendarViewMonth, setCalendarViewMonth] = useState(null); // null=当月, {year, month}
             const [showSettings, setShowSettings] = useState(false);
             const [editingEntry, setEditingEntry] = useState(null);
+            const [exemptionModal, setExemptionModal] = useState(null); // { date, exemptionCode }
+            const [exemptionInputCode, setExemptionInputCode] = useState('');
             const [sortBy, setSortBy] = useState('default'); 
 			const [showWheel, setShowWheel] = useState(false);
 			const [showWheelChoice, setShowWheelChoice] = useState(false);
@@ -14132,7 +14134,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     }));
                     updateStats(activeChild, 'repair', 1);
-                    alert(`🔥 补签成功！已记录当日完成 ${minutes} 分钟。`);
                     checkAchievements('repair');
                 }
             };
@@ -15532,21 +15533,9 @@ ${context}
 
 			// === 处理断签单元格的点击操作 ===
 			const handleMissedDayClick = (dateStr) => {
-				const action = prompt(`📅 日期：${dateStr}\n\n【提示】\n哎呀，这天断签了！你可以去时空市集购买【普罗米修斯之火】来补签。\n\n【家长专属操作】\n如遇生病或特殊假期，家长可在此输入密码（默认: 1234）对该日进行豁免。\n💡 豁免后，该日将算作全勤，重新连接你的“全勤马拉松”之路！\n请输入密码：`);
-				
-				if (action === "1234") {
-					setExemptedDays(prev => {
-						const childExemptions = prev[activeChild] || [];
-						if (!childExemptions.includes(dateStr)) {
-							// 弹窗安抚孩子
-							alert(`✅ 已成功豁免 ${activeChild} 在 ${dateStr} 的断签！\n\n（系统将在下一次打卡时，自动把这天算入全勤并补发徽章）`);
-							return { ...prev, [activeChild]: [...childExemptions, dateStr] };
-						}
-						return prev;
-					});
-				} else if (action !== null && action !== "") {
-					alert("❌ 密码错误，或操作取消。请去市集使用【普罗米修斯之火】补签吧！");
-				}
+				const exemptionCode = String(Math.floor(1000 + Math.random() * 9000));
+				setExemptionModal({ date: dateStr, exemptionCode });
+				setExemptionInputCode('');
 			};
 
             // saveCheckin function updated to include buffs and shop logic
@@ -17314,6 +17303,85 @@ ${context}
 				  />
 
                   <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} />
+
+                  {/* 断签豁免弹窗 */}
+                  {exemptionModal && (() => {
+                      const verifyBase = 'https://www.daka-tool.top/exemption-verify.html';
+                      const verifyPageUrl = verifyBase + '?code=' + exemptionModal.exemptionCode + '&account=' + encodeURIComponent(activeChild) + '&date=' + encodeURIComponent(exemptionModal.date);
+                      return (
+                      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => { setExemptionModal(null); setExemptionInputCode(''); }}>
+                          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                              <h3 className="text-lg font-black text-gray-800 mb-2 flex items-center gap-2">🛡️ 断签豁免</h3>
+                              <div className="space-y-2 mb-4">
+                                  <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl">
+                                      <span className="text-xs text-gray-500">孩子</span>
+                                      <span className="font-bold text-gray-800">{activeChild}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl">
+                                      <span className="text-xs text-gray-500">日期</span>
+                                      <span className="font-bold text-gray-800">{exemptionModal.date}</span>
+                                  </div>
+                              </div>
+                              <p className="text-xs text-gray-500 mb-3">请家长用手机扫描下方二维码，在手机端确认豁免后，将显示的豁免码输入下方。</p>
+                              <div className="flex justify-center mb-4 p-4 bg-gray-50 rounded-xl">
+                                  <img
+                                      src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(verifyPageUrl)}
+                                      alt="豁免二维码"
+                                      className="w-48 h-48 rounded-lg"
+                                  />
+                              </div>
+                              <div className="flex gap-2 mb-4">
+                                  <input
+                                      type="text"
+                                      placeholder="输入手机端显示的豁免码"
+                                      value={exemptionInputCode}
+                                      onChange={e => setExemptionInputCode(e.target.value)}
+                                      onKeyDown={e => {
+                                          if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              if (exemptionInputCode.trim() === exemptionModal.exemptionCode) {
+                                                  setExemptedDays(prev => {
+                                                      const childExemptions = prev[activeChild] || [];
+                                                      if (!childExemptions.includes(exemptionModal.date)) {
+                                                          return { ...prev, [activeChild]: [...childExemptions, exemptionModal.date] };
+                                                      }
+                                                      return prev;
+                                                  });
+                                                  setExemptionModal(null);
+                                                  setExemptionInputCode('');
+                                              } else {
+                                                  alert('豁免码不正确，请核对后重新输入。');
+                                              }
+                                          }
+                                      }}
+                                      className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm"
+                                      autoFocus
+                                  />
+                                  <button
+                                      onClick={() => {
+                                          if (exemptionInputCode.trim() === exemptionModal.exemptionCode) {
+                                              setExemptedDays(prev => {
+                                                  const childExemptions = prev[activeChild] || [];
+                                                  if (!childExemptions.includes(exemptionModal.date)) {
+                                                      return { ...prev, [activeChild]: [...childExemptions, exemptionModal.date] };
+                                                  }
+                                                  return prev;
+                                              });
+                                              setExemptionModal(null);
+                                              setExemptionInputCode('');
+                                          } else {
+                                              alert('豁免码不正确，请核对后重新输入。');
+                                          }
+                                      }}
+                                      className="px-4 py-2 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors"
+                                  >确认豁免</button>
+                              </div>
+                              <button onClick={() => { setExemptionModal(null); setExemptionInputCode(''); }} className="w-full py-2 text-sm text-gray-400 hover:text-gray-600">取消</button>
+                          </div>
+                      </div>
+                      );
+                  })()}
+
                   <AchievementWallModal 
                       show={showAchievements} 
                       onClose={() => setShowAchievements(false)} 
