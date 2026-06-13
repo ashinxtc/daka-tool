@@ -2521,10 +2521,10 @@
                             )}
 
                             {/* 分页 Tabs（底部融入式设计）*/}
-                            <div className="flex gap-1 items-end">
+                            <div className="flex gap-1 items-end overflow-x-auto">
                                 {tabs.map(tab => (
                                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-1.5 pt-[9px] px-[18px] pb-[10px] text-sm font-bold border-none cursor-pointer transition-all ${activeTab === tab.id ? 'bg-gray-50 text-gray-800' : 'bg-white/16 text-white/92'}`}
+                                        className={`flex items-center gap-1.5 pt-[9px] px-[18px] pb-[10px] text-sm font-bold border-none cursor-pointer transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-gray-50 text-gray-800' : 'bg-white/16 text-white/92'}`}
                                         style={{
                                             borderRadius: '12px 12px 0 0',
                                             boxShadow: activeTab === tab.id ? '0 -2px 12px rgba(0,0,0,0.08)' : 'none',
@@ -5117,7 +5117,7 @@
                                 <span key={purchaseToast.key} className="purchase-toast-animate-slow absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap text-emerald-600 text-[10px] font-black pointer-events-none z-50" style={{textShadow:'0 0 6px rgba(255,255,255,0.9), 0 0 12px rgba(255,255,255,0.6)'}}>{purchaseToast.item} ×{purchaseToast.quantity}</span>
                             )}</button>
                             <button onClick={() => setActiveTab('coupons')} className={`px-4 py-2 rounded-xl font-bold text-sm whitespace-nowrap transition-colors transition-transform ${activeTab === 'coupons' ? 'bg-white text-gray-800 shadow-sm ring-1 ring-gray-200' : 'text-gray-400 hover:text-gray-600'}`}>🎫 兑换记录</button>
-							<button onClick={() => setShowTributeModal(true)} className="px-3 py-1.5 bg-gradient-to-r from-yellow-300 to-yellow-500 text-yellow-900 rounded-lg text-sm font-bold shadow hover:scale-105 transition-transform">👑 友好邦邻进贡</button>
+							<button onClick={() => setShowTributeModal(true)} className="px-3 py-1.5 bg-gradient-to-r from-yellow-300 to-yellow-500 text-yellow-900 rounded-lg text-sm font-bold shadow hover:scale-105 transition-transform whitespace-nowrap">👑 友好邦邻进贡</button>
                         </div>
 
                         {/* 内容区 */}
@@ -17206,7 +17206,7 @@ ${context}
                                     return (
                                     <tr key={task.id} className={`border-b border-gray-50 hover:bg-white/80 transition-colors ${rowTypeStyle} ${idx % 2 === 0 ? '' : 'bg-gray-50/20'}`}>
                                       <td className="p-0 sticky left-0 z-30 border-r border-gray-100 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)] overflow-visible w-px whitespace-nowrap align-middle relative">
-                                        <span className="relative z-10 inline-block pl-4 pr-14 py-3 font-bold text-gray-800 whitespace-nowrap" style={{ textShadow: '0 0 1px rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)' }}>{task.name}</span>
+                                        <span className="relative z-10 inline-block pl-4 pr-3 lg:pr-14 py-3 font-bold text-gray-800 whitespace-nowrap" style={{ textShadow: '0 0 1px rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)' }}>{task.name}</span>
                                         <div className={`absolute inset-0 rounded-r-lg ${barTrackCls}`} aria-hidden="true" />
                                         <div className={`absolute inset-y-0 left-0 rounded-r-lg transition-all duration-500 flex items-center justify-end pr-1.5 ${barFillCls}`} style={{ width: `${progressPct}%`, maxWidth: '100%' }} aria-hidden="true">
                                           {progressPct >= 12 && (
@@ -17537,8 +17537,8 @@ ${context}
                             aiReply={familyAiReply}
                             isLoadingAi={familyAiLoading}
                         />
-                        {/* 浮动消息按钮 */}
-                        {!showFamilyPanel && (() => {
+                        {/* 浮动消息按钮（仅在自建应用配置完整时显示） */}
+                        {!showFamilyPanel && wecomCorpId && wecomAgentId && wecomCallbackToken && wecomCallbackAesKey && (() => {
                             const unreadCount = familyMessages.filter(m => !m.read && m.direction === 'parent_to_child').length;
                             return (
                                 <button onClick={() => setShowFamilyPanel(true)}
