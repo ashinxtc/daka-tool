@@ -32,8 +32,8 @@ class WXBizMsgCrypt {
     }
 
     // 解密消息
-    decrypt(encrypted) {
-        const decipher = aesCbcDecrypt(this.aesKey, this.iv, base64Decode(encrypted));
+    async decrypt(encrypted) {
+        const decipher = await aesCbcDecrypt(this.aesKey, this.iv, base64Decode(encrypted));
         // 格式: [16字节随机][4字节消息长度][消息内容][CorpID]
         // 跳过16字节随机数
         const msgLenBytes = decipher.slice(16, 20);
@@ -44,7 +44,7 @@ class WXBizMsgCrypt {
     }
 
     // 加密消息
-    encrypt(message) {
+    async encrypt(message) {
         const msgBuf = new TextEncoder().encode(message);
         const msgLen = msgBuf.length;
         // 16字节随机数
@@ -71,13 +71,13 @@ class WXBizMsgCrypt {
         for (let i = plainBuf.length; i < paddedBuf.length; i++) {
             paddedBuf[i] = padLen;
         }
-        const encrypted = aesCbcEncrypt(this.aesKey, this.iv, paddedBuf);
+        const encrypted = await aesCbcEncrypt(this.aesKey, this.iv, paddedBuf);
         return base64Encode(encrypted);
     }
 
     // 生成回复的加密 XML
-    encryptReplyXml(replyMsg, timestamp, nonce) {
-        const encrypted = this.encrypt(replyMsg);
+    async encryptReplyXml(replyMsg, timestamp, nonce) {
+        const encrypted = await this.encrypt(replyMsg);
         const arr = [this.token, timestamp, nonce, encrypted].sort();
         const signature = sha1(arr.join(''));
         return `<xml>
@@ -163,20 +163,20 @@ function rotl(n, s) {
     return ((n << s) | (n >>> (32 - s))) >>> 0;
 }
 
-// AES-CBC 使用 Web Crypto API（同步包装用 async）
-async function aesCbcDecryptAsync(key, iv, data) {
+// AES-CBC 使用 Web Crypto API
+async function aesCbcDecrypt(key, iv, data) {
     const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
     const result = await crypto.subtle.decrypt({ name: 'AES-CBC', iv }, cryptoKey, data);
     return new Uint8Array(result);
 }
 
-async function aesCbcEncryptAsync(key, iv, data) {
+async function aesCbcEncrypt(key, iv, data) {
     const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['encrypt']);
     const result = await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, cryptoKey, data);
     return new Uint8Array(result);
 }
 
-// 包装为同步调用（SHA1 和 AES 在 Cloudflare Worker 中可用 SubtleCrypto）
+// 包装说明：SHA1 使用纯 JS 同步实现，AES 使用 Web Crypto API 异步实现
 // 注意：Cloudflare Worker 的 fetch handler 是 async，所以可以用 await
 
 // ============================================================
@@ -269,7 +269,7 @@ async function handleWecomCallback(request, env, corsHeaders) {
     // GET — URL 验证（一次性，配置回调时触发）
     if (request.method === 'GET') {
         const echostr = url.searchParams.get('echostr') || '';
-        const { message } = crypt.decrypt(decodeURIComponent(echostr));
+        const { message } = await crypt.decrypt(decodeURIComponent(echostr));
         return new Response(message, { headers: { 'Content-Type': 'text/plain' } });
     }
 
@@ -288,7 +288,7 @@ async function handleWecomCallback(request, env, corsHeaders) {
         }
 
         // 解密
-        const { message } = crypt.decrypt(encrypted);
+        const { message } = await crypt.decrypt(encrypted);
         const msgData = parseXml(message);
 
         // 处理不同类型的消息

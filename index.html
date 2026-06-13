@@ -7108,7 +7108,7 @@
                 };
 
                 setPetData(prev => ({ ...prev, [activeChild]: { ...(prev[activeChild] || {}), [petId]: newPet } }));
-                setOwnedPets(prev => ({ ...prev, [aiBubbleChild]: [...(prev[aiBubbleChild] || []), petId] }));
+                setOwnedPets(prev => ({ ...prev, [activeChild]: [...(prev[activeChild] || []), petId] }));
                 if (!activePet[activeChild]) {
                     setActivePet(prev => ({ ...prev, [activeChild]: petId }));
                 }
@@ -13659,7 +13659,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         setXpHistory(prev => ({ ...prev, [key]: reward }));
                         alert(`🎁 运气不错！获得了 20 XP 经验包！`);
                     } else if (roll < 0.9) {
-                        setRedeemedCoupons(prev => ({...prev, [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {name: '神秘兑换券', icon: '🎫', date: today}]}));
+                        setRedeemedCoupons(prev => ({...prev, [activeChild]: [...(prev[activeChild]||[]), {name: '神秘兑换券', icon: '🎫', date: today}]}));
                         alert(`🎁 哇！开出了通用兑换券一张！`);
                     } else {
                         const reward = 200;
@@ -13691,7 +13691,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const recordId = `real_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {
+                        [activeChild]: [...(prev[activeChild]||[]), {
                             id: recordId,
                             itemId: item.id,
                             name: item.name,
@@ -13780,7 +13780,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const recordId = `parent_help_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {
+                        [activeChild]: [...(prev[activeChild]||[]), {
                             id: recordId,
                             itemId: item.id,
                             name: item.name,
@@ -13808,7 +13808,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const recordId = `parent_monitor_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {
+                        [activeChild]: [...(prev[activeChild]||[]), {
                             id: recordId,
                             itemId: item.id,
                             name: item.name,
@@ -13851,7 +13851,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 else if (item.type === 'help_card') {
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {name: item.name, icon: item.icon, date: today}]
+                        [activeChild]: [...(prev[activeChild]||[]), {name: item.name, icon: item.icon, date: today}]
                     }));
                     confetti({ particleCount: 60, spread: 50, colors: ['#06b6d4', '#22d3ee'] });
                     alert(`📦 诸葛锦囊已激活！\n\n请在「兑换记录」中向家长出示。家长必须耐心讲解10分钟，且不能发火。`);
@@ -13859,7 +13859,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 else if (item.type === 'reduce_homework') {
                     setRedeemedCoupons(prev => ({
                         ...prev, 
-                        [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), {name: item.name, icon: item.icon, date: today}]
+                        [activeChild]: [...(prev[activeChild]||[]), {name: item.name, icon: item.icon, date: today}]
                     }));
                     confetti({ particleCount: 80, spread: 60, colors: ['#14b8a6', '#2dd4bf'] });
                     alert(`✂️ 听写豁免券已激活！\n\n请在「兑换记录」中向家长出示。今天的听写任务量减半！`);
@@ -14654,10 +14654,9 @@ ${context}
                 const msUntil2359 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0) - now;
                 if (msUntil2359 < 0) {
                     // 已过 23:59：检查是否需要补发汇总
-                    const log = aiReminderLog || {};
                     Object.keys(tasks).forEach(childName => {
                         const summaryKey = `wecom_push_dailySummary_${childName}_${today}`;
-                        if (log[summaryKey]) return; // 已推过
+                        if (wecomPushLog[summaryKey]) return; // 已推过
                         const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must');
                         if (dailyMust.length > 0) {
                             const allDone = dailyMust.every(t => checkins[childName]?.[t.id]?.[today]);
@@ -16174,7 +16173,7 @@ ${context}
                     // 打卡即时奖励：默认无
                     onCheckinReward: ''
                 };
-                setTasks(prev => ({ ...prev, [aiBubbleChild]: [...(prev[aiBubbleChild]||[]), newTask] }));
+                setTasks(prev => ({ ...prev, [activeChild]: [...(prev[activeChild]||[]), newTask] }));
             };
 
             const clearNewTaskFlags = () => {
