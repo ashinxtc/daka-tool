@@ -43,7 +43,6 @@
     <script src='https://s3-us-west-2.amazonaws.com/s.cdpn.io/329180/MyMath.js'></script>
 	
 	<!-- 引入 OGL 渲染库 -->
-	<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://unpkg.com/ogl/dist/ogl.umd.js"></script>
 
 	<script>
@@ -1100,6 +1099,107 @@
         .purchase-toast-animate-slow {
             animation: purchaseToastFade 2.5s ease-out forwards;
         }
+        /* ===== 应用内通知 Toast 系统 ===== */
+        .toast-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 115;
+            display: flex;
+            flex-direction: column-reverse;
+            align-items: center;
+            gap: 8px;
+            padding: 0 16px 20px;
+            pointer-events: none;
+        }
+        @media (min-width: 1024px) {
+            .toast-container {
+                left: auto;
+                right: 24px;
+                bottom: 24px;
+                align-items: flex-end;
+            }
+        }
+        .toast-card {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 14px 14px 14px 16px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08), inset -1px -1px 0 0 var(--toast-glow-inner);
+            pointer-events: auto;
+            will-change: transform, opacity;
+            overflow: hidden;
+            border-left: 3.5px solid var(--toast-accent);
+        }
+        .toast-card::before {
+            content: "";
+            position: absolute;
+            left: -20px;
+            top: -20px;
+            bottom: -20px;
+            width: 60px;
+            background: radial-gradient(ellipse at center, var(--toast-glow-outer) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: -1;
+        }
+        .toast-icon-wrap {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--toast-icon-bg);
+            box-shadow: 0 0 0 3px var(--toast-icon-ring);
+            margin-top: 1px;
+        }
+        .toast-icon-wrap svg { width: 17px; height: 17px; color: var(--toast-icon-color); }
+        .toast-progress-track {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: rgba(0,0,0,0.04);
+            border-radius: 0 0 16px 16px;
+            overflow: hidden;
+        }
+        .toast-progress-bar {
+            height: 100%;
+            border-radius: 0 0 16px 16px;
+            background: var(--toast-accent);
+            opacity: 0.55;
+            animation: toastProgressShrink var(--toast-duration) linear forwards;
+            will-change: transform;
+            transform-origin: left;
+        }
+        @keyframes toastProgressShrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+        @keyframes toastBounceIn {
+            0%   { opacity: 0; transform: translateY(36px) scale(0.92); }
+            50%  { opacity: 1; transform: translateY(-6px) scale(1.02); }
+            75%  { transform: translateY(3px) scale(0.99); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toastFadeOut {
+            0%   { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(14px) scale(0.95); }
+        }
+        .toast-enter { animation: toastBounceIn 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) forwards; }
+        .toast-exit { animation: toastFadeOut 0.3s ease-in forwards; pointer-events: none; }
+        .toast-type-success { --toast-accent: #10b981; --toast-glow-inner: rgba(16,185,129,0.08); --toast-glow-outer: rgba(16,185,129,0.18); --toast-icon-bg: rgba(16,185,129,0.13); --toast-icon-ring: rgba(16,185,129,0.2); --toast-icon-color: #10b981; }
+        .toast-type-error { --toast-accent: #f43f5e; --toast-glow-inner: rgba(244,63,94,0.08); --toast-glow-outer: rgba(244,63,94,0.18); --toast-icon-bg: rgba(244,63,94,0.12); --toast-icon-ring: rgba(244,63,94,0.2); --toast-icon-color: #f43f5e; }
+        .toast-type-warning { --toast-accent: #f59e0b; --toast-glow-inner: rgba(245,158,11,0.08); --toast-glow-outer: rgba(245,158,11,0.18); --toast-icon-bg: rgba(245,158,11,0.12); --toast-icon-ring: rgba(245,158,11,0.2); --toast-icon-color: #f59e0b; }
+        .toast-type-info { --toast-accent: #0ea5e9; --toast-glow-inner: rgba(14,165,233,0.08); --toast-glow-outer: rgba(14,165,233,0.18); --toast-icon-bg: rgba(14,165,233,0.12); --toast-icon-ring: rgba(14,165,233,0.2); --toast-icon-color: #0ea5e9; }
+        /* ===== Toast 系统样式结束 ===== */
         @keyframes blinkReminder {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.2; }
@@ -1311,6 +1411,60 @@
         const MessageCircle = (props) => <IconBase {...props}><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></IconBase>;
         const Shield = (props) => <IconBase {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></IconBase>;
         const Key = (props) => <IconBase {...props}><path d="m21 2-2 2m-7.6 7.6a6.5 6.5 0 1 1-9.19-9.19 6.5 6.5 0 0 1 9.19 9.19Z"/><path d="m21 2-2 2 2 2-2 2-2 2 2 2-2 2"/></IconBase>;
+
+        // ===== 应用内通知 Toast 系统 =====
+        const _toastListeners = new Set();
+        let _toastList = [];
+        let _toastSeq = 0;
+        function showToast(type, message, options) {
+            if (typeof type === 'string' && !message) { message = type; type = 'info'; }
+            type = type || 'info'; message = message || ''; options = options || {};
+            const duration = options.duration != null ? options.duration : (type === 'error' || type === 'warning') ? 3500 : 2500;
+            const id = ++_toastSeq;
+            const toast = { id, type, message, duration, createdAt: Date.now(), exiting: false };
+            _toastList = [toast, ..._toastList].slice(0, 10);
+            _toastListeners.forEach(fn => fn([..._toastList]));
+            setTimeout(() => dismissToast(id), duration);
+            return id;
+        }
+        function dismissToast(id) {
+            if (!_toastList.find(t => t.id === id && !t.exiting)) return;
+            _toastList = _toastList.map(t => t.id === id ? { ...t, exiting: true } : t);
+            _toastListeners.forEach(fn => fn([..._toastList]));
+            setTimeout(() => { _toastList = _toastList.filter(t => t.id !== id); _toastListeners.forEach(fn => fn([..._toastList])); }, 320);
+        }
+        const ToastContainer = () => {
+            const [toasts, setToasts] = useState([]);
+            useEffect(() => { _toastListeners.add(setToasts); return () => _toastListeners.delete(setToasts); }, []);
+            const visible = toasts.slice(0, 3);
+            if (!visible.length) return null;
+            return (
+                <div className="toast-container" aria-live="polite">
+                    {visible.map(t => {
+                        const Icon = ({ type }) => {
+                            const icons = { success: <><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></>, error: <><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></>, warning: <><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></>, info: <><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></> };
+                            return <IconBase strokeWidth={2.5}>{icons[type] || icons.info}</IconBase>;
+                        };
+                        const elapsed = Date.now() - t.createdAt;
+                        return (
+                            <div key={t.id} className={`toast-card toast-type-${t.type} ${t.exiting ? 'toast-exit' : 'toast-enter'}`} onClick={() => dismissToast(t.id)} style={{ '--toast-duration': t.duration + 'ms' }}>
+                                <div className="toast-icon-wrap"><Icon type={t.type} /></div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p className="text-[13px] leading-relaxed font-semibold text-gray-700" style={{ margin: 0, wordBreak: 'break-word' }}>
+                                        {t.message.split('\n').map((line, i) => i === 0 ? line : <span key={i}><br />{line}</span>)}
+                                    </p>
+                                </div>
+                                <button aria-label="关闭" style={{ flexShrink: 0, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, color: '#9ca3af', marginTop: 2 }} onClick={e => { e.stopPropagation(); dismissToast(t.id); }}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12" /></svg>
+                                </button>
+                                <div className="toast-progress-track"><div className="toast-progress-bar" style={{ animationDelay: '-' + elapsed + 'ms' }} /></div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        };
+        // ===== Toast 系统代码结束 =====
 
         // --- 颜色配置方案 ---
         const COLOR_PALETTES = {
@@ -2050,6 +2204,93 @@
             );
         };
 
+        // ===== Z-index 层级规范 =====
+        // z-50 : 基础模态框（设置、时间录入、大事纪、备份、完成墙）
+        // z-[60]: 次级模态框（主题选择）
+        // z-[70]: 数据展示模态框（进化之路、历史明细、成就墙、转盘选择、邪恶转盘）
+        // z-[80]: 功能模态框（商店、作业考试、统计）
+        // z-[85]: 宠物主模态框
+        // z-[90]: 宠物子模态框（指南、周末结算）
+        // z-[100]: 通知/交互模态框（升级、成就通知、转盘、禁言、进贡、豁免）
+        // z-[110]: 随机事件、周工资
+        // z-[120]: 聊天抽屉（最高层级）
+        // z-[115]: Toast 通知（CSS 中定义）
+
+        // ===== 可复用模态框壳组件 =====
+        // 用法：<ModalShell show={show} onClose={onClose} theme={theme} title="标题" icon="🎉" maxWidth="max-w-3xl" size="lg">
+        //          <div>内容...</div>
+        //        </ModalShell>
+        const ModalShell = ({ show, onClose, theme, title, icon, children, maxWidth = 'max-w-sm', size = 'md', zIndex = 'z-50', backdrop = 'bg-black/60', extraHeader, footer, className = '', panelClassName = '' }) => {
+            if (!show) return null;
+            const sizeClass = size === 'lg' ? 'max-h-[90vh]' : size === 'sm' ? '' : 'max-h-[85vh]';
+            return (
+                <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 ${backdrop} backdrop-blur-sm ${className}`} onClick={onClose}>
+                    <div className={`bg-white rounded-3xl w-full ${maxWidth} ${sizeClass} shadow-2xl flex flex-col overflow-hidden ${panelClassName}`} onClick={e => e.stopPropagation()}>
+                        {title && (
+                            <div className={`p-4 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-lg`}>
+                                <div>
+                                    <h2 className="text-lg font-bold flex items-center gap-2">{icon} {title}</h2>
+                                    {extraHeader}
+                                </div>
+                                <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                                    <XIcon className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
+                        <div className="flex-1 overflow-y-auto">{children}</div>
+                        {footer}
+                    </div>
+                </div>
+            );
+        };
+
+        // ===== 可复用 TabBar 组件 =====
+        // 用法：<TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} theme={theme} />
+        const TabBar = ({ tabs, active, onChange, theme, variant = 'default' }) => {
+            if (variant === 'pill') {
+                // 胶囊容器样式（宠物页面风格）
+                return (
+                    <div className="flex bg-white/60 rounded-2xl p-1 gap-1">
+                        {tabs.map(tab => (
+                            <button key={tab.id} onClick={() => onChange(tab.id)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${active === tab.id ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                                <span>{tab.icon}</span>
+                                <span>{tab.label}</span>
+                                {tab.count != null && <span className="text-[10px] opacity-60">({tab.count})</span>}
+                            </button>
+                        ))}
+                    </div>
+                );
+            }
+            if (variant === 'accent') {
+                // 左侧竖线指示器（设置页面风格）
+                return (
+                    <div className="flex p-2.5 bg-gray-50 border-b border-gray-100 gap-2 overflow-x-auto shrink-0 min-h-[52px]">
+                        {tabs.map(tab => (
+                            <button key={tab.id} onClick={() => onChange(tab.id)}
+                                className={`px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-colors transition-transform duration-200 flex items-center gap-1.5 border-l-4 ${active === tab.id ? 'bg-white text-gray-800 shadow-md ring-1 ring-gray-200 border-l-indigo-500' : 'border-l-transparent text-gray-500 hover:text-gray-700 hover:bg-white/70'}`}>
+                                {tab.icon} {tab.label}
+                                {tab.count != null && <span className="text-[10px] opacity-60 ml-1">({tab.count})</span>}
+                            </button>
+                        ))}
+                    </div>
+                );
+            }
+            // default: 底部融入式（商店风格）
+            return (
+                <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+                    {tabs.map(tab => (
+                        <button key={tab.id} onClick={() => onChange(tab.id)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${active === tab.id ? `bg-white shadow-sm ring-1 ring-gray-200 text-gray-800` : 'text-gray-500 hover:text-gray-700'}`}>
+                            {tab.icon && <span>{tab.icon}</span>}
+                            <span>{tab.label}</span>
+                            {tab.count != null && <span className="text-[10px] opacity-60">({tab.count})</span>}
+                        </button>
+                    ))}
+                </div>
+            );
+        };
+
         // ===== 大事纪 Modal（全新横向时间轴版）=====
         const MilestonesModal = ({ show, onClose, milestones, profiles, theme, activeChild, historicalEventProgress, currentXP }) => {
             if (!show) return null;
@@ -2125,10 +2366,10 @@
                     milestone:   { bg: '#eff6ff', bd: '#bfdbfe', lbg: '#dbeafe', lc: '#1e40af', tc: '#1e3a8a', label: '里程碑' },
                 }[item.type] || { bg: '#f9fafb', bd: '#e5e7eb', lbg: '#f3f4f6', lc: '#374151', tc: '#111827', label: '记录' };
                 return (
-                    <div style={{ background: cfg.bg, border: `1.5px solid ${cfg.bd}`, borderRadius: 12, padding: '12px 14px', boxShadow: '0 2px 10px rgba(0,0,0,0.07)' }}>
-                        <div style={{ display: 'inline-block', background: cfg.lbg, color: cfg.lc, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, marginBottom: 7 }}>{cfg.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: cfg.tc, lineHeight: 1.45, marginBottom: 4 }}>{item.title}</div>
-                        {item.description && <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>{item.description}</div>}
+                    <div className="rounded-xl py-3 px-3.5 shadow-md" style={{ background: cfg.bg, border: `1.5px solid ${cfg.bd}` }}>
+                        <div className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-[7px]" style={{ background: cfg.lbg, color: cfg.lc }}>{cfg.label}</div>
+                        <div className="text-sm font-extrabold leading-[1.45] mb-1" style={{ color: cfg.tc }}>{item.title}</div>
+                        {item.description && <div className="text-xs text-gray-500 leading-normal">{item.description}</div>}
                     </div>
                 );
             };
@@ -2146,19 +2387,19 @@
                 const randEvent = (typeof RANDOM_EVENTS !== 'undefined') ? RANDOM_EVENTS.find(e => e.id === eventId) : null;
                 const eventDesc = randEvent ? randEvent.desc : null;
                 return (
-                    <div style={{ background: 'linear-gradient(135deg,#fdf4ff,#f5f3ff)', border: '1.5px solid #e9d5ff', borderRadius: 12, padding: '12px 14px', boxShadow: '0 2px 10px rgba(139,92,246,0.09)' }}>
-                        <div style={{ display: 'inline-block', background: '#ede9fe', color: '#5b21b6', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, marginBottom: 7 }}>✨ 时空奇遇</div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#3b0764', lineHeight: 1.45, marginBottom: eventDesc ? 6 : 4 }}>
+                    <div className="rounded-xl py-3 px-3.5" style={{ background: 'linear-gradient(135deg,#fdf4ff,#f5f3ff)', border: '1.5px solid #e9d5ff', boxShadow: '0 2px 10px rgba(139,92,246,0.09)' }}>
+                        <div className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-[7px] bg-violet-100 text-violet-800">✨ 时空奇遇</div>
+                        <div className="text-sm font-extrabold leading-[1.45] text-purple-950" style={{ marginBottom: eventDesc ? 6 : 4 }}>
                             {(item.title || '').replace(/^时空奇遇：/, '')}
                         </div>
                         {eventDesc && (
-                            <div style={{ fontSize: 12, color: '#5b21b6', lineHeight: 1.65, marginBottom: 7, padding: '8px 10px', background: 'rgba(139,92,246,0.06)', borderRadius: 8, borderLeft: '3px solid #c4b5fd', fontStyle: 'italic' }}>
+                            <div className="text-xs leading-relaxed mb-[7px] px-2.5 py-2 rounded-lg border-l-[3px] border-violet-300 bg-violet-500/6 text-violet-700 italic">
                                 {eventDesc}
                             </div>
                         )}
                         {item.description && (
-                            <div style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ opacity: 0.6 }}>奖励：</span>{item.description}
+                            <div className="text-[11px] text-violet-600 font-semibold flex items-center gap-1">
+                                <span className="opacity-60">奖励：</span>{item.description}
                             </div>
                         )}
                     </div>
@@ -2198,35 +2439,35 @@
                 }, [triggered, imgSrc]);
                 
                 return (
-                    <div style={{ background: es.cardBg, border: `1.5px solid ${triggered ? es.cardBd : '#e5e7eb'}`, borderRadius: 12, padding: '12px 14px', boxShadow: '0 2px 10px rgba(0,0,0,0.06)', opacity: triggered ? 1 : 0.72, transition: 'opacity 0.15s' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <span style={{ display: 'inline-block', background: es.badgeBg, color: es.badgeTxt, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{item.era}</span>
-                            {triggered && <span style={{ fontSize: 10, color: '#059669', fontWeight: 700 }}>✓ 已亲历</span>}
+                    <div className="rounded-xl py-3 px-3.5 shadow-md transition-opacity" style={{ background: es.cardBg, border: `1.5px solid ${triggered ? es.cardBd : '#e5e7eb'}`, opacity: triggered ? 1 : 0.72 }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: es.badgeBg, color: es.badgeTxt }}>{item.era}</span>
+                            {triggered && <span className="text-[10px] text-emerald-600 font-bold">✓ 已亲历</span>}
                         </div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#1f2937', lineHeight: 1.45, marginBottom: 3 }}>{item.title}</div>
-                        {item.time && <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.4, marginBottom: 6 }}>{item.time}</div>}
+                        <div className="text-sm font-extrabold leading-[1.45] text-gray-800 mb-0.5">{item.title}</div>
+                        {item.time && <div className="text-[11px] text-gray-400 leading-snug mb-1.5">{item.time}</div>}
                         {/* 仅已亲历且图片存在时显示历史事件图片 */}
                         {triggered && imgExists && (
-                            <div style={{ marginBottom: 8, borderRadius: 8, overflow: 'hidden', border: `1px solid ${es.cardBd}` }}>
-                                <img 
-                                    src={imgSrc} 
+                            <div className="mb-2 rounded-lg overflow-hidden" style={{ border: `1px solid ${es.cardBd}` }}>
+                                <img
+                                    src={imgSrc}
                                     alt={item.title}
-                                    style={{ width: '100%', aspectRatio: '1/1', display: 'block', objectFit: 'cover' }}
+                                    className="w-full aspect-square block object-cover"
                                 />
                             </div>
                         )}
                         {item.desc && (
-                            <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.65, marginBottom: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.035)', borderRadius: 8, borderLeft: `3px solid ${es.cardBd}`, fontStyle: 'italic' }}>
+                            <div className="text-xs text-gray-700 leading-relaxed mb-2 px-2.5 py-2 rounded-lg bg-black/3.5 border-l-[3px] italic" style={{ borderColor: es.cardBd }}>
                                 {item.desc}
                             </div>
                         )}
                         {(item.rewards || []).length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            <div className="flex flex-wrap gap-1.5">
                                 {(item.rewards || []).map((r, ri) => (
-                                    <span key={ri} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, padding: '2px 9px 2px 7px', borderRadius: 20, background: r.type === 'gold' ? '#fef3c7' : '#ede9fe', color: r.type === 'gold' ? '#92400e' : '#4338ca', border: `1px solid ${r.type === 'gold' ? '#fde68a' : '#ddd6fe'}` }}>
+                                    <span key={ri} className={`inline-flex items-center gap-0.5 text-[11px] font-bold py-0.5 pr-[9px] pl-[7px] rounded-full ${r.type === 'gold' ? 'bg-amber-100 text-amber-800' : 'bg-violet-100 text-indigo-700'}`} style={{ border: `1px solid ${r.type === 'gold' ? '#fde68a' : '#ddd6fe'}` }}>
                                         {r.value > 0 ? '+' : ''}{r.value}
                                         {r.type === 'gold'
-                                            ? <Coins style={{ width: 12, height: 12, color: '#d97706', strokeWidth: 2 }} />
+                                            ? <Coins className="w-3 h-3 text-amber-600" style={{ strokeWidth: 2 }} />
                                             : <span>⭐</span>}
                                     </span>
                                 ))}
@@ -2248,31 +2489,31 @@
             ];
 
             return (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.62)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(5px)' }}>
-                    <div style={{ background: '#fff', borderRadius: 22, width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 30px 80px rgba(0,0,0,0.32)' }}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl w-full max-w-[760px] max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
 
                         {/* ===== 头部 ===== */}
-                        <div className={`bg-gradient-to-r ${theme.gradient}`} style={{ padding: '20px 24px 0 24px', color: '#fff', flexShrink: 0 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                        <div className={`bg-gradient-to-r ${theme.gradient} px-6 pt-5 text-white flex-shrink-0`}>
+                            <div className="flex justify-between items-start mb-3">
                                 <div>
-                                    <h2 style={{ fontSize: 22, fontWeight: 900, textShadow: '0 1px 6px rgba(0,0,0,0.2)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <h2 className="text-2xl font-black m-0 flex items-center gap-2" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.2)' }}>
                                         📜 时光大事纪
                                     </h2>
-                                    <p style={{ fontSize: 13, marginTop: 4, opacity: 0.88, fontWeight: 500 }}>
+                                    <p className="text-sm mt-1 font-medium" style={{ opacity: 0.88 }}>
                                         {isTester ? '🔍 测试员视角：可浏览所有成员档案' : `✦ ${member} 的专属成长档案`}
                                     </p>
                                 </div>
-                                <button onClick={onClose} style={{ padding: 8, background: 'rgba(255,255,255,0.22)', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                    <XIcon style={{ width: 20, height: 20, color: '#fff' }} />
+                                <button onClick={onClose} className="p-2 bg-white/22 rounded-full border-none cursor-pointer flex items-center justify-center flex-shrink-0">
+                                    <XIcon className="w-5 h-5 text-white" />
                                 </button>
                             </div>
 
                             {/* 测试员成员切换 */}
                             {isTester && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+                                <div className="flex flex-wrap gap-[7px] mb-3">
                                     {profiles.map(p => (
                                         <button key={p.id} onClick={() => setViewMember(p.name)}
-                                            style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', background: viewMember === p.name ? 'rgba(255,255,255,0.42)' : 'rgba(255,255,255,0.18)', color: '#fff', transition: 'all 0.15s', boxShadow: viewMember === p.name ? '0 0 0 2px rgba(255,255,255,0.7)' : 'none' }}>
+                                            className={`px-3.5 py-1 rounded-full text-xs font-bold border-none cursor-pointer text-white transition-all ${viewMember === p.name ? 'bg-white/42 shadow-[0_0_0_2px_rgba(255,255,255,0.7)]' : 'bg-white/18'}`}>
                                             {p.name}
                                         </button>
                                     ))}
@@ -2280,22 +2521,18 @@
                             )}
 
                             {/* 分页 Tabs（底部融入式设计）*/}
-                            <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end' }}>
+                            <div className="flex gap-1 items-end">
                                 {tabs.map(tab => (
                                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                                        className={`flex items-center gap-1.5 pt-[9px] px-[18px] pb-[10px] text-sm font-bold border-none cursor-pointer transition-all ${activeTab === tab.id ? 'bg-gray-50 text-gray-800' : 'bg-white/16 text-white/92'}`}
                                         style={{
-                                            display: 'flex', alignItems: 'center', gap: 6,
-                                            padding: '9px 18px 10px', borderRadius: '12px 12px 0 0',
-                                            fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer',
-                                            transition: 'all 0.18s',
-                                            background: activeTab === tab.id ? '#f9fafb' : 'rgba(255,255,255,0.16)',
-                                            color: activeTab === tab.id ? '#1f2937' : 'rgba(255,255,255,0.92)',
+                                            borderRadius: '12px 12px 0 0',
                                             boxShadow: activeTab === tab.id ? '0 -2px 12px rgba(0,0,0,0.08)' : 'none',
                                             transform: activeTab === tab.id ? 'translateY(1px)' : 'translateY(3px)',
                                         }}>
-                                        <span style={{ fontSize: 15 }}>{tab.icon}</span>
+                                        <span className="text-lg">{tab.icon}</span>
                                         <span>{tab.label}</span>
-                                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, fontFamily: 'monospace', background: activeTab === tab.id ? '#e5e7eb' : 'rgba(255,255,255,0.22)', color: activeTab === tab.id ? '#6b7280' : 'rgba(255,255,255,0.85)' }}>
+                                        <span className={`text-[10px] px-1.5 py-px rounded-[10px] font-mono ${activeTab === tab.id ? 'bg-gray-200 text-gray-500' : 'bg-white/22 text-white/85'}`}>
                                             {tab.count}
                                         </span>
                                     </button>
@@ -2304,16 +2541,16 @@
                         </div>
 
                         {/* ===== 内容区 ===== */}
-                        <div style={{ flex: 1, overflowY: 'auto', background: '#f9fafb' }}>
+                        <div className="flex-1 overflow-y-auto bg-gray-50">
 
                             {/* --- Tab1: 学习大事纪 --- */}
                             {activeTab === 'study' && (
-                                <div style={{ paddingTop: 4 }}>
+                                <div className="pt-1">
                                     {studyItems.length > 0 && (
-                                        <div style={{ padding: '10px 28px 2px', display: 'flex', gap: 18, fontSize: 12, color: '#6b7280', alignItems: 'center', flexWrap: 'wrap' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }}/>升级 <b style={{ color: '#92400e' }}>{studyItems.filter(m => m.type === 'levelup').length}</b> 次</span>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#7c3aed', display: 'inline-block' }}/>成就 <b style={{ color: '#5b21b6' }}>{studyItems.filter(m => m.type === 'achievement').length}</b> 个</span>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2563eb', display: 'inline-block' }}/>里程碑 <b style={{ color: '#1d4ed8' }}>{studyItems.filter(m => m.type === 'milestone').length}</b> 个</span>
+                                        <div className="px-7 pt-2.5 pb-0.5 flex gap-[18px] text-xs text-gray-500 items-center flex-wrap">
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block bg-amber-500"/>升级 <b className="text-amber-800">{studyItems.filter(m => m.type === 'levelup').length}</b> 次</span>
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block bg-violet-600"/>成就 <b className="text-violet-700">{studyItems.filter(m => m.type === 'achievement').length}</b> 个</span>
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block bg-blue-600"/>里程碑 <b className="text-blue-700">{studyItems.filter(m => m.type === 'milestone').length}</b> 个</span>
                                         </div>
                                     )}
                                     <VerticalTimeline items={studyItems} renderCard={renderStudyCard} renderDot={renderStudyDot} emptyIcon="📚" emptyText="打卡升级后，成长足迹将在这里一一呈现！" />
@@ -2322,9 +2559,9 @@
 
                             {/* --- Tab2: 奇遇 --- */}
                             {activeTab === 'adventure' && (
-                                <div style={{ paddingTop: 4 }}>
+                                <div className="pt-1">
                                     {adventureItems.length > 0 && (
-                                        <div style={{ padding: '10px 20px 2px', fontSize: 12, color: '#7c3aed' }}>
+                                        <div className="px-5 pt-2.5 pb-0.5 text-xs text-violet-600">
                                             共 <b>{adventureItems.length}</b> 段奇遇故事 · 从上到下按触发顺序排列
                                         </div>
                                     )}
@@ -2334,18 +2571,18 @@
 
                             {/* --- Tab3: 历史大事纪 --- */}
                             {activeTab === 'history' && (
-                                <div style={{ paddingTop: 4 }}>
+                                <div className="pt-1">
                                     {unlockedHistItems.length > 0 && (
-                                        <div style={{ padding: '10px 28px 4px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                                        <div className="px-7 pt-2.5 pb-1 flex flex-wrap gap-2.5 items-center">
                                             {Object.entries(ERA_MAP).filter(([era]) => unlockedHistItems.some(e => e.era === era)).map(([era, s]) => (
-                                                <span key={era} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#374151' }}>
-                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.dotC, display: 'inline-block' }} />
+                                                <span key={era} className="flex items-center gap-1.5 text-[11px] text-gray-700">
+                                                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: s.dotC }} />
                                                     {era}
-                                                    <span style={{ color: '#9ca3af', fontSize: 10 }}>({unlockedHistItems.filter(e => e.era === era).length})</span>
+                                                    <span className="text-gray-400 text-[10px]">({unlockedHistItems.filter(e => e.era === era).length})</span>
                                                 </span>
                                             ))}
-                                            <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 6 }}>
-                                                · 已亲历 <b style={{ color: '#059669' }}>{unlockedHistItems.filter(e => triggeredSet.has(e.id)).length}</b> / {unlockedHistItems.length}
+                                            <span className="text-[11px] text-gray-400 ml-1.5">
+                                                · 已亲历 <b className="text-emerald-600">{unlockedHistItems.filter(e => triggeredSet.has(e.id)).length}</b> / {unlockedHistItems.length}
                                             </span>
                                         </div>
                                     )}
@@ -2371,7 +2608,7 @@
             const toggle = (name) => setSelected(prev => ({ ...prev, [name]: !prev[name] }));
             const handleConfirm = () => {
                 if (!canConfirm) {
-                    if (totalCost > inventoryCount) alert(`静音卡数量不足：需要 ${totalCost} 张，当前仅有 ${inventoryCount} 张。`);
+                    if (totalCost > inventoryCount) showToast('warning', `静音卡数量不足：需要 ${totalCost} 张，当前仅有 ${inventoryCount} 张。`);
                     return;
                 }
                 const names = Object.keys(selected).filter(k => selected[k]);
@@ -2384,7 +2621,7 @@
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
                     <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-200" onClick={e => e.stopPropagation()}>
                         <div className="bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-4 text-white">
-                            <h3 className="text-lg font-black flex items-center gap-2">🤫 禁言令</h3>
+                            <h3 className="text-lg font-bold flex items-center gap-2">🤫 禁言令</h3>
                             <p className="text-sm text-white/90 mt-1">选择禁言对象与时长，每 10 分钟消耗 1 张静音卡</p>
                         </div>
                         <div className="p-6 space-y-5">
@@ -2509,7 +2746,7 @@
                 URL.revokeObjectURL(url);
                 
                 localStorage.setItem('app_last_backup_date', new Date().toISOString());
-                alert('✅ 备份成功！\n\n文件已下载，请妥善保管。');
+                showToast('success', '备份成功！文件已下载，请妥善保管。');
             };
             
             const handleImport = () => {
@@ -2526,7 +2763,7 @@
                             const data = JSON.parse(event.target.result);
                             
                             if (!data.version) {
-                                alert('⚠️ 无效的备份文件！');
+                                showToast('warning', '无效的备份文件！');
                                 return;
                             }
                             
@@ -2606,10 +2843,10 @@
                                 }
                             });
                             
-                            alert('✅ 数据恢复成功！\n\n页面将自动刷新。');
+                            showToast('success', '数据恢复成功！页面将自动刷新。');
                             window.location.reload();
                         } catch (err) {
-                            alert('❌ 文件解析失败！\n\n' + err.message);
+                            showToast('error', '文件解析失败！' + err.message, {duration: 5000});
                         }
                     };
                     reader.readAsText(file);
@@ -4861,7 +5098,7 @@
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-white/20 rounded-full text-2xl">🎪</div>
                                 <div>
-                                    <h2 className="text-xl font-black">时空集市</h2>
+                                    <h2 className="text-xl font-bold">时空集市</h2>
                                     <p className="text-white/80 text-xs flex items-center gap-2">
                                         <Coins className="w-4 h-4 text-yellow-300" /> 余额: <span className="relative font-bold text-yellow-200 text-lg">{totalGold}{purchaseToast && (
                                             <span key={purchaseToast.key} className="purchase-toast-animate absolute left-1/2 -translate-x-1/2 bottom-full mb-0.5 whitespace-nowrap text-orange-300 font-black text-sm pointer-events-none" style={{textShadow:'0 1px 4px rgba(0,0,0,0.5)'}}>-{purchaseToast.cost}💰</span>
@@ -4933,6 +5170,10 @@
 
                                             return (
                                                 <div key={item.id} className={`bg-white rounded-2xl p-4 border transition-colors transition-transform relative overflow-hidden group ${isLocked ? 'border-gray-200 opacity-70 grayscale' : 'border-gray-100 hover:shadow-lg hover:-translate-y-1'}`}>
+                                                    {/* 纪元主题顶部装饰条 */}
+                                                    {!isLocked && ERA_COLORS[item.era] && (
+                                                        <div className={`absolute top-0 left-0 right-0 h-[3px] ${ERA_COLORS[item.era].bar} opacity-60`} />
+                                                    )}
                                                     {isLocked && (
                                                         <div className="absolute inset-0 z-20 bg-gray-100/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-center p-4">
                                                             <Lock className="w-8 h-8 text-gray-400 mb-2" />
@@ -4942,7 +5183,7 @@
                                                     {isDiscounted && !isLocked && <div className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse z-10">每日特惠 -20%</div>}
                                                     
                                                     <div className="flex justify-between items-start mb-3">
-                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-3xl shadow-sm ${isLocked ? 'bg-gray-200' : 'bg-gradient-to-br from-indigo-50 to-blue-50'}`}>{item.icon}</div>
+                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-3xl shadow-sm ${isLocked ? 'bg-gray-200' : ERA_COLORS[item.era] ? `${ERA_COLORS[item.era].bg} bg-opacity-10` : 'bg-gradient-to-br from-indigo-50 to-blue-50'}`}>{item.icon}</div>
                                                         <div className={`px-2 py-1 rounded-lg text-xs font-black border flex items-center gap-1 ${canAfford ? 'bg-yellow-50 text-amber-600 border-amber-100' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
                                                             <Coins className="w-3 h-3" /> {finalPrice}
                                                         </div>
@@ -4950,6 +5191,9 @@
                                                     
                                                     <h3 className="font-bold text-gray-800 text-sm mb-1">{isLocked && itemEraIdx > myEraIdx ? '???' : item.name}</h3>
                                                     <p className="text-xs text-gray-500 leading-relaxed mb-3 h-14 overflow-y-auto">{isLocked ? '该物品来自更高等的文明...' : item.desc}</p>
+                                                    {!isLocked && item.era && ERA_COLORS[item.era] && (
+                                                        <div className="absolute bottom-2 right-2 text-[9px] font-bold opacity-25 text-gray-500 pointer-events-none">{item.era}</div>
+                                                    )}
 
                                                     {/* 消耗类商品：数量选择器 */}
                                                     {!isLocked && !isOwned && !isRestricted && (item.category === 'tool' || item.category === 'real' || item.category === 'box') ? (() => {
@@ -5129,13 +5373,13 @@
                                                                          const now = new Date();
                                                                          const day = now.getDay();
                                                                          if (day !== 0 && day !== 6) {
-                                                                             alert('📱 屏幕时间加油包仅限周末使用，请在周六或周日再核销。');
+                                                                             showToast('warning', '屏幕时间加油包仅限周末使用，请在周六或周日再核销。');
                                                                              return;
                                                                          }
                                                                          const todayKey = getLocalDateKey(0);
                                                                          const alreadyToday = (redeemedCoupons || []).filter(c => c.itemId === 'real_screen' && c.verified === true && c.verifiedAt && c.verifiedAt.slice(0, 10) === todayKey).length;
                                                                          if (alreadyToday >= 1) {
-                                                                             alert('📱 屏幕时间加油包每天最多核销一次，今日已核销过。');
+                                                                             showToast('warning', '屏幕时间加油包每天最多核销一次，今日已核销过。');
                                                                              return;
                                                                          }
                                                                      }
@@ -5161,7 +5405,7 @@
                                 return (
                                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setVerifyModal(null)}>
                                     <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                                        <h3 className="text-lg font-black text-gray-800 mb-2 flex items-center gap-2">📱 扫码核销</h3>
+                                        <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">📱 扫码核销</h3>
                                         <p className="text-sm text-gray-500 mb-4">请使用微信或浏览器扫描下方二维码，在手机端确认核销后，将显示的核销码输入下方完成同步。</p>
                                         <div className="flex justify-center mb-4 p-4 bg-gray-50 rounded-xl">
                                             {verifyPageUrl ? (
@@ -5186,7 +5430,7 @@
                                             <button
                                                 onClick={() => {
                                                     if (verifyInputCode.trim() !== String(verifyModal.coupon.verifyCode)) {
-                                                        alert('核销码不正确，请核对后重新输入。');
+                                                        showToast('error', '核销码不正确，请核对后重新输入。');
                                                         return;
                                                     }
                                                     setRedeemedCoupons(prev => {
@@ -5200,7 +5444,7 @@
                                                     });
                                                     setVerifyModal(null);
                                                     setVerifyInputCode('');
-                                                    alert('✅ 核销完成！');
+                                                    showToast('success', '核销完成！');
                                                 }}
                                                 className="px-4 py-2 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition-colors"
                                             >确认核销</button>
@@ -5380,7 +5624,7 @@
                             </div>
                             {/* 内容 */}
                             <div className="p-6">
-                                <h2 className="text-2xl font-black text-stone-800 text-center mb-1">{eventData.title}</h2>
+                                <h2 className="text-2xl font-bold text-stone-800 text-center mb-1">{eventData.title}</h2>
                                 {eventData.time && (
                                     <p className="text-center text-amber-700/70 text-xs font-medium italic mb-4 flex items-center justify-center gap-1">
                                         <span>⏳</span>{eventData.time}
@@ -5439,7 +5683,7 @@
                                 <div className="absolute bottom-2 right-3 text-white/50 text-[10px] font-bold tracking-wider">{eventData.era}</div>
                             </div>
                             <div className="p-6 text-center">
-                                <h2 className="text-2xl font-black text-gray-800 mb-4">{eventData.title}</h2>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-4">{eventData.title}</h2>
                                 <p className="text-gray-600 leading-relaxed text-sm mb-5 bg-gray-50 p-4 rounded-xl border border-gray-100 text-justify">
                                     {eventData.desc}
                                 </p>
@@ -5467,7 +5711,7 @@
                             <div className="absolute bottom-2 right-3 text-white/50 text-[10px] font-bold tracking-wider">{eventData.era}</div>
                         </div>
                         <div className="p-6 text-center">
-                            <h2 className="text-xl font-black text-gray-800 mb-3">{eventData.title}</h2>
+                            <h2 className="text-xl font-bold text-gray-800 mb-3">{eventData.title}</h2>
                             <p className="text-gray-600 text-sm leading-relaxed mb-4 bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-justify">
                                 {eventData.desc}
                             </p>
@@ -5489,9 +5733,9 @@
                     <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl flex flex-col items-center text-center relative overflow-hidden animate-level-up" onClick={e => e.stopPropagation()}>
                          <div className="absolute inset-0 bg-gradient-to-br from-yellow-100 to-white -z-10"></div>
                          <div className="text-4xl mb-4 animate-bounce">🆙</div>
-                         <h2 className="text-2xl font-black text-gray-800 mb-2">进化成功！</h2>
+                         <h2 className="text-2xl font-bold text-gray-800 mb-2">进化成功！</h2>
                          <p className="text-gray-500 mb-6">恭喜！你已进化为</p>
-                         <div className={`text-3xl font-black mb-2 ${ERA_COLORS[levelInfo.era].text.replace('100', '600')}`}>{levelInfo.name}</div>
+                         <div className={`text-3xl font-bold mb-2 ${ERA_COLORS[levelInfo.era].text.replace('100', '600')}`}>{levelInfo.name}</div>
                          <div className={`px-3 py-1 rounded-full text-xs font-bold text-white mb-6 ${ERA_COLORS[levelInfo.era].bg}`}>Lv.{levelInfo.level} {levelInfo.era}</div>
                          <p className="text-gray-600 text-sm font-medium mb-8 bg-gray-50 p-4 rounded-xl border border-gray-100 italic">"{levelInfo.desc}"</p>
                          <button onClick={onClose} className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold shadow-lg hover:scale-105 transition-transform cursor-pointer">继续征程</button>
@@ -5583,7 +5827,7 @@
                             {/* 合计 */}
                             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                                 <span className="text-sm font-bold text-gray-600">本周共计</span>
-                                <span className="text-xl font-black text-amber-500">{totalReward || 0} 金元宝</span>
+                                <span className="text-xl font-bold text-amber-500">{totalReward || 0} 金元宝</span>
                             </div>
                             <p className="text-[10px] text-gray-400 mt-1 text-center">不含平时打卡所得</p>
                         </div>
@@ -5612,7 +5856,7 @@
                     <div className="bg-white rounded-3xl w-full max-w-4xl h-[90vh] shadow-2xl flex flex-col overflow-hidden relative">
                          <div className={`p-6 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-lg relative z-10`}>
                             <div>
-                                <h2 className="text-2xl font-black flex items-center gap-2"><TrendingUp className="w-8 h-8" /> 进化之路</h2>
+                                <h2 className="text-2xl font-bold flex items-center gap-2"><TrendingUp className="w-8 h-8" /> 进化之路</h2>
                                 <p className="text-white/90 text-xs mt-1">当前经验: {currentXP} XP (Lv.{currentLevel.level} {currentLevel.name})</p>
                             </div>
                             <button onClick={onClose} className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><XIcon className="w-6 h-6" /></button>
@@ -5623,7 +5867,7 @@
                                     {/* 纪元头部卡片 */}
                                     <div className={`rounded-xl overflow-hidden shadow-sm mb-4 border ${ERA_INFOS[era].border}`}>
                                         <div className={`p-4 ${ERA_INFOS[era].bg}`}>
-                                            <h3 className={`text-xl font-black ${ERA_INFOS[era].color} flex items-center gap-2`}>
+                                            <h3 className={`text-xl font-bold ${ERA_INFOS[era].color} flex items-center gap-2`}>
                                                 <span className={`w-3 h-3 rounded-full ${ERA_COLORS[era].bg}`}></span>
                                                 {era}
                                             </h3>
@@ -6061,7 +6305,7 @@
             const isLockedTheme = (id) => (id === 'theme_cyber' || id === 'dunhuang') && !unlockedThemes.includes(id);
             const handleThemeClick = (p) => {
                 if (isLockedTheme(p.id)) {
-                    alert('请先在时空市集中购买并使用该主题商品以解锁。');
+                    showToast('warning', '请先在时空市集中购买并使用该主题商品以解锁。');
                     return;
                 }
                 onSelectTheme(p.id);
@@ -6326,7 +6570,7 @@
                     <div className="bg-white rounded-3xl w-full max-w-5xl h-[90vh] shadow-2xl flex flex-col overflow-hidden relative">
                         <div className={`p-6 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-lg relative z-10`}>
                             <div>
-                                <h2 className="text-3xl font-black flex items-center gap-3 drop-shadow-md"><Trophy className="w-10 h-10 text-yellow-300 drop-shadow-sm" /> 成就荣誉墙</h2>
+                                <h2 className="text-3xl font-bold flex items-center gap-3 drop-shadow-md"><Trophy className="w-10 h-10 text-yellow-300 drop-shadow-sm" /> 成就荣誉墙</h2>
                                 <p className="text-white/90 text-sm mt-1 font-medium tracking-wide">收集徽章，见证你的每一次成长！</p>
                             </div>
                             <button onClick={onClose} className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors backdrop-blur-sm"><XIcon className="w-8 h-8 text-white" /></button>
@@ -6336,7 +6580,7 @@
                                 const catTheme = ACHIEVEMENT_THEMES[cat] || ACHIEVEMENT_THEMES['毅力'];
                                 return (
                                     <div key={cat} className={`mb-8 rounded-2xl ${catTheme.bg} border ${catTheme.border} p-5 shadow-sm`}>
-                                        <h3 className={`text-xl font-black mb-6 flex items-center gap-2 ${catTheme.title}`}><span className="w-2 h-6 rounded-full bg-current"></span>{cat}系列</h3>
+                                        <h3 className={`text-xl font-bold mb-6 flex items-center gap-2 ${catTheme.title}`}><span className="w-2 h-6 rounded-full bg-current"></span>{cat}系列</h3>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                                             {BADGES.filter(b => b.category === cat).map(badge => {
                                                 const isUnlocked = achievements[badge.id];
@@ -6401,7 +6645,7 @@
                         <div className="relative z-10">
                             <div className="text-sm font-bold tracking-widest uppercase mb-2 text-gray-400">ACHIEVEMENT UNLOCKED</div>
                             <div className={`text-6xl mb-4 drop-shadow-xl animate-bounce`}>{badge.rarity === 'legendary' ? '👑' : badge.rarity === 'epic' ? '🌟' : badge.rarity === 'rare' ? '💎' : '🏅'}</div>
-                            <h2 className={`text-2xl font-black mb-2 ${rarity.text === 'text-slate-600' ? 'text-slate-800' : rarity.text.replace('600', '800')}`}>{badge.name}</h2>
+                            <h2 className={`text-2xl font-bold mb-2 ${rarity.text === 'text-slate-600' ? 'text-slate-800' : rarity.text.replace('600', '800')}`}>{badge.name}</h2>
                             <div className={`inline-block px-3 py-1 rounded-full text-xs font-bold mb-4 ${rarity.badge}`}>{rarity.name}</div>
                             <p className="text-gray-600 font-medium">{badge.desc}</p>
                         </div>
@@ -6700,7 +6944,7 @@
                         {/* 装饰星星 */}
                         <div className="absolute top-3 right-4 text-indigo-200/60 text-lg pointer-events-none">✦</div>
                         <div className="absolute bottom-4 left-4 text-pink-200/60 text-sm pointer-events-none">✧</div>
-                        <div className="absolute top-1/2 right-8 text-purple-200/40 text-[10px] pointer-events-none">✦</div>
+                        <div className="absolute top-1/2 right-8 text-purple-200/40 text-xs pointer-events-none">✦</div>
 
                         {/* 气泡对话 */}
                         <div className="flex justify-center mb-3">
@@ -6730,7 +6974,7 @@
                                                 <span className="absolute inset-0 flex items-center justify-center text-xs">{s.icon}</span>
                                             </div>
                                             <div className="flex flex-col leading-tight">
-                                                <span className="text-[10px] text-gray-400">{s.label}</span>
+                                                <span className="text-xs text-gray-400">{s.label}</span>
                                                 <span className="text-[11px] font-bold text-gray-600">{val}</span>
                                             </div>
                                         </div>
@@ -6823,18 +7067,18 @@
                                                 }`}
                                             >
                                                 {onCooldown ? (
-                                                    <span className="text-[9px] font-bold text-gray-400">{cdRemaining}分</span>
+                                                    <span className="text-[10px] font-bold text-gray-400">{cdRemaining}分</span>
                                                 ) : (
                                                     btn.icon
                                                 )}
                                             </button>
                                             <div className="flex flex-col leading-tight">
-                                                <span className="text-[10px] text-gray-500 font-medium">{btn.label}</span>
+                                                <span className="text-xs text-gray-500 font-medium">{btn.label}</span>
                                                 {!onCooldown && action.starCost > 0 && (
-                                                    <span className="text-[9px] text-amber-500">⭐{action.starCost}</span>
+                                                    <span className="text-[10px] text-amber-500">⭐{action.starCost}</span>
                                                 )}
                                                 {!onCooldown && action.starCost === 0 && (
-                                                    <span className="text-[9px] text-green-500">免费</span>
+                                                    <span className="text-[10px] text-green-500">免费</span>
                                                 )}
                                             </div>
                                         </div>
@@ -6848,19 +7092,19 @@
                             <span className="text-lg font-extrabold text-gray-800">{pet.nickname || catalog.name}</span>
                             <div className="flex items-center gap-1.5">
                                 {/* 元素徽章 */}
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${elemInfo.bg} ${elemInfo.color} font-bold border border-current/20`}>{elemInfo.icon} {elemInfo.name}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${elemInfo.bg} ${elemInfo.color} font-bold border border-current/20`}>{elemInfo.icon} {elemInfo.name}</span>
                                 {/* 等级徽章 */}
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/80 text-indigo-600 font-bold border border-indigo-200">Lv.{growthStage.level} {growthStage.name}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-white/80 text-indigo-600 font-bold border border-indigo-200">Lv.{growthStage.level} {growthStage.name}</span>
                             </div>
                         </div>
                         {/* 亲密度条 */}
                         <div className="mb-3">
                             <div className="flex items-center justify-between mb-1">
                                 <div className="flex items-center gap-1">
-                                    <span className="text-[10px]">💖</span>
-                                    <span className={`text-[10px] font-bold ${bondColor.text}`}>{bondLevel.name}</span>
+                                    <span className="text-xs">💖</span>
+                                    <span className={`text-xs font-bold ${bondColor.text}`}>{bondLevel.name}</span>
                                 </div>
-                                <span className={`text-[10px] font-bold ${bondColor.text}`}>{bondValue}</span>
+                                <span className={`text-xs font-bold ${bondColor.text}`}>{bondValue}</span>
                             </div>
                             <div className="w-full h-1.5 bg-white/60 rounded-full overflow-hidden">
                                 <div className={`h-full rounded-full bg-gradient-to-r ${bondColor.bar} transition-all duration-700`}
@@ -6871,8 +7115,8 @@
                         {/* 成长进度条 */}
                         <div>
                             <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-[10px] text-gray-400">🌱 成长</span>
-                                <span className="text-[10px] text-gray-400">
+                                <span className="text-xs text-gray-400">🌱 成长</span>
+                                <span className="text-xs text-gray-400">
                                     {nextStage ? `${pet.interactionCount}/${nextStage.threshold} → ${nextStage.name}` : '✨ 已满级！'}
                                 </span>
                             </div>
@@ -7125,11 +7369,11 @@
                             <span className="text-xs font-medium text-gray-600">
                                 栏位 <span className={`font-bold ${freeSlots <= 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{usedSlots}</span>/{unlockedSlots}
                             </span>
-                            {freeSlots > 0 && <span className="text-[10px] text-gray-400">（空闲 {freeSlots}）</span>}
+                            {freeSlots > 0 && <span className="text-xs text-gray-400">（空闲 {freeSlots}）</span>}
                         </div>
                         {freeSlots <= 0 && (
                             <button onClick={() => setShowSlotDialog(true)}
-                                className={`text-[10px] px-2.5 py-1 rounded-lg font-bold transition-all ${nextSlotStatus.canUnlock ? 'bg-amber-400 text-white hover:bg-amber-500' : nextSlotStatus.allConditionsMet ? 'bg-amber-200 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+                                className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all ${nextSlotStatus.canUnlock ? 'bg-amber-400 text-white hover:bg-amber-500' : nextSlotStatus.allConditionsMet ? 'bg-amber-200 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
                                 🔓 开启新栏位
                             </button>
                         )}
@@ -7187,12 +7431,12 @@
                                         <PetImage petId={pet.id} src={'pet_animations/' + pet.id + '/' + pet.id + '-thumb.png'} fallbackEmoji={pet.emoji} className="w-16 h-16 object-contain" />
                                     </div>
                                     <div className="font-bold text-sm text-gray-800">{pet.name}</div>
-                                    <div className="text-[10px] text-gray-500 mt-0.5">{pet.rarity === 'common' ? '凡品' : pet.rarity === 'rare' ? '良品' : pet.rarity === 'epic' ? '珍品' : '神品'}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5">{pet.rarity === 'common' ? '凡品' : pet.rarity === 'rare' ? '良品' : pet.rarity === 'epic' ? '珍品' : '神品'}</div>
                                     {pet.price > 0 && <div className="text-xs text-amber-600 font-medium mt-1">⭐ {pet.price}</div>}
-                                    {pet.unlockLevel > 1 && <div className="text-[10px] text-gray-400">Lv.{pet.unlockLevel} 解锁</div>}
+                                    {pet.unlockLevel > 1 && <div className="text-xs text-gray-400">Lv.{pet.unlockLevel} 解锁</div>}
                                     <div className="mt-2">
                                         {!isOwned && slotFull && nextSlotStatus.allConditionsMet && nextSlotStatus.canAfford && (
-                                            <div className="text-[9px] text-amber-500 mb-1">含栏位 {nextSlotStatus.cost}⭐</div>
+                                            <div className="text-[10px] text-amber-500 mb-1">含栏位 {nextSlotStatus.cost}⭐</div>
                                         )}
                                         <button onClick={() => handleBuy(pet.id)} disabled={btnDisabled}
                                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${btnCls}`}>
@@ -7217,20 +7461,20 @@
                                         <span className="text-xs text-gray-600">费用</span>
                                         <span className={`text-sm font-bold ${nextSlotStatus.canAfford ? 'text-amber-600' : 'text-red-500'}`}>
                                             ⭐ {nextSlotStatus.cost}
-                                            <span className="text-[10px] font-normal text-gray-400 ml-1">（当前 {currentStars}）</span>
+                                            <span className="text-xs font-normal text-gray-400 ml-1">（当前 {currentStars}）</span>
                                         </span>
                                     </div>
 
                                     {/* 额外条件 */}
                                     {nextSlotStatus.conditions.length > 0 && (
                                         <div>
-                                            <div className="text-[10px] text-gray-400 mb-1.5">额外条件</div>
+                                            <div className="text-xs text-gray-400 mb-1.5">额外条件</div>
                                             <div className="space-y-1.5">
                                                 {nextSlotStatus.conditions.map((c, i) => (
                                                     <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${c.met ? 'bg-emerald-50' : 'bg-gray-50'}`}>
                                                         <span className={`shrink-0 ${c.met ? 'text-emerald-500' : 'text-gray-300'}`}>{c.met ? '✅' : '⬜'}</span>
                                                         <span className={c.met ? 'text-emerald-600' : 'text-gray-500'}>{c.label}</span>
-                                                        <span className={`ml-auto text-[10px] ${c.met ? 'text-emerald-400' : 'text-gray-400'}`}>{c.current}/{c.target}</span>
+                                                        <span className={`ml-auto text-xs ${c.met ? 'text-emerald-400' : 'text-gray-400'}`}>{c.current}/{c.target}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -7239,7 +7483,7 @@
 
                                     {/* 提示 */}
                                     {!nextSlotStatus.allConditionsMet && (
-                                        <div className="text-[10px] text-center text-gray-400 py-1">💡 完成上方条件后即可开启</div>
+                                        <div className="text-xs text-center text-gray-400 py-1">💡 完成上方条件后即可开启</div>
                                     )}
                                 </div>
                                 <div className="p-3 border-t border-gray-100 flex gap-2">
@@ -7279,16 +7523,16 @@
                                         )}
                                     </div>
                                     <div className="font-bold text-sm text-gray-800">{isOwned ? pet.name : '???'}</div>
-                                    <div className="text-[10px] text-gray-500 mt-0.5">{pet.rarity === 'common' ? '凡品' : pet.rarity === 'rare' ? '良品' : pet.rarity === 'epic' ? '珍品' : '神品'}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5">{pet.rarity === 'common' ? '凡品' : pet.rarity === 'rare' ? '良品' : pet.rarity === 'epic' ? '珍品' : '神品'}</div>
                                     {isOwned && (
-                                        <div className="mt-2 text-[10px] text-gray-400 space-y-0.5">
+                                        <div className="mt-2 text-xs text-gray-400 space-y-0.5">
                                             <div>{pet.species} · {petElements[pet.attributes?.element]?.icon || '⚪'} {petElements[pet.attributes?.element]?.name || '无'}</div>
                                             <div>性格: {pet.personality}</div>
                                             <div>喜爱: {pet.favoriteFood}</div>
                                             {childPetData && <div>互动: {childPetData.interactionCount} 次</div>}
                                         </div>
                                     )}
-                                    {!isOwned && <div className="text-[10px] text-gray-400 mt-2">未解锁</div>}
+                                    {!isOwned && <div className="text-xs text-gray-400 mt-2">未解锁</div>}
                                 </div>
                             );
                         })}
@@ -7375,11 +7619,11 @@
                                 <div className="text-xs font-bold text-gray-500 mb-2">📊 当前探险收益状态</div>
                                 <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                                     <div className="bg-amber-50 rounded-lg p-2 text-center">
-                                        <div className="text-gray-400 text-[10px]">日均金元宝</div>
+                                        <div className="text-gray-400 text-xs">日均金元宝</div>
                                         <div className="font-bold text-amber-600">{status.dailyGoldBase} 💰</div>
                                     </div>
                                     <div className="bg-blue-50 rounded-lg p-2 text-center">
-                                        <div className="text-gray-400 text-[10px]">日均经验</div>
+                                        <div className="text-gray-400 text-xs">日均经验</div>
                                         <div className="font-bold text-blue-600">{status.dailyXPBase} ✨</div>
                                     </div>
                                 </div>
@@ -7420,15 +7664,15 @@
                                                 <span className="text-lg">{realm?.icon || '🗺️'}</span>
                                                 <div>
                                                     <div className="font-bold text-sm text-gray-800">{realm?.name || '探险'}</div>
-                                                    <div className="text-[10px] text-gray-400">{petName} 出发中</div>
+                                                    <div className="text-xs text-gray-400">{petName} 出发中</div>
                                                 </div>
                                             </div>
-                                            <button onClick={() => handleCancelAdventure(adv.id)} className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">召回</button>
+                                            <button onClick={() => handleCancelAdventure(adv.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">召回</button>
                                         </div>
                                         <div className="relative h-3 bg-white/60 rounded-full overflow-hidden mb-2">
                                             <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full transition-all duration-1000" style={{ width: `${pct}%` }} />
                                         </div>
-                                        <div className="flex justify-between text-[10px] text-gray-500">
+                                        <div className="flex justify-between text-xs text-gray-500">
                                             <span>剩余 {formatRemaining(adv.expectedEndTime)}</span>
                                             <span>{Math.round(pct)}%</span>
                                         </div>
@@ -7446,22 +7690,22 @@
                                     <span className="text-lg">🎉</span>
                                     <div className="font-bold text-sm text-gray-800">探险归来！</div>
                                 </div>
-                                <button onClick={() => setPetAdventures(prev => ({ ...prev, [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).filter(a => a.id !== adv.id) }))} className="text-[10px] text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors">关闭</button>
+                                <button onClick={() => setPetAdventures(prev => ({ ...prev, [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).filter(a => a.id !== adv.id) }))} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors">关闭</button>
                             </div>
                             {adv.result.story && <p className="text-xs text-gray-600 mb-3 leading-relaxed">{adv.result.story}</p>}
                             <div className="grid grid-cols-3 gap-2 text-center">
-                                {adv.result.totalGold > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-[10px] text-gray-400">金元宝</div><div className="font-bold text-amber-600 text-sm">+{adv.result.totalGold}</div></div>}
-                                {adv.result.totalXP > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-[10px] text-gray-400">经验值</div><div className="font-bold text-blue-600 text-sm">+{adv.result.totalXP}</div></div>}
-                                {adv.result.totalStars > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-[10px] text-gray-400">星星</div><div className="font-bold text-purple-600 text-sm">+{adv.result.totalStars}</div></div>}
+                                {adv.result.totalGold > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-xs text-gray-400">金元宝</div><div className="font-bold text-amber-600 text-sm">+{adv.result.totalGold}</div></div>}
+                                {adv.result.totalXP > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-xs text-gray-400">经验值</div><div className="font-bold text-blue-600 text-sm">+{adv.result.totalXP}</div></div>}
+                                {adv.result.totalStars > 0 && <div className="bg-white/60 rounded-lg p-2"><div className="text-xs text-gray-400">星星</div><div className="font-bold text-purple-600 text-sm">+{adv.result.totalStars}</div></div>}
                             </div>
-                            {adv.result.event && <div className="mt-2 text-[10px] text-center text-gray-500">{adv.result.event.icon} {adv.result.event.name}</div>}
+                            {adv.result.event && <div className="mt-2 text-xs text-center text-gray-500">{adv.result.event.icon} {adv.result.event.name}</div>}
                             {/* 宝物明细 */}
                             {adv.result.items && adv.result.items.length > 0 && (
                                 <div className="mt-3 pt-2 border-t border-emerald-100">
-                                    <div className="text-[10px] text-gray-400 mb-1.5">获得宝物：</div>
+                                    <div className="text-xs text-gray-400 mb-1.5">获得宝物：</div>
                                     <div className="flex flex-wrap gap-1">
                                         {adv.result.items.map((item, i) => (
-                                            <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${item.isTrap ? 'bg-red-50 text-red-500' : 'bg-white/60 text-gray-600'}`}>
+                                            <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs ${item.isTrap ? 'bg-red-50 text-red-500' : 'bg-white/60 text-gray-600'}`}>
                                                 {item.icon} {item.name}
                                                 {item.gold !== 0 && <span className="text-amber-500">{item.gold > 0 ? '+' : ''}{item.gold}💰</span>}
                                                 {item.xp > 0 && <span className="text-blue-500">+{item.xp}✨</span>}
@@ -7493,19 +7737,19 @@
                                                 <span className="text-2xl">{realm.icon}</span>
                                                 <div>
                                                     <div className="font-bold text-sm text-gray-800">{realm.name}</div>
-                                                    <div className="text-[10px] text-gray-400 mt-0.5">{realm.desc}</div>
+                                                    <div className="text-xs text-gray-400 mt-0.5">{realm.desc}</div>
                                                 </div>
                                             </div>
                                             <div className="text-right shrink-0 ml-2">
                                                 {isLocked ? (
-                                                    <div className="text-[10px] text-gray-400">🔒 Lv.{realm.unlockLevel}</div>
+                                                    <div className="text-xs text-gray-400">🔒 Lv.{realm.unlockLevel}</div>
                                                 ) : isEraLocked ? (
-                                                    <div className="text-[10px] text-gray-400">🔒 {realm.unlockEra}</div>
+                                                    <div className="text-xs text-gray-400">🔒 {realm.unlockEra}</div>
                                                 ) : (
                                                     <div className="relative">
                                                         <div className="text-xs font-bold text-amber-600">{realm.starCost} ⭐</div>
-                                                        <div className="text-[10px] text-gray-400">{Math.round(realm.duration / 3600000)}小时 · {elemIcons[realm.element]} {realm.element}</div>
-                                                        <div className="text-[10px] text-gray-400 cursor-pointer hover:text-amber-600 hover:underline"
+                                                        <div className="text-xs text-gray-400">{Math.round(realm.duration / 3600000)}小时 · {elemIcons[realm.element]} {realm.element}</div>
+                                                        <div className="text-xs text-gray-400 cursor-pointer hover:text-amber-600 hover:underline"
                                                             onMouseEnter={() => setLootTooltip({ realmId: realm.id, source: 'hover' })}
                                                             onMouseLeave={() => { if (lootTooltip?.source === 'hover') setLootTooltip(null); }}
                                                             onClick={(e) => { e.stopPropagation(); setLootTooltip(prev => prev?.realmId === realm.id && prev?.source === 'click' ? null : { realmId: realm.id, source: 'click' }); }}>
@@ -7520,10 +7764,10 @@
                                                                 <div className="absolute right-0 top-full mt-1 z-50 w-64 max-h-72 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden"
                                                                     onMouseEnter={() => setLootTooltip({ realmId: realm.id, source: 'hover' })}
                                                                     onMouseLeave={() => { if (lootTooltip?.source === 'hover') setLootTooltip(null); }}>
-                                                                    <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100 text-[10px] font-bold text-amber-700">{realm.icon} {realm.name} · 宝物一览</div>
+                                                                    <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-100 text-xs font-bold text-amber-700">{realm.icon} {realm.name} · 宝物一览</div>
                                                                     <div className="overflow-y-auto max-h-60 p-1.5 space-y-0.5">
                                                                         {lootTable.map((item, i) => (
-                                                                            <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] ${item.isTrap ? 'bg-red-50' : ''}`}>
+                                                                            <div key={i} className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${item.isTrap ? 'bg-red-50' : ''}`}>
                                                                                 <span className="shrink-0">{item.icon}</span>
                                                                                 <span className={`truncate ${item.isTrap ? 'text-red-500 font-bold' : 'text-gray-700'}`}>{item.name}</span>
                                                                                 <span className={`ml-auto shrink-0 ${typeColors[item.type] || 'text-gray-400'}`}>
@@ -7547,7 +7791,7 @@
                                             <div className="mt-3 pt-3 border-t border-amber-100">
                                                 {/* 宠物选择 */}
                                                 <div className="mb-3">
-                                                    <div className="text-[10px] text-gray-500 mb-2">选择探险宠物：</div>
+                                                    <div className="text-xs text-gray-500 mb-2">选择探险宠物：</div>
                                                     <div className="flex flex-wrap gap-2">
                                                         {myOwned.map(pid => {
                                                             const p = petData[activeChild]?.[pid];
@@ -7558,7 +7802,7 @@
                                                             const realmElemStrong = petElements[petElem]?.strong;
                                                             const elemMatch = realmElemStrong === realm.element ? '克制 ✅' : (petElements[realm.element]?.strong === petElem ? '被克 ⚠️' : '');
                                                             return (
-                                                                <div key={pid} className="flex flex-col items-center">
+                                                                <div key={pid} className="relative flex flex-col items-center">
                                                                 <button onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         if (!isAdventuring) {
@@ -7582,7 +7826,7 @@
                                                                         }
                                                                     }}
                                                                     disabled={isAdventuring}
-                                                                    className={`flex flex-col items-center px-3 py-2 rounded-xl border text-[10px] transition-all ${isAdventuring ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' : isPetSelected ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200'}`}>
+                                                                    className={`flex flex-col items-center px-3 py-2 rounded-xl border text-xs transition-all ${isAdventuring ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' : isPetSelected ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200'}`}>
                                                                     <div className="w-10 h-10 flex items-center justify-center">
                                                                         {cat?.thumbUrl ? (
                                                                             <img src={cat.thumbUrl} alt={cat.name} className="w-full h-full object-contain" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display=''; }} />
@@ -7594,10 +7838,10 @@
                                                                 </button>
                                                                 {/* 宠物探险对话气泡 */}
                                                                 {isPetSelected && adventurePetDialog && (
-                                                                    <div className="mt-1 max-w-[180px]">
-                                                                        <div className="bg-white rounded-2xl rounded-bl-md px-2.5 py-1.5 shadow-sm border border-gray-100 relative">
-                                                                            <p className="text-[10px] text-gray-600 leading-relaxed">{adventurePetDialog}</p>
-                                                                            <div className="absolute left-[-5px] top-1.5 w-0 h-0 border-r-[5px] border-r-white border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent"></div>
+                                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-10 w-[160px] pointer-events-none">
+                                                                        <div className="bg-white rounded-xl px-2.5 py-1.5 shadow-md border border-gray-100 relative">
+                                                                            <p className="text-xs text-gray-600 leading-relaxed text-center">{adventurePetDialog}</p>
+                                                                            <div className="absolute left-1/2 -translate-x-1/2 -bottom-[5px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-white drop-shadow-sm"></div>
                                                                         </div>
                                                                     </div>
                                                                 )}
@@ -7607,7 +7851,7 @@
                                                 </div>
                                                 {/* 倍率预览 */}
                                                 {status && status.gateStatus !== 'blocked' && (
-                                                    <div className="flex items-center justify-end text-[10px] text-gray-500 mb-2">
+                                                    <div className="flex items-center justify-end text-xs text-gray-500 mb-2">
                                                         <span className="text-emerald-600 font-bold">×{status.goldMul} 倍率</span>
                                                     </div>
                                                 )}
@@ -7637,10 +7881,10 @@
                                                 <span className="font-bold text-gray-700">{entry.realmName}</span>
                                                 <span className="text-gray-400">· {entry.petName}</span>
                                             </div>
-                                            <span className="text-[10px] text-gray-400">{new Date(entry.endTime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-xs text-gray-400">{new Date(entry.endTime).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
                                         <p className="text-gray-500 text-[11px] leading-relaxed mb-2">{entry.story}</p>
-                                        <div className="flex gap-3 text-[10px]">
+                                        <div className="flex gap-3 text-xs">
                                             {entry.totalGold > 0 && <span className="text-amber-600">💰 +{entry.totalGold}</span>}
                                             {entry.totalXP > 0 && <span className="text-blue-600">✨ +{entry.totalXP}</span>}
                                             {entry.totalStars > 0 && <span className="text-purple-600">⭐ +{entry.totalStars}</span>}
@@ -7649,7 +7893,7 @@
                                         {entry.items && entry.items.length > 0 && (
                                             <div className="mt-2 pt-1.5 border-t border-gray-50 flex flex-wrap gap-1">
                                                 {entry.items.map((item, i) => (
-                                                    <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${item.isTrap ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-500'}`}>
+                                                    <span key={i} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs ${item.isTrap ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-500'}`}>
                                                         {item.icon} {item.name}
                                                         {item.gold !== 0 && <span className="text-amber-500">{item.gold > 0 ? '+' : ''}{item.gold}💰</span>}
                                                         {item.xp > 0 && <span className="text-blue-500">+{item.xp}✨</span>}
@@ -7669,9 +7913,9 @@
                         <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                             <div className="text-xs font-bold text-gray-500 mb-2">📊 探险统计</div>
                             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                                <div><div className="text-gray-400 text-[10px]">总次数</div><div className="font-bold text-gray-800">{stats.totalAdventures || 0}</div></div>
-                                <div><div className="text-gray-400 text-[10px]">总金元宝</div><div className="font-bold text-amber-600">{stats.totalGoldEarned || 0}</div></div>
-                                <div><div className="text-gray-400 text-[10px]">总星星</div><div className="font-bold text-purple-600">{stats.totalStarsEarned || 0}</div></div>
+                                <div><div className="text-gray-400 text-xs">总次数</div><div className="font-bold text-gray-800">{stats.totalAdventures || 0}</div></div>
+                                <div><div className="text-gray-400 text-xs">总金元宝</div><div className="font-bold text-amber-600">{stats.totalGoldEarned || 0}</div></div>
+                                <div><div className="text-gray-400 text-xs">总星星</div><div className="font-bold text-purple-600">{stats.totalStarsEarned || 0}</div></div>
                             </div>
                         </div>
                     )}
@@ -7705,13 +7949,13 @@
                                         <div className="font-bold text-gray-800 mb-2">四、加成系统总览</div>
 
                                         <div className="font-bold text-gray-700 mb-1 mt-2">🔥 元素克制</div>
-                                        <div className="bg-gray-50 rounded-lg p-2 mb-2 text-[10px]">
+                                        <div className="bg-gray-50 rounded-lg p-2 mb-2 text-xs">
                                             <p>火 {'>'} 风 {'>'} 地 {'>'} 水 {'>'} 火，光 {'<>'} 暗（互克）</p>
                                             <p className="text-emerald-600 font-bold">克制时宝物 +10%</p>
                                         </div>
 
                                         <div className="font-bold text-gray-700 mb-1">📅 打卡连击</div>
-                                        <div className="bg-gray-50 rounded-lg p-2 mb-2 text-[10px]">
+                                        <div className="bg-gray-50 rounded-lg p-2 mb-2 text-xs">
                                             <div className="grid grid-cols-4 gap-1 text-center font-bold text-gray-500 mb-1">
                                                 <span>天数</span><span>金元宝</span><span>经验</span><span>星星</span>
                                             </div>
@@ -7722,7 +7966,7 @@
                                         </div>
 
                                         <div className="font-bold text-gray-700 mb-1">🤝 亲密度加成</div>
-                                        <div className="bg-gray-50 rounded-lg p-2 mb-2 text-[10px]">
+                                        <div className="bg-gray-50 rounded-lg p-2 mb-2 text-xs">
                                             <div className="grid grid-cols-3 gap-1 text-center font-bold text-gray-500 mb-1">
                                                 <span>等级</span><span>宝物数量</span><span>稀有掉率</span>
                                             </div>
@@ -7735,7 +7979,7 @@
                                         </div>
 
                                         <div className="font-bold text-gray-700 mb-1">⚡ 宠物技能</div>
-                                        <div className="bg-gray-50 rounded-lg p-2 text-[10px] space-y-0.5">
+                                        <div className="bg-gray-50 rounded-lg p-2 text-xs space-y-0.5">
                                             <div className="flex justify-between"><span>🐕 泰迪 鼓励叫声</span><span className="text-amber-600 font-bold">金元宝 +10%</span></div>
                                             <div className="flex justify-between"><span>🐶 边牧 学习气场</span><span className="text-blue-600 font-bold">经验 +25%</span></div>
                                             <div className="flex justify-between"><span>🐰 安哥拉兔 蓬松拥抱</span><span className="text-emerald-600 font-bold">负面事件免疫</span></div>
@@ -7796,7 +8040,7 @@
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-white/20 rounded-full text-2xl">🐾</div>
                                 <div>
-                                    <h2 className="text-xl font-black">我的宠物</h2>
+                                    <h2 className="text-xl font-bold">我的宠物</h2>
                                     <div className="flex items-center gap-1 text-white/80 text-xs mt-0.5">
                                         <span>⭐</span>
                                         <span className="font-bold text-yellow-200">{currentStarsCount}</span>
@@ -7865,20 +8109,20 @@
             return (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in zoom-in-95 duration-300">
                     <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl relative overflow-hidden text-center">
-                        <h2 className="text-2xl font-black text-gray-800 mb-2">🎉 任务大满贯！</h2>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">🎉 任务大满贯！</h2>
                         <p className="text-gray-500 mb-6 text-sm">碎片收集完成！请选择你的奖励类型：</p>
                         
                         <div className="grid grid-cols-2 gap-4">
                             <button onClick={() => onSelect('gold')} className="group relative p-4 rounded-2xl bg-gradient-to-br from-amber-100 to-yellow-50 border-2 border-amber-200 hover:border-amber-400 hover:shadow-lg transition-colors transition-transform active:scale-95 flex flex-col items-center">
                                 <div className="text-4xl mb-2 group-hover:scale-110 transition-transform">💰</div>
                                 <div className="font-black text-amber-700">金元宝转盘</div>
-                                <div className="text-[10px] text-amber-600/70 mt-1">积累财富</div>
+                                <div className="text-xs text-amber-600/70 mt-1">积累财富</div>
                             </button>
                             
                             <button onClick={() => onSelect('xp')} className="group relative p-4 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-50 border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-lg transition-colors transition-transform active:scale-95 flex flex-col items-center">
                                 <div className="text-4xl mb-2 group-hover:scale-110 transition-transform">🆙</div>
                                 <div className="font-black text-indigo-700">经验值转盘</div>
-                                <div className="text-[10px] text-indigo-600/70 mt-1">快速升级</div>
+                                <div className="text-xs text-indigo-600/70 mt-1">快速升级</div>
                             </button>
                         </div>
                         
@@ -7926,7 +8170,7 @@
                         <div className={`absolute top-0 left-0 w-full h-32 ${bgGradient} -z-0`}></div>
                         <button onClick={() => { setShowWheel(false); setWheelResult(null); }} className="absolute top-4 right-4 z-10 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><XIcon className="w-5 h-5 text-gray-500" /></button>
                         <div className="z-10 text-center mb-6 mt-4">
-                            <h2 className={`text-2xl font-black ${primaryTextColor} mb-1 flex items-center justify-center gap-2 drop-shadow-md`}>
+                            <h2 className={`text-2xl font-bold ${primaryTextColor} mb-1 flex items-center justify-center gap-2 drop-shadow-md`}>
                                 {isXP ? <TrendingUp className="w-6 h-6 animate-bounce" /> : <Gift className="w-6 h-6 animate-bounce" />} 
                                 {isDemoWheel ? `演示${isXP?'经验':'惊喜'}转盘` : (isExtraReward ? `额外${isXP?'经验':'惊喜'}奖励！` : `${isXP?'经验':'惊喜'}大放送！`)}
                             </h2>
@@ -7963,7 +8207,7 @@
                             <div className="text-center py-8 animate-in fade-in zoom-in duration-500">
                                 <div className="text-6xl mb-4">{isXP ? '🆙' : '💰'}</div>
                                 <h3 className="text-xl font-bold text-gray-800 mb-2">恭喜获得</h3>
-                                <div className={`text-4xl font-black ${primaryTextColor} mb-6`}>+{wheelResult?.value || alreadyWon} {unit}</div>
+                                <div className={`text-4xl font-bold ${primaryTextColor} mb-6`}>+{wheelResult?.value || alreadyWon} {unit}</div>
                                 <button onClick={() => { setShowWheel(false); setWheelResult(null); }} className={`px-8 py-3 rounded-full text-white font-bold shadow-lg ${btnBg}`}>开心收下</button>
                             </div>
                         )}
@@ -8221,7 +8465,7 @@
                         <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-red-900 to-transparent -z-0 opacity-50"></div>
                         {isDemo && <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 bg-gray-800/50 rounded-full hover:bg-gray-700 text-gray-400"><XIcon className="w-5 h-5" /></button>}
                         <div className="z-10 text-center mb-6 mt-4">
-                            <h2 className="text-2xl font-black text-red-500 mb-1 flex items-center justify-center gap-2 tracking-widest uppercase"><Skull className="w-6 h-6 animate-pulse" /> {isDemo ? '测试模式 (不扣分)' : '命运的审判'}</h2>
+                            <h2 className="text-2xl font-bold text-red-500 mb-1 flex items-center justify-center gap-2 tracking-widest uppercase"><Skull className="w-6 h-6 animate-pulse" /> {isDemo ? '测试模式 (不扣分)' : '命运的审判'}</h2>
                             <p className="text-gray-400 text-xs tracking-wider">{isDemo ? '仅供测试转盘概率与动画效果' : '接受惩罚吧，这是对懒惰的代价...'}</p>
                         </div>
                         {!result ? (
@@ -8249,7 +8493,7 @@
                             <div className="text-center py-8 animate-in zoom-in duration-500">
                                 <div className="text-6xl mb-4 grayscale">💸</div>
                                 <h3 className="text-xl font-bold text-gray-300 mb-2">审判结果</h3>
-                                <div className="text-4xl font-black text-red-500 mb-6">{result.value} 金元宝</div>
+                                <div className="text-4xl font-bold text-red-500 mb-6">{result.value} 金元宝</div>
                                 {result.usedShield && <div className="mb-4 text-green-400 font-bold bg-green-900/30 p-2 rounded-lg border border-green-800 animate-pulse">🛡️ 青铜守护盾生效！惩罚已抵消！</div>}
                                 <button onClick={onClose} className="px-8 py-3 rounded-full bg-gray-800 text-gray-300 font-bold shadow-lg hover:bg-gray-700">{isDemo ? '关闭测试' : '默默接受'}</button>
                             </div>
@@ -9316,7 +9560,7 @@
                                     <>
                                         <label className="text-xs text-gray-500 block mb-1 text-center">补签当日完成的分钟数</label>
                                         <div className="mb-3 relative">
-                                            <input type="number" min="1" max="999" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); useRepairCard(editingEntry, val); } }} className={`w-full text-center text-3xl font-black border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 rounded-lg bg-amber-50/50 border border-amber-100`} placeholder="30" />
+                                            <input type="number" min="1" max="999" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); useRepairCard(editingEntry, val); } }} className={`w-full text-center text-3xl font-bold border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 rounded-lg bg-amber-50/50 border border-amber-100`} placeholder="30" />
                                             <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
                                         </div>
                                         <button onClick={() => useRepairCard(editingEntry, val)} className="w-full py-2.5 bg-amber-100 text-amber-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-amber-200"><span className="text-lg">🔥</span> 使用普罗米修斯之火补签（{val || 0} 分钟）</button>
@@ -9325,7 +9569,7 @@
                             </div>
                         ) : (
                             <div className="mb-6 relative">
-                                <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveCheckin(val); } }} className={`w-full text-center text-4xl font-black border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 placeholder-gray-200`} placeholder="30" />
+                                <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveCheckin(val); } }} className={`w-full text-center text-4xl font-bold border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 placeholder-gray-200`} placeholder="30" />
                                 <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
                             </div>
                         )}
@@ -9406,7 +9650,7 @@
 							{task.name}
 						</h3>
 						<div className="text-right shrink-0 flex flex-col items-end gap-1">
-							<span className="block text-2xl font-black text-amber-500 drop-shadow-sm">{stats.totalIncome}</span>
+							<span className="block text-2xl font-bold text-amber-500 drop-shadow-sm">{stats.totalIncome}</span>
 							<span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">金元宝</span>
 							{frequencyType !== 'count' && (
 								<span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
@@ -9694,21 +9938,21 @@
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-4 border border-indigo-200">
                             <div className="text-xs text-indigo-600 font-semibold">{type === 'homework' ? '作业总数' : '考试总数'}</div>
-                            <div className="text-2xl font-black text-indigo-700">{stats.total}</div>
+                            <div className="text-2xl font-bold text-indigo-700">{stats.total}</div>
                         </div>
                         <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200">
                             <div className="text-xs text-amber-600 font-semibold">获得金元宝</div>
-                            <div className="text-2xl font-black text-amber-700 flex items-center gap-1">
+                            <div className="text-2xl font-bold text-amber-700 flex items-center gap-1">
                                 {stats.totalGold}<Coins className="w-5 h-5 text-amber-500" />
                             </div>
                         </div>
                         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
                             <div className="text-xs text-blue-600 font-semibold">平均分数</div>
-                            <div className="text-2xl font-black text-blue-700">{stats.avgScore || '-'}</div>
+                            <div className="text-2xl font-bold text-blue-700">{stats.avgScore || '-'}</div>
                         </div>
                         <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
                             <div className="text-xs text-green-600 font-semibold">涉及科目</div>
-                            <div className="text-2xl font-black text-green-700">{stats.subjectCount}</div>
+                            <div className="text-2xl font-bold text-green-700">{stats.subjectCount}</div>
                         </div>
                     </div>
                     
@@ -9886,7 +10130,7 @@
                 <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
                     <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                         <div className={`p-5 border-b bg-gradient-to-r ${theme.gradient} text-white shrink-0 flex justify-between items-center`}>
-                            <h2 className="text-xl font-black flex items-center gap-2"><span className="text-2xl">📝</span> 作业与考试成绩登记</h2>
+                            <h2 className="text-xl font-bold flex items-center gap-2"><span className="text-2xl">📝</span> 作业与考试成绩登记</h2>
                             <button onClick={onClose} className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"><XIcon className="w-5 h-5" /></button>
                         </div>
                         <div className="flex gap-1 p-2 border-b bg-slate-50">
@@ -10106,7 +10350,7 @@
                         <div className={`p-6 border-b bg-gradient-to-r ${theme.gradient} text-white shrink-0`}>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h2 className="text-2xl font-black flex items-center gap-2">
+                                    <h2 className="text-2xl font-bold flex items-center gap-2">
                                         <span className="text-3xl">📊</span> 
                                         学习数据中心
                                     </h2>
@@ -10169,13 +10413,13 @@
                                             ) : (
                                                 <>
                                                     <div className="rounded-2xl border border-amber-200/60 overflow-hidden shadow-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5">
-                                                        <h3 className="text-lg font-black text-amber-900 mb-4 flex items-center gap-2">📝 作业成绩概览</h3>
+                                                        <h3 className="text-lg font-bold text-amber-900 mb-4 flex items-center gap-2">📝 作业成绩概览</h3>
                                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-700">{hwRecords.length}</div><div className="text-xs text-amber-700/80 mt-0.5">登记次数</div></div>
-                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-700">{hwBySubject.length}</div><div className="text-xs text-amber-700/80 mt-0.5">涉及学科</div></div>
-                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-600">+{totalHwGold}</div><div className="text-xs text-amber-700/80 mt-0.5">累计获得元宝</div></div>
+                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-700">{hwRecords.length}</div><div className="text-xs text-amber-700/80 mt-0.5">登记次数</div></div>
+                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-700">{hwBySubject.length}</div><div className="text-xs text-amber-700/80 mt-0.5">涉及学科</div></div>
+                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-600">+{totalHwGold}</div><div className="text-xs text-amber-700/80 mt-0.5">累计获得元宝</div></div>
                                                             {hwGradingMode === 'score' && hwRecords.some(r => !isNaN(parseInt(r.scoreOrGrade, 10))) && (
-                                                                <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-700">{(hwRecords.map(r => parseInt(r.scoreOrGrade, 10)).filter(n => !isNaN(n)).reduce((a, b) => a + b, 0) / hwRecords.filter(r => !isNaN(parseInt(r.scoreOrGrade, 10))).length).toFixed(1)}</div><div className="text-xs text-amber-700/80 mt-0.5">总平均分</div></div>
+                                                                <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-700">{(hwRecords.map(r => parseInt(r.scoreOrGrade, 10)).filter(n => !isNaN(n)).reduce((a, b) => a + b, 0) / hwRecords.filter(r => !isNaN(parseInt(r.scoreOrGrade, 10))).length).toFixed(1)}</div><div className="text-xs text-amber-700/80 mt-0.5">总平均分</div></div>
                                                             )}
                                                         </div>
                                                         {hwBySubject.length > 0 && (
@@ -10198,13 +10442,13 @@
                                                         )}
                                                     </div>
                                                     <div className="rounded-2xl border border-emerald-200/60 overflow-hidden shadow-lg bg-gradient-to-br from-emerald-50 to-teal-50 p-5">
-                                                        <h3 className="text-lg font-black text-emerald-900 mb-4 flex items-center gap-2">📐 考试成绩概览</h3>
+                                                        <h3 className="text-lg font-bold text-emerald-900 mb-4 flex items-center gap-2">📐 考试成绩概览</h3>
                                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-emerald-700">{exRecords.length}</div><div className="text-xs text-emerald-700/80 mt-0.5">考试次数</div></div>
-                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-emerald-700">{exBySubjectList.length}</div><div className="text-xs text-emerald-700/80 mt-0.5">科目·类型</div></div>
-                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-emerald-600">+{totalExGold}</div><div className="text-xs text-emerald-700/80 mt-0.5">累计获得元宝</div></div>
+                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-emerald-700">{exRecords.length}</div><div className="text-xs text-emerald-700/80 mt-0.5">考试次数</div></div>
+                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-emerald-700">{exBySubjectList.length}</div><div className="text-xs text-emerald-700/80 mt-0.5">科目·类型</div></div>
+                                                            <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-emerald-600">+{totalExGold}</div><div className="text-xs text-emerald-700/80 mt-0.5">累计获得元宝</div></div>
                                                             {exRecords.some(r => !isNaN(parseInt(r.scoreOrGrade, 10))) && (
-                                                                <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-emerald-700">{(exRecords.map(r => parseInt(r.scoreOrGrade, 10)).filter(n => !isNaN(n)).reduce((a, b) => a + b, 0) / exRecords.filter(r => !isNaN(parseInt(r.scoreOrGrade, 10))).length).toFixed(1)}</div><div className="text-xs text-emerald-700/80 mt-0.5">总平均分</div></div>
+                                                                <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-emerald-700">{(exRecords.map(r => parseInt(r.scoreOrGrade, 10)).filter(n => !isNaN(n)).reduce((a, b) => a + b, 0) / exRecords.filter(r => !isNaN(parseInt(r.scoreOrGrade, 10))).length).toFixed(1)}</div><div className="text-xs text-emerald-700/80 mt-0.5">总平均分</div></div>
                                                             )}
                                                         </div>
                                                         {exBySubjectList.length > 0 && (
@@ -10258,22 +10502,22 @@
                                                 <div className="space-y-6 animate-in fade-in duration-300">
                                                     {/* 本月总览 */}
                                                     <div className={`rounded-2xl border overflow-hidden shadow-lg bg-gradient-to-br ${theme.gradient} text-white p-6`}>
-                                                        <h3 className="text-lg font-black mb-4 flex items-center gap-2">📋 {selectedMonthKey.split('-')[0]}年{parseInt(selectedMonthKey.split('-')[1])}月 学习总结</h3>
+                                                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">📋 {selectedMonthKey.split('-')[0]}年{parseInt(selectedMonthKey.split('-')[1])}月 学习总结</h3>
                                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                                             <div className="bg-white/20 backdrop-blur rounded-xl p-4 text-center">
-                                                                <div className="text-2xl font-black">{monthlySummaryData.totalDays}</div>
+                                                                <div className="text-2xl font-bold">{monthlySummaryData.totalDays}</div>
                                                                 <div className="text-xs text-white/90 mt-1">打卡天数</div>
                                                             </div>
                                                             <div className="bg-white/20 backdrop-blur rounded-xl p-4 text-center">
-                                                                <div className="text-2xl font-black">{monthlySummaryData.totalMinutes}</div>
+                                                                <div className="text-2xl font-bold">{monthlySummaryData.totalMinutes}</div>
                                                                 <div className="text-xs text-white/90 mt-1">总投入(分钟)</div>
                                                             </div>
                                                             <div className="bg-white/20 backdrop-blur rounded-xl p-4 text-center">
-                                                                <div className="text-2xl font-black">{monthlySummaryData.avgPerDay}</div>
+                                                                <div className="text-2xl font-bold">{monthlySummaryData.avgPerDay}</div>
                                                                 <div className="text-xs text-white/90 mt-1">日均(分钟)</div>
                                                             </div>
                                                             <div className="bg-white/20 backdrop-blur rounded-xl p-4 text-center">
-                                                                <div className="text-2xl font-black">{monthlySummaryData.longestStreak}</div>
+                                                                <div className="text-2xl font-bold">{monthlySummaryData.longestStreak}</div>
                                                                 <div className="text-xs text-white/90 mt-1">最长连续(天)</div>
                                                             </div>
                                                         </div>
@@ -10296,9 +10540,9 @@
                                                             <div className="rounded-2xl border border-amber-200 overflow-hidden shadow-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5">
                                                                 <h3 className="text-base font-black text-amber-900 mb-3 flex items-center gap-2">📝 作业与考试成绩</h3>
                                                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                                                                    <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-700">{hwInMonth.length}</div><div className="text-xs text-amber-700/80 mt-0.5">作业达标(次)</div></div>
-                                                                    <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-700">{exInMonth.length}</div><div className="text-xs text-amber-700/80 mt-0.5">考试记录(次)</div></div>
-                                                                    <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-black text-amber-600">+{hwGold + exGold}</div><div className="text-xs text-amber-700/80 mt-0.5">获得元宝</div></div>
+                                                                    <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-700">{hwInMonth.length}</div><div className="text-xs text-amber-700/80 mt-0.5">作业达标(次)</div></div>
+                                                                    <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-700">{exInMonth.length}</div><div className="text-xs text-amber-700/80 mt-0.5">考试记录(次)</div></div>
+                                                                    <div className="bg-white/80 rounded-xl p-3 text-center"><div className="text-xl font-bold text-amber-600">+{hwGold + exGold}</div><div className="text-xs text-amber-700/80 mt-0.5">获得元宝</div></div>
                                                                 </div>
                                                             </div>
                                                         );
@@ -10416,7 +10660,7 @@
                                     <div className="text-gray-500 text-xs font-bold mb-1 z-10 flex items-center gap-1">
                                         {selectedTask === 'all' ? '今日总投入' : `今日 ${childTasks.find(t=>t.id===selectedTask)?.name || '项目'} 投入`}
                                     </div>
-                                    <div className={`text-4xl font-black z-10 ${theme.primary} drop-shadow-sm`}>
+                                    <div className={`text-4xl font-bold z-10 ${theme.primary} drop-shadow-sm`}>
                                         {statsData.todayTotal}<span className="text-base ml-1 font-bold text-gray-400">分钟</span>
                                     </div>
                                     {statsData.todayTotal > 0 && (
@@ -10427,7 +10671,7 @@
                                 </div>
                                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center">
                                     <div className="text-gray-500 text-xs font-bold mb-1">平均每日 (近{timeRange === 'week' ? '7' : timeRange === 'month' ? '30' : '90'}天)</div>
-                                    <div className="text-4xl font-black text-gray-700">
+                                    <div className="text-4xl font-bold text-gray-700">
                                         {statsData.dailyAvg}<span className="text-base ml-1 font-bold text-gray-400">分钟</span>
                                     </div>
                                     <div className="text-[10px] text-gray-400 mt-2">
@@ -10679,7 +10923,7 @@
                     <div className="relative z-10 p-5 text-white">
                         <div className="flex justify-between items-start mb-4">
                             <div>
-                                <h3 className="text-lg font-black flex items-center gap-2">
+                                <h3 className="text-lg font-bold flex items-center gap-2">
                                     {isPerfect ? '🎉 完美周末达成！' : '🚀 周末冲刺模式'}
                                     <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full border border-white/30 uppercase tracking-wider">Weekend Vibes</span>
                                 </h3>
@@ -10691,7 +10935,7 @@
                             </div>
                             <div className="text-right">
                                 <div className="text-xs font-bold opacity-70">连续达标</div>
-                                <div className="text-2xl font-black text-yellow-300 drop-shadow-md">保持中🔥</div>
+                                <div className="text-2xl font-bold text-yellow-300 drop-shadow-md">保持中🔥</div>
                             </div>
                         </div>
 
@@ -10754,7 +10998,7 @@
                         
                         <div className="p-8 text-center relative z-10">
                             <div className="text-6xl mb-4 animate-bounce">{config.icon}</div>
-                            <h2 className={`text-3xl font-black mb-2 ${config.textColor}`}>{config.title}</h2>
+                            <h2 className={`text-3xl font-bold mb-2 ${config.textColor}`}>{config.title}</h2>
                             <div className="flex justify-center gap-4 mb-6 text-sm font-medium opacity-80">
                                 <span>⭐ 核心: {coreStats.percent}%</span>
                                 <span>🍃 日常: {dailyStats.percent}%</span>
@@ -11032,7 +11276,7 @@
                     // 这里直接弹窗反馈，让操作者知道升级成功了
                     // alert(`🚀 升级指令已执行！\n\n已补足 ${needed} XP\n当前等级：Lv.${nextLevel.level} ${nextLevel.name}`);
 				} else {
-					alert("已达最高等级！");
+					showToast('info', '已达最高等级！');
 				}
 			};
 
@@ -11042,7 +11286,7 @@
 				const eraToUse = targetEra || levelInfo.era;
 				const availableEvents = RANDOM_EVENTS.filter(e => e.era === eraToUse);
 				if (availableEvents.length === 0) {
-					alert("无可用事件");
+					showToast('warning', '无可用事件');
 					return;
 				}
 				const event = availableEvents[Math.floor(Math.random() * availableEvents.length)];
@@ -11054,13 +11298,13 @@
 			const handleForceEventByType = (type) => {
 				if (type === 'history') {
 					const histEvents = (typeof HISTORICAL_EVENTS !== 'undefined') ? HISTORICAL_EVENTS : [];
-					if (histEvents.length === 0) { alert('历史事件数据未加载（events.js）'); return; }
+					if (histEvents.length === 0) { showToast('warning', '历史事件数据未加载'); return; }
 					const event = histEvents[Math.floor(Math.random() * histEvents.length)];
 					setCurrentRandomEvent(event);
 					setShowRandomEvent(true);
 				} else {
 					const available = RANDOM_EVENTS.filter(e => e.type === type);
-					if (available.length === 0) { alert('无可用事件'); return; }
+					if (available.length === 0) { showToast('warning', '无可用事件'); return; }
 					const event = available[Math.floor(Math.random() * available.length)];
 					setCurrentRandomEvent(event);
 					setShowRandomEvent(true);
@@ -11189,7 +11433,7 @@
 				if (setPetAdventureLog) setPetAdventureLog(prev => ({ ...prev, [activeChild]: [] }));
 				if (setPetAdventureStats) setPetAdventureStats(prev => ({ ...prev, [activeChild]: {} }));
 
-				alert('♻️ 数据已彻底重置');
+				showToast('success', '数据已彻底重置');
 				}
 			};
 
@@ -11198,7 +11442,7 @@
 				if (typeof onTestWeeklyPayroll === 'function') {
 					onTestWeeklyPayroll();
 				} else {
-					alert('当前版本未接入周学习工资测试入口。');
+					showToast('info', '当前版本未接入周学习工资测试入口。');
 				}
 			};
 
@@ -11295,10 +11539,10 @@
 
 			const handleTribute = () => {
 				const val = parseInt(amount);
-				if (!target) return alert('请选择要进贡的对象！');
-				if (isNaN(val) || val <= 0) return alert('请输入有效的进贡金额！');
+				if (!target) return showToast('warning', '请选择要进贡的对象！');
+				if (isNaN(val) || val <= 0) return showToast('warning', '请输入有效的进贡金额！');
 				// 【精准定位】：2. 将 currentXP 替换为 totalGold
-				if (val > totalGold) return alert('余额不足！');
+				if (val > totalGold) return showToast('warning', '余额不足！');
 
 				// 【精准定位】：3. 将原来的 setXpHistory 替换为规范的 setWheelHistory (金元宝流水)
 				const historyKey = `${activeChild}-TRIBUTE_OUT-${target}-${Date.now()}`;
@@ -11320,7 +11564,7 @@
 					};
 				});
 
-				alert(`成功向 ${target} 进贡了 ${val} 财富！`);
+				showToast('success', `成功向 ${target} 进贡了 ${val} 财富！`);
 				setTarget('');
 				setAmount('');
 				onClose();
@@ -11384,7 +11628,7 @@
 				<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
 					<div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden">
 						<div className={`p-6 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-lg relative z-10 rounded-t-3xl`}>
-							<h2 className="text-2xl font-black flex items-center gap-2 drop-shadow-md">
+							<h2 className="text-2xl font-bold flex items-center gap-2 drop-shadow-md">
 								<Target className="w-7 h-7 text-yellow-200 drop-shadow-sm" /> 目标达成墙
 							</h2>
 							<button onClick={onClose} className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors backdrop-blur-sm">
@@ -11713,7 +11957,7 @@
 					});
 
 					// 1. 弹出收到进贡的通知
-					alert(`🎉 惊喜！\n你收到了来自【${Array.from(fromUsers).join(' 和 ')}】的进贡！\n共计获得：${totalAmount} 财富！`);
+					showToast('success', `收到来自 ${Array.from(fromUsers).join(' 和 ')} 的进贡！共计 ${totalAmount} 财富！`, {duration: 4000});
 
 					// 2. 将金额加到当前账号
 					const fromNames = Array.from(fromUsers).join('和');
@@ -12697,7 +12941,7 @@
             }, [petData, activeChild, activePet, petNotif]);
 
             // ==================== 探险系统核心逻辑 ====================
-            const showToast = useCallback((msg) => { alert(msg); }, []);
+            const showToast = useCallback((msg) => { window.showToast('info', msg); }, []);
 
             // 获取当前探险加成状态（供倍率面板使用）
             const getAdventureMultiplierStatus = useCallback((realmId, overridePetId) => {
@@ -13527,7 +13771,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const handleBuyItem = React.useCallback((item, finalPrice, quantity = 1) => {
                 const totalCost = finalPrice * quantity;
                 if (totalGold < totalCost) {
-                    alert('余额不足，无法购买！');
+                    showToast('warning', '余额不足，无法购买！');
                     return;
                 }
                 const historyKey = `${activeChild}-SHOP-${item.id}-${Date.now()}`;
@@ -13563,7 +13807,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     });
                     fireRoyalSalute();
                     setTimeout(() => {
-                        alert(`🎆 尊贵的皇室成员！\n\n”${item.name}”已自动激活！\n以后每次打卡都将触发豪华特效！`);
+                        showToast('success', `${item.name}已自动激活！每次打卡将触发豪华特效！`, {duration: 3000});
                     }, 100);
                     return;
                 }
@@ -13621,7 +13865,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 // 道具效果分发
                 if (item.type === 'buff_xp_3') {
                     setActiveBuffs(prev => ({ ...prev, [activeChild]: { ...(prev[activeChild]||{}), xpBoost: 2, xpBoostCount: 3 } }));
-                    alert('🌾 双倍丰收符已生效！接下来的3次打卡将获得双倍经验！');
+                    showToast('success', '双倍丰收符已生效！接下来的3次打卡将获得双倍经验！');
                 } 
                 else if (item.type === 'extend_deadline') {
                     const taskName = prompt("请输入要延期的任务名称关键字：");
@@ -13634,10 +13878,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                                 const currentDeadline = new Date(task.deadline || globalDates.end);
                                 currentDeadline.setDate(currentDeadline.getDate() + 1);
                                 newTasks[taskIndex] = { ...task, deadline: currentDeadline.toISOString().split('T')[0] };
-                                alert(`⏳ 成功！"${task.name}" 的截止日期已延长至 ${newTasks[taskIndex].deadline}`);
+                                showToast('success', `截止日期已延长至 ${newTasks[taskIndex].deadline}`);
                                 return { ...prev, [activeChild]: newTasks };
                             } else {
-                                alert("未找到匹配的任务，道具已返还（请手动刷新页面恢复库存）。"); // 简化处理
+                                showToast('error', '未找到匹配的任务，道具已返还。请手动刷新页面。', {duration: 5000}); // 简化处理
                                 return prev; 
                             }
                         });
@@ -13652,15 +13896,15 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         setWheelHistory(newHistory);
                         updateStats(activeChild, 'gold_earn', reward, { source: 'box', dateKey: today });
                         checkAchievements('lucky_spin', {}, { wheelHistory: newHistory }); 
-                        alert(`🎁 谢谢惠顾... 获得了 1 金元宝安慰奖。`);
+                        showToast('info', '谢谢惠顾... 获得了 1 金元宝安慰奖。');
                     } else if (roll < 0.7) {
                         const reward = 20;
                         const key = `${activeChild}-BOX_XP-${Date.now()}`;
                         setXpHistory(prev => ({ ...prev, [key]: reward }));
-                        alert(`🎁 运气不错！获得了 20 XP 经验包！`);
+                        showToast('success', '运气不错！获得了 20 XP 经验包！');
                     } else if (roll < 0.9) {
                         setRedeemedCoupons(prev => ({...prev, [activeChild]: [...(prev[activeChild]||[]), {name: '神秘兑换券', icon: '🎫', date: today}]}));
-                        alert(`🎁 哇！开出了通用兑换券一张！`);
+                        showToast('success', '哇！开出了通用兑换券一张！');
                     } else {
                         const reward = 200;
                         const key = `${activeChild}-BOX_GOLD-${Date.now()}`;
@@ -13668,7 +13912,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         setWheelHistory(newHistory);
                         updateStats(activeChild, 'gold_earn', reward, { source: 'box', dateKey: today });
                         checkAchievements('lucky_spin', {}, { wheelHistory: newHistory });
-                        alert(`👑 传说级欧皇！开出了 200 金元宝！`);
+                        showToast('success', '传说级欧皇！开出了 200 金元宝！');
                     }
                 }
                 else if (item.type === 'real') {
@@ -13676,14 +13920,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         const now = new Date();
                         const day = now.getDay();
                         if (day !== 0 && day !== 6) {
-                            alert('📱 屏幕时间加油包仅限周末使用，请在周六或周日再使用。');
+                            showToast('warning', '屏幕时间加油包仅限周末使用，请在周六或周日再使用。');
                             return;
                         }
                         const todayKey = getLocalDateKey(0);
                         const list = redeemedCoupons[activeChild] || [];
                         const usedToday = list.filter(c => c.itemId === 'real_screen' && (c.usedAt && c.usedAt.slice(0, 10) === todayKey || c.date === todayKey)).length;
                         if (usedToday >= 1) {
-                            alert('📱 屏幕时间加油包每天最多使用一次，今日已使用过。');
+                            showToast('warning', '屏幕时间加油包每天最多使用一次，今日已使用过。');
                             return;
                         }
                     }
@@ -13712,14 +13956,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         return { ...prev, [activeChild]: next };
                     });
                     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#34d399'] });
-                    alert(`✅ 已使用 "${item.name}"！\n\n该凭证已加入「兑换记录」，请家长在兑换记录中点击「核销」完成核销。`);
+                    showToast('success', `已使用 ${item.name}！请家长在兑换记录中核销。`, {duration: 4000});
                 }
                 else if (item.type === 'buy_stars') {
                     const amount = item.starAmount || 0;
                     if (amount > 0) {
                         setStarHistory(prev => ({ ...prev, [`${activeChild}-STAR_BUY-${item.id}-${Date.now()}`]: amount }));
                         confetti({ particleCount: 60, spread: 50, origin: { y: 0.5 }, colors: ['#fbbf24', '#f59e0b'] });
-                        alert(`✨ 获得 ${amount} 颗星星！`);
+                        showToast('success', `获得 ${amount} 颗星星！`);
                     }
                 }
                 else if (item.type === 'freeze') {
@@ -13732,19 +13976,19 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     }));
                     confetti({ particleCount: 80, spread: 60, colors: ['#60a5fa', '#93c5fd', '#dbeafe'] });
-                    alert(`❄️ 冰河世纪图腾已生效！\n\n${freezeDate} 这一天将被冻结，不打卡也不会断签，但也无法获得收益。`);
+                    showToast('success', `冰河世纪图腾已生效！${freezeDate} 将被冻结。`, {duration: 4000});
                 }
                 else if (item.type === 'alchemy') {
                     const xpGain = 500;
                     const key = `${activeChild}-ALCHEMY-${Date.now()}`;
                     setXpHistory(prev => ({ ...prev, [key]: xpGain }));
                     confetti({ particleCount: 120, spread: 90, colors: ['#a855f7', '#c084fc', '#e9d5ff'] });
-                    alert(`⚗️ 炼金术成功！\n\n已将100金元宝转化为500点经验值！`);
+                    showToast('success', '炼金术成功！已将100金元宝转化为500点经验值！');
                 }
                 else if (item.type === 'lucky_buff') {
                     setActiveBuffs(prev => ({ ...prev, [activeChild]: { ...(prev[activeChild]||{}), luckyBuff: true } }));
                     confetti({ particleCount: 100, spread: 80, colors: ['#22c55e', '#4ade80', '#86efac'] });
-                    alert(`🍀 幸运加持符已生效！\n\n下一次转动惊喜大转盘时，将屏蔽最低档奖励，大大提高中大奖概率！`);
+                    showToast('success', '幸运加持符已生效！下一次转盘将屏蔽最低档奖励！', {duration: 4000});
                 }
                 else if (item.type === 'message_board') {
                     const message = prompt("📜 甲骨文传书\n\n刻下你要传递的信息（最多30字），全部成员皆可看见：");
@@ -13765,9 +14009,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         });
 
                         confetti({ particleCount: 60, spread: 50, colors: ['#f59e0b', '#fbbf24', '#8B4513'] });
-                        alert(`✅ 传书成功！\n\n你的传书已飞向首页，将保留24小时。`);
+                        showToast('success', '传书成功！你的传书已飞向首页，将保留24小时。');
                     } else {
-                        alert("取消了留言，道具已返还。");
+                        showToast('info', '取消了留言，道具已返还。');
                         // 返还道具
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
@@ -13801,7 +14045,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         return { ...prev, [activeChild]: next };
                     });
                     confetti({ particleCount: 80, spread: 60, colors: ['#8b5cf6', '#a78bfa'] });
-                    alert(`🖌️ 神笔马良体验券已使用！\n\n该凭证已加入「兑换记录」，请家长在兑换记录中点击「核销」完成核销。`);
+                    showToast('success', '神笔马良体验券已使用！请家长在兑换记录中核销。', {duration: 4000});
                 }
                 else if (item.type === 'parent_monitor') {
                     const verifyCode = Math.random().toString().slice(2, 10);
@@ -13829,7 +14073,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         return { ...prev, [activeChild]: next };
                     });
                     confetti({ particleCount: 70, spread: 50, colors: ['#eab308', '#facc15'] });
-                    alert(`📏 孔夫子的戒尺已使用！\n\n该凭证已加入「兑换记录」，请家长在兑换记录中点击「核销」完成核销。`);
+                    showToast('success', '孔夫子的戒尺已使用！请家长在兑换记录中核销。', {duration: 4000});
                 }
                 else if (item.type === 'invest_multiplier') {
                     const multiplier = item.multiplier || 2;
@@ -13846,7 +14090,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     }));
                     confetti({ particleCount: 150, spread: 120, colors: ['#f59e0b', '#fbbf24', '#fcd34d'] });
-                    alert(`💰 ${item.name}已生效！\n\n接下来${duration}天内，所有任务打卡奖励将变为${multiplier}倍！\n赶紧去打卡赚钱吧！`);
+                    showToast('success', `${item.name}已生效！接下来${duration}天奖励${multiplier}倍！`, {duration: 4000});
                 }
                 else if (item.type === 'help_card') {
                     setRedeemedCoupons(prev => ({
@@ -13854,7 +14098,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         [activeChild]: [...(prev[activeChild]||[]), {name: item.name, icon: item.icon, date: today}]
                     }));
                     confetti({ particleCount: 60, spread: 50, colors: ['#06b6d4', '#22d3ee'] });
-                    alert(`📦 诸葛锦囊已激活！\n\n请在「兑换记录」中向家长出示。家长必须耐心讲解10分钟，且不能发火。`);
+                    showToast('success', '诸葛锦囊已激活！请在兑换记录中向家长出示。', {duration: 4000});
                 }
                 else if (item.type === 'reduce_homework') {
                     setRedeemedCoupons(prev => ({
@@ -13862,7 +14106,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         [activeChild]: [...(prev[activeChild]||[]), {name: item.name, icon: item.icon, date: today}]
                     }));
                     confetti({ particleCount: 80, spread: 60, colors: ['#14b8a6', '#2dd4bf'] });
-                    alert(`✂️ 听写豁免券已激活！\n\n请在「兑换记录」中向家长出示。今天的听写任务量减半！`);
+                    showToast('success', '听写豁免券已激活！今天的听写任务量减半！', {duration: 4000});
                 }
                 else if (item.type === 'cosmetic_confetti') {
                     setStats(prev => ({
@@ -13873,7 +14117,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     }));
                     confetti({ particleCount: 200, spread: 160, colors: ['#fbbf24', '#f59e0b', '#dc2626', '#7c3aed'] });
-                    alert(`🎆 皇家礼炮特效已永久升级！\n\n从现在起，每次打卡都将享受金币雨和星星的混合特效！`);
+                    showToast('success', '皇家礼炮特效已永久升级！', {duration: 3000});
                 }
                 else if (item.type === 'cosmetic_theme') {
                     setStats(prev => ({
@@ -13884,7 +14128,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     }));
                     confetti({ particleCount: 150, spread: 120, colors: ['#06b6d4', '#ec4899', '#8b5cf6'] });
-                    alert(`🌃 ${item.name}已解锁！\n\n请在设置中切换主题。`);
+                    showToast('success', `${item.name}已解锁！请在设置中切换主题。`);
                 }
                 else if (item.type === 'unlock_theme') {
                     setStats(prev => ({
@@ -13895,7 +14139,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     }));
                     confetti({ particleCount: 200, spread: 140, colors: ['#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'] });
-                    alert(`🗺️ 丝绸之路寻宝图已解锁！\n\n「西域敦煌」隐藏主题已开启，请在设置中切换。`);
+                    showToast('success', '丝绸之路寻宝图已解锁！请在设置中切换主题。', {duration: 4000});
                 }
                 else if (item.type === 'challenge') {
                     const otherProfile = profiles.find(p => p.name !== activeChild);
@@ -13912,9 +14156,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             }
                         }));
                         confetti({ particleCount: 100, spread: 80, colors: ['#ef4444', '#f97316'] });
-                        alert(`⚔️ 挑战已发起！\n\n向${otherChild}发起挑战：“${challengeText.trim()}”\n请家长裁判，赢家将获得100元宝奖励！`);
+                        showToast('success', `挑战已发起！请家长裁判。`, {duration: 4000});
                     } else {
-                        alert("取消了挑战，道具已返还。");
+                        showToast('info', '取消了挑战，道具已返还。');
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
                             return { ...prev, [activeChild]: { ...childInv, [item.id]: (childInv[item.id] || 0) + 1 } };
@@ -13934,7 +14178,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const lastShopKey = historyKeys.find(k => k.startsWith(`${activeChild}-SHOP-`));
 
                     if (!lastShopKey) {
-                        alert("❌ 无法撤销：最近没有购买记录，或者记录已丢失。");
+                        showToast('error', '无法撤销：最近没有购买记录，或者记录已丢失。');
                         // 失败返还道具
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
@@ -13951,7 +14195,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                     // 2. 检查该物品是否还在背包里 (如果已经用了就不能反悔)
                     if (!inventory[activeChild] || !inventory[activeChild][targetItemId] || inventory[activeChild][targetItemId] <= 0) {
-                        alert(`❌ 无法撤销：你购买的 "${targetItem ? targetItem.name : '未知物品'}" 已经不在背包中了（可能已被使用）。\n\n反悔药水只能撤销“买错但没用”的操作。`);
+                        showToast('error', '无法撤销：物品已不在背包中。', {duration: 4000});
                         // 失败返还道具
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
@@ -13997,7 +14241,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             return currentAll;
                          });
 
-                         alert(`✅ 撤销成功！\n已生成退款记录：+${cost} 金元宝。`);
+                         showToast('success', `撤销成功！退款 +${cost} 金元宝。`);
                     } else {
                          // 用户点了取消，返还反悔药水
                          setInventory(prev => {
@@ -14012,7 +14256,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const returnableItems = Object.keys(currentInv).filter(k => k !== item.id);
 
                     if (returnableItems.length === 0) {
-                        alert("🎒 背包里空空如也（除了这瓶药水），没有可退的商品！");
+                        showToast('warning', '背包里空空如也，没有可退的商品！');
                         // 返还药水
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
@@ -14040,7 +14284,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                     const index = parseInt(choice) - 1;
                     if (isNaN(index) || index < 0 || index >= returnableItems.length) {
-                        alert("❌ 输入无效，操作已取消。");
+                        showToast('warning', '输入无效，操作已取消。');
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
                             return { ...prev, [activeChild]: { ...childInv, [item.id]: (childInv[item.id] || 0) + 1 } };
@@ -14061,7 +14305,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const targetKey = historyKeys.find(k => k.startsWith(`${activeChild}-SHOP-${targetItemId}-`));
 
                     if (!targetKey) {
-                        alert(`❌ 无法退款：\n商品 "${targetItemDef ? targetItemDef.name : targetItemId}" 没有购买记录。\n\n可能来源：抽奖获得、系统赠送或手动添加。\n高级反悔药水只能退还【通过商店购买】的商品。`);
+                        showToast('error', '无法退款：该商品没有购买记录。', {duration: 4000});
                         setInventory(prev => {
                             const childInv = prev[activeChild] || {};
                             return { ...prev, [activeChild]: { ...childInv, [item.id]: (childInv[item.id] || 0) + 1 } };
@@ -14103,7 +14347,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             return currentAll;
                         });
 
-                        alert(`✅ 退货成功！\n已生成退款记录：+${refundAmount} 金元宝。`);
+                        showToast('success', `退货成功！退款 +${refundAmount} 金元宝。`);
                     } else {
                         // 用户在最后一步取消
                         setInventory(prev => {
@@ -14158,7 +14402,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const newHistory = { ...wheelHistory, [key]: task.reward };
                     setWheelHistory(newHistory);
                     checkAchievementsRef.current('checkin', {}, { checkins: newCheckins, wheelHistory: newHistory });
-                    alert(`📜 已使用金牌免除今日 "${task.name}" 任务，奖励已发放！`);
+                    showToast('success', '已使用金牌免除今日任务，奖励已发放！');
                  }
             }, [inventory, activeChild, checkins, wheelHistory]);
 
@@ -15097,7 +15341,7 @@ ${context}
                 if (settingsPassword) {
                     const input = prompt("请输入家长密码：");
                     if (input !== settingsPassword) {
-                        alert("密码错误，无法进入设置页面。");
+                        showToast('error', '密码错误，无法进入设置页面。');
                         return;
                     }
                 }
@@ -16201,7 +16445,7 @@ ${context}
 				const freq = task.frequencyType || 'count';
 
 				if (currentCount === 0) {
-					alert("该任务还未有打卡记录，无法提前达成！");
+					showToast('warning', '该任务还未有打卡记录，无法提前达成！');
 					return;
 				}
 
@@ -16252,13 +16496,13 @@ ${context}
 					setProfiles([...profiles, { id: name, name, theme: 'sky', avatar: null, grade: 1, createdDate: getLocalDateKey(0) }]);
 					setTasks(prev => ({...prev, [name]: []}));
 					if (!activeChild) startTransition(() => setActiveChild(name)); // 如果是第一个账户，自动选中
-				} else if (name) alert("名字已存在");
+				} else if (name) showToast('warning', '名字已存在');
 			};
 			
 			// --- 【新增】删除成员逻辑 ---
             const deleteProfile = (profileId) => {
                 if (profiles.length <= 1) {
-                    alert("⚠️ 至少保留一名成员，无法删除！");
+                    showToast('warning', '至少保留一名成员，无法删除！');
                     return;
                 }
                 
@@ -16276,7 +16520,7 @@ ${context}
             const handleAvatarUpload = (e, profileId) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                if (file.size > 2 * 1024 * 1024) { alert("图片太大，请选择小于2MB的图片"); return; }
+                if (file.size > 2 * 1024 * 1024) { showToast('warning', '图片太大，请选择小于2MB的图片'); return; }
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     const img = new Image();
@@ -16319,7 +16563,7 @@ ${context}
                     const levelName = CURRICULUM_CONFIG[subjectId].getSemesterName(levelIndex);
                     
                     confetti({ particleCount: 200, spread: 150, origin: { y: 0.6 }, colors: ['#4f46e5', '#818cf8', '#c7d2fe'] });
-                    alert(`🎓 恭喜！\n\n${childId} 完成了《${subjectName}》- ${levelName}！\n\n新的成就勋章已解锁，请前往成就墙查看！`);
+                    showToast('success', `${childId} 完成了《${subjectName}》- ${levelName}！`, {duration: 4000});
                     
                     // 4. 记录大事纪
                     const todayDate = getLocalDateKey(0);
@@ -16400,7 +16644,7 @@ ${context}
 					<div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
 						<div className="bg-white/70 backdrop-blur-lg p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center border border-white">
 							<div className="text-6xl mb-4 animate-bounce">✨</div>
-							<h1 className="text-2xl font-black text-slate-800 mb-2">欢迎来到进化之路 ——超强学习打卡大计划</h1>
+							<h1 className="text-2xl font-bold text-slate-800 mb-2">欢迎来到进化之路 ——超强学习打卡大计划</h1>
 							<p className="text-slate-500 mb-8 text-sm font-medium">当前设备暂无记录，请先创建第一个成员开启你们的打卡之旅！</p>
 							<button 
 								onClick={handleAddProfile} 
@@ -17023,7 +17267,7 @@ ${context}
                                                   <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isChecked ? theme.lightBg : 'bg-white'}`}>{isChecked ? <CheckCircle2 className={`w-6 h-6 ${theme.primary}`} /> : <div className="w-6 h-6 rounded-full border-2 border-gray-200 group-hover:border-gray-300"></div>}</div>
                                                   <div><div className={`font-bold text-lg ${isChecked ? 'text-gray-800' : 'text-gray-500'}`}>{task.name}</div><div className="text-xs text-amber-500 font-bold flex items-center gap-1"><Coins className="w-3 h-3" /> +{task.reward}</div></div>
                                               </div>
-                                              {isChecked && <div className={`text-2xl font-black ${theme.primary}`}>{record}<span className="text-sm font-medium opacity-50 ml-1">分钟</span></div>}
+                                              {isChecked && <div className={`text-2xl font-bold ${theme.primary}`}>{record}<span className="text-sm font-medium opacity-50 ml-1">分钟</span></div>}
                                           </div>
                                       );
                                   });
@@ -17339,7 +17583,7 @@ ${context}
                       return (
                       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => { setExemptionModal(null); setExemptionInputCode(''); }}>
                           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                              <h3 className="text-lg font-black text-gray-800 mb-2 flex items-center gap-2">🛡️ 断签豁免</h3>
+                              <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">🛡️ 断签豁免</h3>
                               <div className="space-y-2 mb-4">
                                   <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl">
                                       <span className="text-xs text-gray-500">孩子</span>
@@ -17378,7 +17622,7 @@ ${context}
                                                   setExemptionModal(null);
                                                   setExemptionInputCode('');
                                               } else {
-                                                  alert('豁免码不正确，请核对后重新输入。');
+                                                  showToast('error', '豁免码不正确，请核对后重新输入。');
                                               }
                                           }
                                       }}
@@ -17398,7 +17642,7 @@ ${context}
                                               setExemptionModal(null);
                                               setExemptionInputCode('');
                                           } else {
-                                              alert('豁免码不正确，请核对后重新输入。');
+                                              showToast('error', '豁免码不正确，请核对后重新输入。');
                                           }
                                       }}
                                       className="px-4 py-2 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors"
@@ -17565,7 +17809,7 @@ ${context}
                         onUseExemption={() => {
                             setWeekendSettings(prev => ({...prev, guardianPassCount: (prev.guardianPassCount || 0) - 1}));
                             setSettlementState(null);
-                            alert("🛡️ 豁免成功！连胜记录已恢复。");
+                            showToast('success', '豁免成功！连胜记录已恢复。');
                         }}
                   />
 				  <ThemeSelectionModal show={showThemeModal} onClose={handleCloseThemeModal} currentTheme={theme} onSelectTheme={handleChangeTheme} unlockedThemes={stats[activeChild]?.unlockedThemes || []} />
@@ -17637,7 +17881,7 @@ ${context}
                         setWheelHistory(prev => ({ ...prev, [historyKey]: totalReward }));
                         updateStats(activeChild, 'gold_earn', totalReward, { source: 'weekly_pay', dateKey: getLocalDateKey(0) });
                         confetti({ particleCount: 120, spread: 100, origin: { y: 0.6 } });
-                        alert(`🎉 上周学习工资已到账：${totalReward} 金元宝！`);
+                        showToast('success', `上周学习工资已到账：${totalReward} 金元宝！`, {duration: 3000});
                       }
                       setWeeklyPayrollToClaim(null);
                       setShowWeeklyPayrollModal(false);
@@ -17694,7 +17938,7 @@ ${context}
 						if (!payroll) {
 							// 无达标任务时也显示信封，方便测试：展示 0 元结算单
 							setWeeklyPayrollToClaim({ weekKey, weekStart, weekEnd, totalReward: 0, items: [] });
-							alert('当前没有可结算的周学习工资（请先配置每日必做或每周选做任务）。已显示“收工资”按钮，可点击查看结算单。');
+							showToast('warning', '当前没有可结算的周学习工资。');
 							return;
 						}
 						const { totalReward, items } = payroll;
@@ -17716,7 +17960,7 @@ ${context}
 							};
 						});
 						setWeeklyPayrollToClaim({ weekKey, weekStart, weekEnd, totalReward, items });
-						alert('已为测试员生成一条“上周学习工资”待领取记录，请在右下角信封按钮中查看。');
+						showToast('info', '已生成待领取记录，请查看信封按钮。');
 					}}
 				  />
 				  
@@ -17839,7 +18083,7 @@ ${context}
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<PerformanceProvider><App /></PerformanceProvider>);
+        root.render(<PerformanceProvider><App /><ToastContainer /></PerformanceProvider>);
     </script>
 </body>
 </html>
