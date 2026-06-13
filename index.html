@@ -16719,17 +16719,21 @@ ${context}
                               {/* ===== Mobile: 两行紧凑布局 ===== */}
                               <div className="flex flex-col lg:hidden w-full gap-1.5 py-1">
                                 {/* Row 1: 天气 + 时间 + 设置 */}
-                                <div className="flex items-center justify-between w-full">
+                                <div className="grid grid-cols-[auto_1fr_auto] items-center w-full">
                                   <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/20 text-xs flex-shrink-0">
                                     <span className="text-amber-100 font-bold">{weather.city || (userCity || '定位中')}</span>
                                     <span className="animate-pulse">{weather.icon}</span>
                                     <span className="text-white font-medium">{weather.temp}°C</span>
                                   </span>
                                   <TimeDisplay headerTheme={headerTheme} variant="mobile" />
-                                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <div className="flex items-center gap-px flex-shrink-0">
                                     {holiday && (
                                       <span className="px-1.5 py-0.5 bg-white/20 rounded-full text-[10px] animate-pulse">{headerTheme.icon}</span>
                                     )}
+                                    <div onClick={() => canSpinLuckyWheel && setShowWheelChoice(true)} className={`flex items-center gap-0.5 px-1.5 py-1 rounded-lg cursor-pointer transition-colors ${canSpinLuckyWheel ? 'bg-amber-400/80 animate-pulse text-black' : 'text-white/60'}`}>
+                                      <span className="text-xs">🧩</span>
+                                      <span className="text-[10px] font-black">{todayFragmentStats.completed}/{todayFragmentStats.required}</span>
+                                    </div>
                                     <button onClick={() => setShowThemeModal(true)} className="p-1.5 rounded-lg hover:bg-white/20 active:scale-95" title="切换主题"><span className="text-lg">🎨</span></button>
                                     <button onClick={handleOpenSettings} className="p-1.5 rounded-lg hover:bg-white/20 active:scale-95" title="设置"><span className="text-lg">🛠️</span></button>
                                   </div>
@@ -16742,9 +16746,9 @@ ${context}
                                       return (
                                         <button key={profile.id}
                                           onClick={() => startTransition(() => setActiveChild(profile.name))}
-                                          className={`flex-shrink-0 transition-colors transition-transform duration-200 rounded-full ${isActive ? 'flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 shadow-sm' : 'flex items-center px-1.5 py-1.5 bg-white/20 hover:bg-white/30 active:scale-95'}`}>
+                                          className={`flex-shrink-0 transition-colors transition-transform duration-200 rounded-full ${isActive ? 'p-1.5 bg-white/90 shadow-sm ring-1 ring-white/40' : 'p-1.5 bg-white/20 hover:bg-white/30 active:scale-95'}`}>
                                           {profile.avatar ? <img src={profile.avatar} className="w-5 h-5 rounded-full object-cover" /> : <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[9px] font-bold text-white">{profile.name[0]}</div>}
-                                          {isActive && <span className="text-xs font-bold text-gray-800 truncate max-w-[4rem]">{profile.name}</span>}
+                                          {isActive && <span className="hidden sm:inline text-xs font-bold text-gray-800 truncate max-w-[4rem]">{profile.name}</span>}
                                         </button>
                                       );
                                     })}
@@ -16755,7 +16759,7 @@ ${context}
                                     <button onClick={() => setShowAchievements(true)} className="p-1.5 rounded-lg active:scale-95 relative" title="成就墙"><span className="text-base">🏆</span>{unlockQueue.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}</button>
                                     <button onClick={() => setShowCompletedWall(true)} className="p-1.5 rounded-lg active:scale-95" title="目标达成墙"><span className="text-base">🎯</span></button>
                                     <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-1.5 rounded-lg active:scale-95" title="学习数据统计"><span className="text-base">📊</span></button>
-                                    <button onClick={() => { setShopInitialTab('buy'); setShowShop(true); }} className="p-1.5 rounded-lg active:scale-95" title="时空集市"><span className="text-base">🏪</span></button>
+                                    <button onClick={() => { setShowMilestones(true); }} className="p-1.5 rounded-lg active:scale-95" title="大事纪"><span className="text-base">📜</span></button>
                                     <button onClick={() => setShowHomeworkExamModal(true)} className="p-1.5 rounded-lg active:scale-95" title="作业与考试"><span className="text-base">📝</span></button>
                                     <div className="flex items-center gap-0.5 ml-0.5 cursor-pointer active:scale-95 px-1.5 py-0.5 rounded" onClick={() => setShowGoldHistory(true)}>
                                       <Coins className="w-3.5 h-3.5 text-yellow-300" />
