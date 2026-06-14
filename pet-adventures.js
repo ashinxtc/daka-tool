@@ -573,7 +573,7 @@ const ADVENTURE_HELPERS = {
     },
 
     // 计算日均金元宝基础值
-    calcDailyGoldBase: function(checkins, wheelHistory, tasks, childName, recentDays) {
+    calcDailyGoldBase: function(checkins, wheelHistory, tasks, childName, recentDays, currentLevel) {
         var now = new Date();
         var totalGold = 0;
         var childTasks = tasks[childName] || [];
@@ -594,24 +594,28 @@ const ADVENTURE_HELPERS = {
             totalGold += dayGold;
         }
 
-        // 加上 wheelHistory 中近 N 天的正向收入（排除进贡和探险等非学习所得）
-        if (wheelHistory) {
-            Object.keys(wheelHistory).forEach(function(key) {
-                if (!key.startsWith(childName)) return;
-                if (key.indexOf('TRIBUTE_') !== -1) return;
-                if (key.indexOf('ADVENTURE_') !== -1) return;
-                var value = wheelHistory[key];
-                if (value > 0) {
-                    var ts = key.match(/-(\d{13})$/);
-                    if (ts) {
-                        var entryDate = new Date(parseInt(ts[1]));
-                        var daysDiff = (now - entryDate) / (1000 * 60 * 60 * 24);
-                        if (daysDiff <= recentDays) {
-                            totalGold += value;
+        // 【临时限制】28级以上只算打卡收入，不算轮盘等其他收入
+        // TODO: 后续移除此限制条件
+        if (!currentLevel || currentLevel < 28) {
+            // 加上 wheelHistory 中近 N 天的正向收入（排除进贡和探险等非学习所得）
+            if (wheelHistory) {
+                Object.keys(wheelHistory).forEach(function(key) {
+                    if (!key.startsWith(childName)) return;
+                    if (key.indexOf('TRIBUTE_') !== -1) return;
+                    if (key.indexOf('ADVENTURE_') !== -1) return;
+                    var value = wheelHistory[key];
+                    if (value > 0) {
+                        var ts = key.match(/-(\d{13})$/);
+                        if (ts) {
+                            var entryDate = new Date(parseInt(ts[1]));
+                            var daysDiff = (now - entryDate) / (1000 * 60 * 60 * 24);
+                            if (daysDiff <= recentDays) {
+                                totalGold += value;
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
         return Math.max(1, totalGold / recentDays);
