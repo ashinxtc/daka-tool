@@ -32,7 +32,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
     <!-- 引入 Babel 用于解析 JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
 
     <!-- 引入 Canvas Confetti 用于庆祝特效 -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -1485,10 +1485,16 @@
         // --- 商店商品定义 ---
         const SHOP_ITEMS = [
             // 第一类：时空法宝
-            { 
-                id: 'item_fire', name: '普罗米修斯之火', icon: '🔥', type: 'repair', 
-                price: 5, era: '远古之路', minLevel: 2, 
+            {
+                id: 'item_fire', name: '普罗米修斯之火', icon: '🔥', type: 'repair',
+                price: 5, era: '远古之路', minLevel: 2,
                 desc: '补签卡。可以修复过去任意一天未完成的打卡记录。',
+                category: 'tool'
+            },
+            {
+                id: 'item_adventure_food', name: '探险干粮', icon: '🍙', type: 'adventure_food',
+                price: 5, era: '远古之路', minLevel: 1,
+                desc: '探险必备！携带后宠物的饱食度消耗减半，更适合长途冒险。探险每小时消耗1个。',
                 category: 'tool'
             },
             { 
@@ -7546,16 +7552,109 @@
         };
 
         // ==================== 探险视图组件 ====================
-        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, aiEnabled, deepseekApiKey, callDeepSeekAPI }) => {
+        // 探险出发确认卡片
+        const AdventureConfirmModal = ({ show, onClose, onConfirm, realm, pet, petCatalog, foodCount, adventureConfig }) => {
+            if (!show || !realm || !pet) return null;
+            const cfg = adventureConfig || {};
+            const hours = Math.ceil(realm.duration / 3600000);
+            const hungerCost = hours * (cfg.hungerPerHour || 10);
+            const fullness = pet.stats?.fullness || 0;
+            const cleanliness = pet.stats?.cleanliness || 0;
+            const foodNeeded = hours; // 每小时消耗1个
+            const hasEnoughFood = foodCount >= foodNeeded;
+            const [bringFood, setBringFood] = React.useState(hasEnoughFood && hungerCost > 50);
+            const effectiveHungerCost = bringFood ? Math.ceil(hungerCost / 2) : hungerCost;
+            const afterFullness = Math.max(0, fullness - effectiveHungerCost);
+            const totalFoodCost = foodNeeded * 5; // 5金/个
+
+            const catalog = petCatalog?.find(c => c.id === pet.id);
+            const petName = pet.nickname || catalog?.name || '宠物';
+
+            const needFull = realm.id === 'rift' || realm.id === 'cosmos';
+            const cleanThreshold = realm.id === 'rift' ? 50 : realm.id === 'cosmos' ? 80 : 0;
+
+            const hungerOk = needFull ? fullness >= 100 : fullness >= effectiveHungerCost;
+            const cleanOk = cleanliness >= cleanThreshold;
+            const canGo = hungerOk && cleanOk;
+
+            const hungerMsg = !hungerOk
+                ? (needFull ? `🍖 长途探险需要 100% 饱食度（当前 ${fullness}%）`
+                           : `🍖 饱食度不足（当前 ${fullness}%，需要 ${Math.ceil(effectiveHungerCost)}%）`)
+                : '';
+            const cleanMsg = !cleanOk ? `🛁 清洁度不足（当前 ${cleanliness}%，需要 ${cleanThreshold}%）` : '';
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                        <div className={`p-4 bg-gradient-to-r ${realm.color || 'from-amber-400 to-orange-500'} text-white`}>
+                            <h3 className="text-lg font-bold flex items-center gap-2">🚀 前往「{realm.name}」探险</h3>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            {/* 宠物状态 */}
+                            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                                <span className="text-2xl">{catalog?.emoji || '🐾'}</span>
+                                <div className="flex-1">
+                                    <div className="font-bold text-sm text-gray-800">{petName}</div>
+                                    <div className="flex gap-3 mt-1 text-xs">
+                                        <span className={fullness >= 50 ? 'text-emerald-600' : 'text-red-500'}>🍖 {fullness}%</span>
+                                        <span className={cleanliness >= 50 ? 'text-emerald-600' : 'text-red-500'}>🛁 {cleanliness}%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 预计消耗 */}
+                            <div className="flex justify-between text-sm text-gray-600">
+                                <span>⏱️ 预计 {hours} 小时</span>
+                                <span>⭐ 消耗 {realm.starCost} 星星</span>
+                            </div>
+
+                            {/* 食物包选项 */}
+                            {foodCount > 0 && (
+                                <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl cursor-pointer border border-amber-100">
+                                    <input type="checkbox" checked={bringFood} onChange={e => setBringFood(e.target.checked)} disabled={!hasEnoughFood} className="w-4 h-4 accent-amber-500" />
+                                    <div className="flex-1">
+                                        <div className="text-sm font-bold text-amber-800">
+                                            🍙 探险干粮 — 需要 {foodNeeded} 个（库存 {foodCount}）
+                                            {!hasEnoughFood && <span className="text-red-500 text-xs ml-2">库存不足</span>}
+                                        </div>
+                                        <div className="text-xs text-amber-600 mt-0.5">
+                                            {bringFood ? `消耗后饱食度预计剩余 ${afterFullness}%（消耗 ${totalFoodCost} 金元宝）` : `勾选后饱食度消耗减半（${totalFoodCost} 金元宝）`}
+                                        </div>
+                                    </div>
+                                </label>
+                            )}
+
+                            {/* 状态检查提示 */}
+                            {hungerMsg && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{hungerMsg}</p>}
+                            {cleanMsg && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{cleanMsg}</p>}
+
+                            {/* 按钮 */}
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition-colors">取消</button>
+                                <button
+                                    onClick={() => { onConfirm(bringFood); onClose(); }}
+                                    disabled={!canGo}
+                                    className={`flex-1 py-3 rounded-xl font-bold text-white transition-all ${canGo ? 'bg-gradient-to-r from-amber-400 to-orange-500 shadow-md hover:shadow-lg active:scale-95' : 'bg-gray-300 cursor-not-allowed'}`}
+                                >🚀 出发！</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, aiEnabled, deepseekApiKey, callDeepSeekAPI, inventory, petCatalog, adventureConfig }) => {
             const [selectedRealm, setSelectedRealm] = useState(null);
             const [showGuide, setShowGuide] = useState(false);
             const [now, setNow] = useState(Date.now());
             const [selectedPetForAdventure, setSelectedPetForAdventure] = useState(null);
             const [lootTooltip, setLootTooltip] = useState(null); // { realmId, source: 'hover'|'click' }
             const [adventurePetDialog, setAdventurePetDialog] = useState('');
+            const [confirmRealm, setConfirmRealm] = useState(null);
 
             const currentStars = totalStars;
             const advArr = Array.isArray(petAdventures[activeChild]) ? petAdventures[activeChild] : [];
+            const foodCount = (typeof inventory !== 'undefined' && inventory[activeChild]) ? (inventory[activeChild]['item_adventure_food'] || 0) : 0;
             const activeAdvs = advArr.filter(a => a.status === 'active');
             const completedAdvs = advArr.filter(a => a.status === 'completed' && a.result);
             const isActive = activeAdvs.length > 0;
@@ -7861,7 +7960,7 @@
                                                         <span className="text-emerald-600 font-bold">×{status.goldMul} 倍率</span>
                                                     </div>
                                                 )}
-                                                <button onClick={(e) => { e.stopPropagation(); handleStartAdventure(realm.id, selectedPetForAdventure); }}
+                                                <button onClick={(e) => { e.stopPropagation(); setConfirmRealm(realm); }}
                                                     disabled={!selectedPetForAdventure || currentStars < realm.starCost}
                                                     className={`w-full py-2.5 rounded-xl text-sm font-bold transition-all ${selectedPetForAdventure && currentStars >= realm.starCost ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-md hover:shadow-lg active:scale-95' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
                                                     {!selectedPetForAdventure ? '🐾 请先选择宠物' : currentStars >= realm.starCost ? `🚀 出发！（${realm.starCost} ⭐）` : `⭐ 不够（需要 ${realm.starCost}）`}
@@ -8011,11 +8110,23 @@
                         </div>
                     )}
 
+                    {/* 探险出发确认卡片 */}
+                    <AdventureConfirmModal
+                        show={!!confirmRealm}
+                        onClose={() => setConfirmRealm(null)}
+                        onConfirm={(bringFood) => { handleStartAdventure(confirmRealm.id, selectedPetForAdventure, bringFood); setConfirmRealm(null); }}
+                        realm={confirmRealm}
+                        pet={selectedPetForAdventure ? petData[activeChild]?.[selectedPetForAdventure] : null}
+                        petCatalog={petCatalog}
+                        foodCount={foodCount}
+                        adventureConfig={adventureConfig}
+                    />
+
                 </div>
             );
         };
 
-        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, totalStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, petSlots, setPetSlots, checkins, tasks, aiEnabled, aiPetEnabled, deepseekApiKey, callDeepSeekAPI }) => {
+        const PetModal = ({ show, onClose, theme, activeChild, profiles, petData, setPetData, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, totalStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, getAdventureMultiplierStatus, showToast, petSlots, setPetSlots, checkins, tasks, aiEnabled, aiPetEnabled, deepseekApiKey, callDeepSeekAPI, inventory, petCatalog, adventureConfig }) => {
             if (!show) return null;
 
             const [currentTab, setCurrentTab] = useState('home');
@@ -8101,7 +8212,7 @@
                         <div className="flex-1 overflow-y-auto px-5 pb-5">
                             {currentTab === 'home' && <PetHomeView theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} totalStars={totalStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} aiEnabled={aiEnabled} aiPetEnabled={aiPetEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} />}
                             {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} totalStars={totalStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} petSlots={petSlots} setPetSlots={setPetSlots} currentStreak={slotStreak} recentCheckinRate={slotCheckinRate * 100} />}
-                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} aiEnabled={aiEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} />}
+                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} aiEnabled={aiEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} inventory={inventory} petCatalog={petCatalog} adventureConfig={adventureConfig} />}
                             {currentTab === 'album' && <PetAlbumView theme={theme} activeChild={activeChild} ownedPets={ownedPets} petData={petData} />}
                         </div>
                     </div>
@@ -13053,7 +13164,7 @@
             }, [deferredActiveChild, activePet, petData, petAdventureStats, checkins, wheelHistory, tasks, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms]);
 
             // 开始探险
-            const handleStartAdventure = useCallback((realmId, selectedPetId) => {
+            const handleStartAdventure = useCallback((realmId, selectedPetId, bringFood = false) => {
                 const h = adventureHelpers;
                 const cfg = adventureConfig;
                 if (!h || !cfg) return showToast('探险系统未就绪');
@@ -13067,14 +13178,14 @@
                 const realm = adventureRealms.find(r => r.id === realmId);
                 if (!realm) return showToast('未知领域');
 
-                // 等级和时代检查（直接使用主界面已计算的 currentXP）
+                // 等级和时代检查
                 const lvlInfo = getLevelInfo(currentXP);
 
                 if (lvlInfo.level < realm.unlockLevel) return showToast(`需要达到 ${realm.unlockLevel} 级才能探险`);
                 const eraOrder = (typeof ERA_ORDER !== 'undefined') ? ERA_ORDER : ['远古之路', '文明初曙', '周·礼制与争鸣', '秦·铁血与一统', '汉·雄风与凿空西域', '魏晋隋唐·融合与登科', '五代·乱世更迭', '宋·文道昌盛', '元·四海交融', '明·日月重开'];
                 if (realm.unlockEra && eraOrder.indexOf(lvlInfo.era) < eraOrder.indexOf(realm.unlockEra)) return showToast(`需要先到达「${realm.unlockEra}」时代`);
 
-                // 已有探险进行中检查（同一只宠物不能重复出发）
+                // 已有探险进行中检查
                 const myAdvs = (Array.isArray(petAdventures[deferredActiveChild]) ? petAdventures[deferredActiveChild] : []).filter(a => a.status === 'active');
                 if (myAdvs.some(a => a.petId === petId)) return showToast('这只宠物正在探险中，不能重复出发！');
 
@@ -13091,6 +13202,41 @@
                     const refuseDialogs = adventureRefuseDialogs || [];
                     const dialog = refuseDialogs[Math.floor(Math.random() * refuseDialogs.length)] || '学习不够努力，无法探险！';
                     return showToast(dialog);
+                }
+
+                // 宠物状态检查
+                const fullness = pet.stats?.fullness || 0;
+                const cleanliness = pet.stats?.cleanliness || 0;
+                const hours = realm.duration / 3600000;
+                const hungerCost = hours * cfg.hungerPerHour;
+                const foodReduction = bringFood ? cfg.foodHungerReduction : 0;
+                const effectiveHungerCost = Math.max(1, hungerCost - foodReduction * hours);
+
+                if (fullness < effectiveHungerCost) {
+                    return showToast(`🍖 宠物饿了！饱食度 ${fullness}%，需要 ${Math.ceil(effectiveHungerCost)}%`);
+                }
+                if ((realm.id === 'rift' || realm.id === 'cosmos') && fullness < 100) {
+                    return showToast(`🍖 长途探险需要让宠物吃饱出发！当前 ${fullness}%，需要 100%`);
+                }
+                if (realm.id === 'rift' && cleanliness < 50) {
+                    return showToast(`🛁 宠物需要先洗个澡！清洁度 ${cleanliness}%，需要 50%`);
+                }
+                if (realm.id === 'cosmos' && cleanliness < 80) {
+                    return showToast(`🛁 宠物需要先洗个澡！清洁度 ${cleanliness}%，需要 80%`);
+                }
+
+                // 食物包扣减（每小时消耗1个）
+                if (bringFood) {
+                    const hours = Math.ceil(realm.duration / 3600000);
+                    const foodCount = (inventory[deferredActiveChild] || {})['item_adventure_food'] || 0;
+                    if (foodCount < hours) return showToast(`探险干粮不足！需要 ${hours} 个，当前 ${foodCount} 个`);
+                    setInventory(prev => {
+                        const childInv = prev[deferredActiveChild] || {};
+                        const newCount = (childInv['item_adventure_food'] || 0) - hours;
+                        const newInv = { ...childInv, 'item_adventure_food': newCount };
+                        if (newCount <= 0) delete newInv['item_adventure_food'];
+                        return { ...prev, [deferredActiveChild]: newInv };
+                    });
                 }
 
                 // 星星检查与扣除
@@ -13112,6 +13258,7 @@
                     expectedEndTime: Date.now() + actualDuration,
                     status: 'active',
                     starCost: realm.starCost,
+                    broughtFood: bringFood,
                 };
 
                 setPetAdventures(prev => {
@@ -13202,7 +13349,7 @@
                 const event = h.rollEvent(skillBonus.eventShield);
 
                 // 结算宝物
-                const result = h.resolveLoot(rolledItems, dailyGoldBase, dailyXPBase, multipliers, gateMultiplier, event);
+                const result = h.resolveLoot(rolledItems, dailyGoldBase, dailyXPBase, multipliers, gateMultiplier, event, getLevelInfo(currentXP).level, adv.realmId);
 
                 // 应用奖励（金元宝→wheelHistory，纯经验→xpHistory，星星→starHistory）
                 const advTs = Date.now();
@@ -13219,11 +13366,12 @@
                 // 更新宠物属性（探险消耗）
                 if (pet) {
                     const hours = Math.round((adv.expectedEndTime - adv.startTime) / 3600000);
+                    const hungerPerHour = adv.broughtFood ? Math.max(1, cfg.hungerPerHour - (cfg.foodHungerReduction || 5)) : cfg.hungerPerHour;
                     setPetData(prev => {
                         const childPets = { ...(prev[childName] || {}) };
                         const p = { ...childPets[petId] };
                         p.stats = {
-                            fullness: Math.max(0, p.stats.fullness - hours * cfg.hungerPerHour),
+                            fullness: Math.max(0, p.stats.fullness - hours * hungerPerHour),
                             cleanliness: Math.max(0, p.stats.cleanliness - hours * cfg.cleanlinessPerHour),
                             mood: Math.min(100, p.stats.mood + hours * cfg.moodPerHour),
                         };
@@ -17893,6 +18041,9 @@ ${context}
 				      aiPetEnabled={aiPetEnabled}
 				      deepseekApiKey={deepseekApiKey}
 				      callDeepSeekAPI={callDeepSeekAPI}
+				      inventory={inventory}
+				      petCatalog={typeof PET_CATALOG !== 'undefined' ? PET_CATALOG : []}
+				      adventureConfig={typeof ADVENTURE_CONFIG !== 'undefined' ? ADVENTURE_CONFIG : {}}
 				  />
 				  <CompletedWallModal 
 					show={showCompletedWall} 

@@ -9,6 +9,7 @@ const ADVENTURE_CONFIG = {
     trapMaxTrigger: 1,                  // 每次探险陷阱最多触发次数
     logRetention: 50,                   // 保留最近日志条数
     hungerPerHour: 10,                  // 每小时饱腹消耗
+    foodHungerReduction: 5,             // 食物包将 hungerPerHour 减少的值（10→5）
     cleanlinessPerHour: 10,             // 每小时清洁消耗
     moodPerHour: 5,                     // 每小时心情增长（探险让它开心）
     recentDays: 7,                      // 近 N 天用于计算基准值和打卡率
@@ -774,11 +775,16 @@ const ADVENTURE_HELPERS = {
     },
 
     // 将宝物倍率转换为实际收益
-    resolveLoot: function(rolledItems, dailyGoldBase, dailyXPBase, multipliers, gateMultiplier, event) {
+    // 【临时限制】28级以上应用倍率上限，降低探险回报率
+    // TODO: 后续移除此限制条件
+    REALM_MUL_CAPS: { forest: 2, creek: 3, ruins: 5, rift: 5, cosmos: 5 },
+
+    resolveLoot: function(rolledItems, dailyGoldBase, dailyXPBase, multipliers, gateMultiplier, event, currentLevel, realmId) {
         var totalGold = 0;
         var totalXP = 0;
         var totalStars = 0;
         var resolvedItems = [];
+        var self = this;
 
         // 事件修改
         var eventGoldMul = 1;
@@ -805,6 +811,9 @@ const ADVENTURE_HELPERS = {
             }
         }
 
+        // 28级以上：确定当前领域的倍率上限
+        var mulCap = (currentLevel && currentLevel >= 28 && realmId) ? (self.REALM_MUL_CAPS[realmId] || 5) : Infinity;
+
         rolledItems.forEach(function(item) {
             var resolved = {
                 name: item.name,
@@ -816,12 +825,14 @@ const ADVENTURE_HELPERS = {
             };
 
             if (item.goldMul !== undefined) {
-                resolved.gold = Math.round(dailyGoldBase * item.goldMul * multipliers.gold * gateMultiplier * eventGoldMul);
+                var goldMul = item.isTrap ? item.goldMul : Math.min(mulCap, item.goldMul);
+                resolved.gold = Math.round(dailyGoldBase * goldMul * multipliers.gold * gateMultiplier * eventGoldMul);
                 if (eventItemsBoost > 0 && resolved.gold > 0) resolved.gold = Math.round(resolved.gold * (1 + eventItemsBoost));
-                if (resolved.gold < 0) resolved.gold = Math.round(dailyGoldBase * item.goldMul * gateMultiplier * eventGoldMul); // 陷阱不受加成
+                if (resolved.gold < 0) resolved.gold = Math.round(dailyGoldBase * goldMul * gateMultiplier * eventGoldMul); // 陷阱不受加成
             }
             if (item.xpMul !== undefined) {
-                resolved.xp = Math.round(dailyXPBase * item.xpMul * multipliers.xp * gateMultiplier * eventXpMul);
+                var xpMul = Math.min(mulCap, item.xpMul);
+                resolved.xp = Math.round(dailyXPBase * xpMul * multipliers.xp * gateMultiplier * eventXpMul);
                 if (eventItemsBoost > 0 && resolved.xp > 0) resolved.xp = Math.round(resolved.xp * (1 + eventItemsBoost));
             }
             if (item.starsFixed !== undefined) {
