@@ -18109,8 +18109,10 @@ ${context}
                                                       }
                                                       return prev;
                                                   });
+                                                  triggerSyncUpload();
                                                   setExemptionModal(null);
                                                   setExemptionInputCode('');
+                                                  showToast('success', '豁免成功！');
                                               } else {
                                                   showToast('error', '豁免码不正确，请核对后重新输入。');
                                               }
@@ -18129,8 +18131,10 @@ ${context}
                                                   }
                                                   return prev;
                                               });
+                                              triggerSyncUpload();
                                               setExemptionModal(null);
                                               setExemptionInputCode('');
+                                              showToast('success', '豁免成功！');
                                           } else {
                                               showToast('error', '豁免码不正确，请核对后重新输入。');
                                           }
