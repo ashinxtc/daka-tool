@@ -6790,6 +6790,7 @@
             const cycleRef = React.useRef(null);
             const prevPetRef = React.useRef(null);
             const actionAnimRef = React.useRef(false);
+            const petStateTimerRef = React.useRef(null);
 
             React.useEffect(() => {
                 if (!petId) return;
@@ -7056,7 +7057,8 @@
                                                             if (reply) setAiPetDialog(reply.replace(/^[""「]|[""」]$/g, '').slice(0, 40));
                                                         });
                                                     }
-                                                    setTimeout(() => {
+                                                    if (petStateTimerRef.current) clearTimeout(petStateTimerRef.current);
+                                                    petStateTimerRef.current = setTimeout(() => {
                                                         setPetData(prev => {
                                                             const childPets = { ...(prev[activeChild] || {}) };
                                                             if (childPets[petId]) {
@@ -7557,15 +7559,17 @@
             if (!show || !realm || !pet) return null;
             const cfg = adventureConfig || {};
             const hours = Math.ceil(realm.duration / 3600000);
-            const hungerCost = hours * (cfg.hungerPerHour || 10);
+            const hungerPerHour = cfg.hungerPerHour || 10;
+            const foodHungerReduction = cfg.foodHungerReduction || 5;
             const fullness = pet.stats?.fullness || 0;
             const cleanliness = pet.stats?.cleanliness || 0;
-            const foodNeeded = hours; // 每小时消耗1个
+            const foodNeeded = hours;
             const hasEnoughFood = foodCount >= foodNeeded;
-            const [bringFood, setBringFood] = React.useState(hasEnoughFood && hungerCost > 50);
-            const effectiveHungerCost = bringFood ? Math.ceil(hungerCost / 2) : hungerCost;
-            const afterFullness = Math.max(0, fullness - effectiveHungerCost);
-            const totalFoodCost = foodNeeded * 5; // 5金/个
+            const [bringFood, setBringFood] = React.useState(hasEnoughFood && hours * hungerPerHour > 50);
+            // 使用与 handleStartAdventure 相同的计算公式
+            const { effectiveCost } = calcAdventureHungerCost(realm.duration, hungerPerHour, foodHungerReduction, bringFood);
+            const afterFullness = Math.max(0, fullness - effectiveCost);
+            const totalFoodCost = foodNeeded * 5;
 
             const catalog = petCatalog?.find(c => c.id === pet.id);
             const petName = pet.nickname || catalog?.name || '宠物';
@@ -7573,13 +7577,13 @@
             const needFull = realm.id === 'rift' || realm.id === 'cosmos';
             const cleanThreshold = realm.id === 'rift' ? 50 : realm.id === 'cosmos' ? 80 : 0;
 
-            const hungerOk = needFull ? fullness >= 100 : fullness >= effectiveHungerCost;
+            const hungerOk = needFull ? fullness >= 100 : fullness >= effectiveCost;
             const cleanOk = cleanliness >= cleanThreshold;
             const canGo = hungerOk && cleanOk;
 
             const hungerMsg = !hungerOk
                 ? (needFull ? `🍖 长途探险需要 100% 饱食度（当前 ${fullness}%）`
-                           : `🍖 饱食度不足（当前 ${fullness}%，需要 ${Math.ceil(effectiveHungerCost)}%）`)
+                           : `🍖 饱食度不足（当前 ${fullness}%，需要 ${Math.ceil(effectiveCost)}%）`)
                 : '';
             const cleanMsg = !cleanOk ? `🛁 清洁度不足（当前 ${cleanliness}%，需要 ${cleanThreshold}%）` : '';
 
@@ -7688,7 +7692,7 @@
             };
 
             // 进度百分比（单条探险）
-            const calcProgress = (adv) => Math.min(100, ((now - adv.startTime) / (adv.expectedEndTime - adv.startTime)) * 100);
+            const calcProgress = (adv) => { const d = adv.expectedEndTime - adv.startTime; return d <= 0 ? 100 : Math.min(100, ((now - adv.startTime) / d) * 100); };
 
             // 门控状态文案
             const gateLabel = (status) => {
@@ -8645,7 +8649,15 @@
         // 企业微信 Worker 地址（全局常量，SettingsModal 和主 App 共用）
         const WECOM_API_URL = 'https://daka-wecom.2378385593.workers.dev';
 
-        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus }) => {
+        // 探险饥饿度计算（全局函数，AdventureConfirmModal 和 handleStartAdventure 共用）
+        const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHungerReduction, bringFood) => {
+            const hours = Math.ceil(realmDuration / 3600000);
+            const totalHunger = hours * hungerPerHour;
+            const reduction = bringFood ? foodHungerReduction * hours : 0;
+            return { hours, effectiveCost: Math.max(1, totalHunger - reduction) };
+        };
+
+        const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState('parent');
             const SETTINGS_TABS = [
@@ -8657,6 +8669,7 @@
                 { id: 'evil', label: '惩罚', icon: '⚠️' },
                 { id: 'homeworkExam', label: '作业与考试', icon: '📝' },
                 { id: 'ai', label: 'AI助手', icon: '🤖' },
+                { id: 'push', label: '通知', icon: '🔔' },
                 { id: 'sync', label: '同步', icon: '☁️' },
                 { id: 'wecom', label: '企业微信', icon: '💬' },
                 { id: 'data', label: '数据', icon: '💾' }
@@ -8961,6 +8974,58 @@
                                         ✅ AI 功能已就绪
                                     </div>
                                 )}
+                            </div>
+                       </section>
+                       )}
+
+                       {activeSettingsTab === 'push' && (
+                       <section className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100 shadow-sm">
+                            <h3 className="font-bold text-orange-800 mb-4 flex items-center gap-2"><span className="text-xl">🔔</span> 打卡提醒通知</h3>
+                            <p className="text-sm text-orange-700/80 mb-4">开启后，即使浏览器关闭，也会在每天固定时间收到打卡提醒。</p>
+
+                            <div className="space-y-4">
+                                {/* 权限状态 */}
+                                <div className="p-3 bg-white rounded-xl border border-gray-200">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold text-gray-700 text-sm">推送通知</div>
+                                            <div className="text-xs text-gray-500">
+                                                {pushPermission === 'granted' && pushSubscribed ? '✅ 已开启，每天会收到提醒' :
+                                                 pushPermission === 'denied' ? '❌ 浏览器通知权限已关闭，请在浏览器设置中开启' :
+                                                 '⏳ 未开启'}
+                                            </div>
+                                        </div>
+                                        {pushPermission !== 'denied' && (
+                                            <button onClick={enablePushNotifications}
+                                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${pushSubscribed ? 'bg-green-100 text-green-700' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>
+                                                {pushSubscribed ? '已开启 ✅' : '开启通知 🔔'}
+                                            </button>
+                                        )}
+                                    </div>
+                                    {pushPermission === 'denied' && (
+                                        <p className="text-xs text-amber-600 mt-2 bg-amber-50 p-2 rounded">
+                                            通知权限被拒绝。请在浏览器地址栏左侧的🔒图标中手动开启通知权限。
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* 测试推送 */}
+                                {pushSubscribed && (
+                                    <div className="flex gap-2">
+                                        <button onClick={testPushNotification}
+                                            className="flex-1 px-4 py-2 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 transition-colors">
+                                            📤 发送测试通知
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* 说明 */}
+                                <div className="text-xs text-gray-400 space-y-1">
+                                    <p>• 推送时间：每天 8:00、16:00、20:00 自动检查</p>
+                                    <p>• 仅在孩子当天有未完成任务时推送</p>
+                                    <p>• 需要同步码才能工作（请先配置同步）</p>
+                                    <p>• 支持 Chrome、Edge、Safari 16.4+</p>
+                                </div>
                             </div>
                        </section>
                        )}
@@ -11299,12 +11364,12 @@
         };
 		
 		    // --- 自定义 Hook：持久化 State ---
-            // 全局 pending 写入注册表，用于 beforeunload 刷新（修复关标签页丢数据）
-            const _pendingWrites = {};
+            // 全局 pending 写入注册表，用于 beforeunload 刷新（S1: 使用 window 持久化）
+            if (!window._pendingWrites) window._pendingWrites = {};
             if (!window._stickyStateFlushRegistered) {
                 window._stickyStateFlushRegistered = true;
                 window.addEventListener('beforeunload', () => {
-                    Object.entries(_pendingWrites).forEach(([k, v]) => {
+                    Object.entries(window._pendingWrites).forEach(([k, v]) => {
                         try { window.localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
                     });
                 });
@@ -11325,16 +11390,16 @@
                     if (isFirstRender.current) { isFirstRender.current = false; return; }
                     if (window._syncReloading) return; // 同步重载期间不写入，防止覆盖云端数据
                     if (timerRef.current) clearTimeout(timerRef.current);
-                    _pendingWrites[key] = value; // 注册 pending 写入
+                    window._pendingWrites[key] = value; // 注册 pending 写入
                     timerRef.current = setTimeout(() => {
                         try {
                             window.localStorage.setItem(key, JSON.stringify(value));
-                            delete _pendingWrites[key]; // 写入完成，清除 pending
+                            delete window._pendingWrites[key]; // 写入完成，清除 pending
                         } catch (error) {
                             console.warn(`Error setting localStorage key "${key}":`, error);
                         }
                     }, 400);
-                    return () => clearTimeout(timerRef.current);
+                    return () => { clearTimeout(timerRef.current); delete window._pendingWrites[key]; };
                 }, [key, value]);
                 return [value, setValue];
             };
@@ -11517,12 +11582,10 @@
 					if(setRedeemedCoupons) setRedeemedCoupons(prev => ({ ...prev, [activeChild]: [] }));
 					if(setRandomEventHistory) setRandomEventHistory(prev => ({ ...prev, [activeChild]: [] }));
 					
-					// 清除该账号的豁免记录（状态 + localStorage 双写，确保刷新后也不残留）
+					// 清除该账号的豁免记录
 					if (setExemptedDays) {
 						setExemptedDays(prev => {
-							const next = { ...prev, [activeChild]: [] };
-							try { localStorage.setItem('app_exempted_days_v1', JSON.stringify(next)); } catch (_) {}
-							return next;
+							return { ...prev, [activeChild]: [] };
 						});
 					}
 					
@@ -12533,7 +12596,7 @@
                         Object.keys(xpHistory).forEach(key => { if (key.startsWith(name + '-')) xp += xpHistory[key]; });
                         return getLevelInfo(xp);
                     })();
-                    const totalGold = calculateTotalGold(checkins, wheelHistory, name, activeBuffs);
+                    const totalGold = calculateTotalGold(checkins, wheelHistory, name, activeBuffs, tasks);
                     return {
                         name,
                         level: levelInfo.level,
@@ -12642,12 +12705,12 @@
             }, [tasks, deferredActiveChild, sortBy, checkins]);
 
             // --- 辅助函数：计算总资产 (独立于 state 用于成就检查) ---
-            const calculateTotalGold = (cCheckins, cWheelHistory, child, cBuffs) => {
+            const calculateTotalGold = (cCheckins, cWheelHistory, child, cBuffs, cTasks) => {
                 let total = 0;
-                const childBuffs = cBuffs?.[child] || {}; 
+                const childBuffs = cBuffs?.[child] || {};
 
-                if (tasks[child]) {
-                    tasks[child].forEach(task => {
+                if ((cTasks || tasks)[child]) {
+                    (cTasks || tasks)[child].forEach(task => {
                         const record = cCheckins[child]?.[task.id] || {};
                         const currentCount = Object.keys(record).length;
                         
@@ -12681,7 +12744,7 @@
 
             const totalGold = useMemo(() => {
                 // 【修改】传入 activeBuffs
-                return calculateTotalGold(checkins, wheelHistory, deferredActiveChild, activeBuffs);
+                return calculateTotalGold(checkins, wheelHistory, deferredActiveChild, activeBuffs, tasks);
             }, [checkins, deferredActiveChild, tasks, wheelHistory, activeBuffs]); // 【修改】依赖项增加 activeBuffs
 
             // --- 星星总额计算 ---
@@ -12896,6 +12959,7 @@
                 return false;
             };
 
+            const checkAiRemindersRef = React.useRef(null);
             const checkAiReminders = React.useCallback(async () => {
                 if (!aiEnabled || !deepseekApiKey) return;
                 const today = getLocalDateKey(0);
@@ -13047,14 +13111,15 @@
                     }
                 }
             }, [aiEnabled, deepseekApiKey, aiReminderLog, tasks, activeChild, checkins, callDeepSeekAPI, showAiBubble, realWeather, weeklyPayrollToClaim, currentXP, activeBuffs, activePet, petData, weekendSettings, wheelSettings]);
+            checkAiRemindersRef.current = checkAiReminders;
 
             // App 启动时和每30分钟检查 AI 提醒
             React.useEffect(() => {
                 if (!aiEnabled || !deepseekApiKey) return;
-                const timer = setTimeout(() => checkAiReminders(), 2000); // 延迟2秒，等数据加载完
-                const interval = setInterval(checkAiReminders, 1800000); // 每30分钟
+                const timer = setTimeout(() => checkAiRemindersRef.current?.(), 2000);
+                const interval = setInterval(() => checkAiRemindersRef.current?.(), 1800000);
                 return () => { clearTimeout(timer); clearInterval(interval); };
-            }, [aiEnabled, deepseekApiKey, deferredActiveChild, checkAiReminders]);
+            }, [aiEnabled, deepseekApiKey, deferredActiveChild]);
 
             // 宠物数据变化时检查通知是否已解决
             useEffect(() => {
@@ -13079,7 +13144,7 @@
             const getAdventureMultiplierStatus = useCallback((realmId, overridePetId) => {
                 const h = adventureHelpers;
                 const cfg = adventureConfig;
-                if (!h || !cfg) return null;
+                if (!h || !cfg || !cfg.hungerPerHour) return null;
 
                 const petId = overridePetId || activePet[deferredActiveChild];
                 if (!petId) return null;
@@ -13164,10 +13229,18 @@
             }, [deferredActiveChild, activePet, petData, petAdventureStats, checkins, wheelHistory, tasks, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms]);
 
             // 开始探险
+            // 探险出发防重复点击
+            const isStartingRef = React.useRef(false);
+
             const handleStartAdventure = useCallback((realmId, selectedPetId, bringFood = false) => {
+                // H6: 防重复点击
+                if (isStartingRef.current) return;
+                isStartingRef.current = true;
+                setTimeout(() => { isStartingRef.current = false; }, 1000);
+
                 const h = adventureHelpers;
                 const cfg = adventureConfig;
-                if (!h || !cfg) return showToast('探险系统未就绪');
+                if (!h || !cfg || !cfg.hungerPerHour) return showToast('探险系统未就绪');
 
                 const petId = selectedPetId || activePet[deferredActiveChild];
                 if (!petId) return showToast('请先选择一只宠物！');
@@ -13178,9 +13251,10 @@
                 const realm = adventureRealms.find(r => r.id === realmId);
                 if (!realm) return showToast('未知领域');
 
+                // === 验证阶段（所有检查在任何 setState 之前） ===
+
                 // 等级和时代检查
                 const lvlInfo = getLevelInfo(currentXP);
-
                 if (lvlInfo.level < realm.unlockLevel) return showToast(`需要达到 ${realm.unlockLevel} 级才能探险`);
                 const eraOrder = (typeof ERA_ORDER !== 'undefined') ? ERA_ORDER : ['远古之路', '文明初曙', '周·礼制与争鸣', '秦·铁血与一统', '汉·雄风与凿空西域', '魏晋隋唐·融合与登科', '五代·乱世更迭', '宋·文道昌盛', '元·四海交融', '明·日月重开'];
                 if (realm.unlockEra && eraOrder.indexOf(lvlInfo.era) < eraOrder.indexOf(realm.unlockEra)) return showToast(`需要先到达「${realm.unlockEra}」时代`);
@@ -13204,16 +13278,13 @@
                     return showToast(dialog);
                 }
 
-                // 宠物状态检查
+                // 宠物状态检查（使用共享公式）
+                const { hours, effectiveCost } = calcAdventureHungerCost(realm.duration, cfg.hungerPerHour, cfg.foodHungerReduction || 5, bringFood);
                 const fullness = pet.stats?.fullness || 0;
                 const cleanliness = pet.stats?.cleanliness || 0;
-                const hours = realm.duration / 3600000;
-                const hungerCost = hours * cfg.hungerPerHour;
-                const foodReduction = bringFood ? cfg.foodHungerReduction : 0;
-                const effectiveHungerCost = Math.max(1, hungerCost - foodReduction * hours);
 
-                if (fullness < effectiveHungerCost) {
-                    return showToast(`🍖 宠物饿了！饱食度 ${fullness}%，需要 ${Math.ceil(effectiveHungerCost)}%`);
+                if (fullness < effectiveCost) {
+                    return showToast(`🍖 宠物饿了！饱食度 ${fullness}%，需要 ${Math.ceil(effectiveCost)}%`);
                 }
                 if ((realm.id === 'rift' || realm.id === 'cosmos') && fullness < 100) {
                     return showToast(`🍖 长途探险需要让宠物吃饱出发！当前 ${fullness}%，需要 100%`);
@@ -13225,11 +13296,23 @@
                     return showToast(`🛁 宠物需要先洗个澡！清洁度 ${cleanliness}%，需要 80%`);
                 }
 
-                // 食物包扣减（每小时消耗1个）
-                if (bringFood) {
-                    const hours = Math.ceil(realm.duration / 3600000);
-                    const foodCount = (inventory[deferredActiveChild] || {})['item_adventure_food'] || 0;
-                    if (foodCount < hours) return showToast(`探险干粮不足！需要 ${hours} 个，当前 ${foodCount} 个`);
+                // 星星检查（S2: 在食物扣减之前）
+                const currentStars = totalStars;
+                if (currentStars < realm.starCost) return showToast(`星星不够！需要 ${realm.starCost} ⭐，当前 ${currentStars} ⭐`);
+
+                // 食物包检查（H8: 用当前 inventory 验证，不用闭包）
+                const currentFoodCount = (inventory[deferredActiveChild] || {})['item_adventure_food'] || 0;
+                if (bringFood && currentFoodCount < hours) {
+                    return showToast(`探险干粮不足！需要 ${hours} 个，当前 ${currentFoodCount} 个`);
+                }
+
+                // === 扣减阶段（所有验证通过后才执行） ===
+
+                // 扣星星
+                setStarHistory(prev => ({ ...prev, [`${deferredActiveChild}-STAR_ADVENTURE_START-${realmId}-${Date.now()}`]: -realm.starCost }));
+
+                // 扣食物包
+                if (bringFood && hours > 0) {
                     setInventory(prev => {
                         const childInv = prev[deferredActiveChild] || {};
                         const newCount = (childInv['item_adventure_food'] || 0) - hours;
@@ -13238,12 +13321,6 @@
                         return { ...prev, [deferredActiveChild]: newInv };
                     });
                 }
-
-                // 星星检查与扣除
-                const currentStars = totalStars;
-                if (currentStars < realm.starCost) return showToast(`星星不够！需要 ${realm.starCost} ⭐，当前 ${currentStars} ⭐`);
-
-                setStarHistory(prev => ({ ...prev, [`${deferredActiveChild}-STAR_ADVENTURE_START-${realmId}-${Date.now()}`]: -realm.starCost }));
 
                 // 计算时间（含技能缩短）
                 const skillBonus = (cfg.petAdventureSkills || {})[petId] || { timeReduce: 0 };
@@ -13283,7 +13360,7 @@
             const handleCompleteAdventure = useCallback((childName, adventureId) => {
                 const h = adventureHelpers;
                 const cfg = adventureConfig;
-                if (!h || !cfg) return;
+                if (!h || !cfg || !cfg.hungerPerHour) return;
 
                 const advArr = Array.isArray(petAdventures[childName]) ? petAdventures[childName] : [];
                 const adv = adventureId ? advArr.find(a => a.id === adventureId) : advArr.find(a => a.status === 'active' && Date.now() >= a.expectedEndTime);
@@ -14633,6 +14710,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             const collectSyncData = () => {
+                // H3: 先刷新所有 pending 写入，确保读到最新数据
+                if (window._pendingWrites) {
+                    Object.entries(window._pendingWrites).forEach(([k, v]) => {
+                        try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
+                    });
+                }
                 const data = {};
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
@@ -14780,8 +14863,83 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 if (!syncCode) return;
                 const timer = setTimeout(() => syncFromCloud().then(() => syncToCloud()), 1500);
                 const interval = setInterval(() => syncFromCloud(), 1800000);
-                return () => { clearTimeout(timer); clearInterval(interval); };
+                return () => { clearTimeout(timer); clearInterval(interval); if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current); };
             }, [syncCode]);
+
+            // === Web Push 通知系统 ===
+            const PUSH_WORKER_URL = 'https://daka-push.2378385593.workers.dev';
+            const [pushPermission, setPushPermission] = React.useState(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+            const [pushSubscribed, setPushSubscribed] = React.useState(false);
+
+            // 注册 Service Worker + 检查订阅状态
+            React.useEffect(() => {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                navigator.serviceWorker.register('/sw.js').then(reg => {
+                    return reg.pushManager.getSubscription();
+                }).then(sub => {
+                    setPushSubscribed(!!sub);
+                }).catch(() => {});
+            }, []);
+
+            // 请求通知权限并订阅
+            const enablePushNotifications = async () => {
+                if (!('Notification' in window)) {
+                    showToast('warning', '当前浏览器不支持推送通知');
+                    return;
+                }
+                try {
+                    const permission = await Notification.requestPermission();
+                    setPushPermission(permission);
+                    if (permission !== 'granted') {
+                        showToast('warning', '通知权限被拒绝，请在浏览器设置中开启');
+                        return;
+                    }
+
+                    // 获取 VAPID 公钥
+                    const vapidResp = await fetch(`${PUSH_WORKER_URL}/api/vapid-key`);
+                    const { publicKey } = await vapidResp.json();
+
+                    const registration = await navigator.serviceWorker.ready;
+                    const subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: Uint8Array.from(atob(publicKey.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
+                    });
+
+                    // 存储订阅
+                    await fetch(`${PUSH_WORKER_URL}/api/subscribe`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            subscription: subscription.toJSON(),
+                            syncCode: syncCode,
+                            childName: activeChild
+                        })
+                    });
+
+                    setPushSubscribed(true);
+                    showToast('success', '打卡提醒已开启！每天会收到提醒通知 🔔');
+                } catch (e) {
+                    console.error('Push subscription failed:', e);
+                    showToast('error', '开启通知失败，请重试');
+                }
+            };
+
+            // 测试推送
+            const testPushNotification = async () => {
+                if (!syncCode || !activeChild) return;
+                try {
+                    const resp = await fetch(`${PUSH_WORKER_URL}/api/test-push`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ syncCode, childName: activeChild })
+                    });
+                    const result = await resp.json();
+                    if (result.ok) showToast('success', '测试通知已发送，请检查手机！');
+                    else showToast('error', '发送失败：' + (result.error || '未知错误'));
+                } catch (e) {
+                    showToast('error', '发送失败，请检查网络');
+                }
+            };
 
             // 每日用量检查与重置
             const checkAiQuota = () => {
@@ -14870,7 +15028,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     week: { days: weekDays.size, minutes: weekMinutes },
                     month: { days: monthDays.size, minutes: monthMinutes, avgPerDay: monthDays.size > 0 ? Math.round(monthMinutes / monthDays.size) : 0, byTask: monthTaskBreakdown },
                     recentAchievements: achList,
-                    gold: calculateTotalGold(checkins, wheelHistory, childName, activeBuffs),
+                    gold: calculateTotalGold(checkins, wheelHistory, childName, activeBuffs, tasks),
                     pet: petInfo,
                     level: (() => {
                         let xp = Object.values(childCheckins).reduce((s, t) => s + Object.keys(t).length, 0) * 10;
@@ -16064,10 +16222,11 @@ ${context}
             };
 
             const handleCellClick = (taskId, date) => {
-                const task = tasks[activeChild].find(t => t.id === taskId);
-                if (task.startDate && date < task.startDate) return; 
+                const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
+                if (!task) return;
+                if (task.startDate && date < task.startDate) return;
                 if (task.deadline && date > task.deadline) return;
-                const childData = checkins[activeChild] || {};
+                const childData = checkins[deferredActiveChild] || {};
                 const taskData = childData[taskId] || {};
                 const duration = taskData[date];
                 setEditingEntry({ taskId, date, duration: duration || '', isNew: duration === undefined });
@@ -17827,6 +17986,10 @@ ${context}
 					setWecomCallbackAesKey={setWecomCallbackAesKey}
 					wecomTestStatus={wecomTestStatus}
 					setWecomTestStatus={setWecomTestStatus}
+					pushPermission={pushPermission}
+					pushSubscribed={pushSubscribed}
+					enablePushNotifications={enablePushNotifications}
+					testPushNotification={testPushNotification}
                   />
 
                   {/* AI 学习助手浮窗 */}
