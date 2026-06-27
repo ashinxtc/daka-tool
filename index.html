@@ -8422,6 +8422,12 @@
                                 const historyKey = `${activeChild}-EXCHANGE-${rec.id}`;
                                 setWheelHistory(wh => {
                                     if (wh[historyKey]) return wh; // 已扣过，跳过
+                                    // 累加兑换总额（不会过期，自动同步）
+                                    const totalKey = `app_exchange_total_${activeChild}`;
+                                    try {
+                                        const prev = parseFloat(localStorage.getItem(totalKey) || '0');
+                                        localStorage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
+                                    } catch (e) {}
                                     return { ...wh, [historyKey]: -(rec.goldAmount || 0) };
                                 });
                             }
@@ -8997,7 +9003,16 @@
                             {/* 7. 兑换记录 */}
                             {exchangeRecords.length > 0 && (
                                 <div className="bg-white rounded-2xl p-4 border border-gray-100">
-                                    <h3 className="text-sm font-bold text-gray-700 mb-2">📜 兑换记录</h3>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="text-sm font-bold text-gray-700">📜 兑换记录</h3>
+                                        {(() => {
+                                            try {
+                                                const total = parseFloat(localStorage.getItem(`app_exchange_total_${activeChild}`) || '0');
+                                                if (total > 0) return <span className="text-xs text-emerald-600 font-bold">累计兑换 ¥{total.toFixed(2)}</span>;
+                                            } catch (e) {}
+                                            return null;
+                                        })()}
+                                    </div>
                                     <div className="space-y-2">
                                         {exchangeRecords.filter(r => r.status !== 'cancelled').slice(0, 5).map(r => (
                                             <div key={r.id} className="flex items-center justify-between text-xs py-2 border-b border-gray-50 last:border-0">
@@ -14668,6 +14683,11 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
                         name = earlyTask ? `完赛奖励：${earlyTask.name}` : '完赛奖励';
                         type = 'income';
+                    } else if (key.includes('EXCHANGE')) {
+                        const ts = extractTimestamp(key);
+                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        name = '兑换零花钱';
+                        type = 'expense';
                     } else {
                         // 尝试提取日期或时间戳
                         const dateMatch = key.match(/(\d{4}-\d{2}-\d{2})$/);
