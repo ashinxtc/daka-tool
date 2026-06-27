@@ -8423,6 +8423,42 @@
                 }
             }, [show, syncCode]);
 
+            // 轮询兑换记录（每 10 秒刷新，检测核销状态变化）
+            React.useEffect(() => {
+                if (!show || (!syncCode && !activeChild)) return;
+                const effectiveCode = syncCode || 'local_' + activeChild;
+                const poll = () => {
+                    fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`).then(r => r.json()).then(d => {
+                        if (d.records) {
+                            setExchangeRecords(prev => {
+                                // 检测是否有新核销的记录
+                                d.records.forEach(newRec => {
+                                    if (newRec.status === 'verified') {
+                                        const oldRec = prev.find(r => r.id === newRec.id);
+                                        if (oldRec && oldRec.status === 'pending') {
+                                            // 新核销 → 扣除金元宝
+                                            const historyKey = `${activeChild}-EXCHANGE-${newRec.id}`;
+                                            if (typeof setWheelHistory === 'function') {
+                                                setWheelHistory(wh => {
+                                                    if (wh[historyKey]) return wh; // 已扣过
+                                                    return { ...wh, [historyKey]: -(newRec.goldAmount || 0) };
+                                                });
+                                            }
+                                        }
+                                    }
+                                });
+                                return d.records;
+                            });
+                            // 更新待核销状态
+                            const pending = d.records.find(r => r.status === 'pending');
+                            if (!pending) setApplyResult(null);
+                        }
+                    }).catch(() => {});
+                };
+                const interval = setInterval(poll, 10000);
+                return () => clearInterval(interval);
+            }, [show, syncCode, activeChild]);
+
             if (!show) return null;
 
             // 汇率计算（含教育性放大）
