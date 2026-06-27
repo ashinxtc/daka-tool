@@ -14713,7 +14713,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         name = earlyTask ? `完赛奖励：${earlyTask.name}` : '完赛奖励';
                         type = 'income';
                     } else if (key.includes('EXCHANGE')) {
-                        const ts = extractTimestamp(key);
+                        // key 格式: child-EXCHANGE-ex_timestamp_random
+                        const tsMatch = key.match(/ex_(\d{13})/);
+                        const ts = tsMatch ? parseInt(tsMatch[1], 10) : NaN;
                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
                         name = '兑换零花钱';
                         type = 'expense';
