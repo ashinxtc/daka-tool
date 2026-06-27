@@ -8445,24 +8445,21 @@
                 const poll = () => {
                     fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`).then(r => r.json()).then(d => {
                         if (!d.records) return;
-                        // 更新记录状态
-                        setExchangeRecords(d.records);
-                        // 检查所有已核销记录，扣除对应金元宝（已扣过的会跳过）
-                        d.records.forEach(rec => {
-                            if (rec.status === 'verified' && rec.childName) {
-                                // 用记录所属的孩子名，而非当前活跃孩子
-                                const historyKey = `${rec.childName}-EXCHANGE-${rec.id}`;
-                                setWheelHistory(wh => {
-                                    if (wh[historyKey]) return wh; // 已扣过，跳过
-                                    // 累加兑换总额（不会过期，自动同步）
-                                    const totalKey = `app_exchange_total_${rec.childName}`;
-                                    try {
-                                        const prev = parseFloat(localStorage.getItem(totalKey) || '0');
-                                        localStorage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
-                                    } catch (e) {}
-                                    return { ...wh, [historyKey]: -(rec.goldAmount || 0) };
-                                });
-                            }
+                        // 按当前孩子过滤显示的记录
+                        const childRecords = d.records.filter(r => r.childName === activeChild || !r.childName);
+                        setExchangeRecords(childRecords);
+                        // 只处理当前孩子的核销记录，避免跨孩子误扣
+                        d.records.filter(r => r.childName === activeChild && r.status === 'verified').forEach(rec => {
+                            const historyKey = `${activeChild}-EXCHANGE-${rec.id}`;
+                            setWheelHistory(wh => {
+                                if (wh[historyKey]) return wh;
+                                const totalKey = `app_exchange_total_${activeChild}`;
+                                try {
+                                    const prev = parseFloat(localStorage.getItem(totalKey) || '0');
+                                    localStorage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
+                                } catch (e) {}
+                                return { ...wh, [historyKey]: -(rec.goldAmount || 0) };
+                            });
                         });
                         // 更新待核销状态
                         const pending = d.records.find(r => r.status === 'pending');
