@@ -8407,6 +8407,37 @@
                 }).catch(() => {});
             }, [show, syncCode]);
 
+            // 一次性数据修正：修复之前因 activeChild 错误导致的跨孩子扣款
+            const exchangeFixDoneRef = React.useRef(false);
+            React.useEffect(() => {
+                if (!show || exchangeFixDoneRef.current || (!syncCode && !activeChild)) return;
+                exchangeFixDoneRef.current = true;
+                const effectiveCode = syncCode || 'local_' + activeChild;
+                fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`).then(r => r.json()).then(d => {
+                    if (!d.records) return;
+                    d.records.forEach(rec => {
+                        if (rec.status !== 'verified' || !rec.childName) return;
+                        const correctKey = `${rec.childName}-EXCHANGE-${rec.id}`;
+                        // 查找所有孩子，看有没有错误的扣款
+                        const allChildren = Object.keys(tasks || {});
+                        allChildren.forEach(child => {
+                            if (child === rec.childName) return; // 正确的孩子跳过
+                            const wrongKey = `${child}-EXCHANGE-${rec.id}`;
+                            setWheelHistory(wh => {
+                                if (!wh[wrongKey]) return wh; // 没有错误扣款，跳过
+                                // 移除错误扣款，加到正确的孩子
+                                const next = { ...wh };
+                                delete next[wrongKey];
+                                if (!next[correctKey]) {
+                                    next[correctKey] = -(rec.goldAmount || 0);
+                                }
+                                return next;
+                            });
+                        });
+                    });
+                }).catch(() => {});
+            }, [show, syncCode]);
+
             // 轮询兑换记录（每 10 秒刷新 + 核销时自动扣金元宝）
             React.useEffect(() => {
                 if (!show || (!syncCode && !activeChild)) return;
@@ -8418,12 +8449,13 @@
                         setExchangeRecords(d.records);
                         // 检查所有已核销记录，扣除对应金元宝（已扣过的会跳过）
                         d.records.forEach(rec => {
-                            if (rec.status === 'verified') {
-                                const historyKey = `${activeChild}-EXCHANGE-${rec.id}`;
+                            if (rec.status === 'verified' && rec.childName) {
+                                // 用记录所属的孩子名，而非当前活跃孩子
+                                const historyKey = `${rec.childName}-EXCHANGE-${rec.id}`;
                                 setWheelHistory(wh => {
                                     if (wh[historyKey]) return wh; // 已扣过，跳过
                                     // 累加兑换总额（不会过期，自动同步）
-                                    const totalKey = `app_exchange_total_${activeChild}`;
+                                    const totalKey = `app_exchange_total_${rec.childName}`;
                                     try {
                                         const prev = parseFloat(localStorage.getItem(totalKey) || '0');
                                         localStorage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
