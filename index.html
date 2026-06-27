@@ -8338,6 +8338,701 @@
         };
 
         // 企业微信家长消息面板
+        // 金元宝兑换零花钱 Worker 地址（全局常量）
+        const EXCHANGE_WORKER_URL = 'https://daka-exchange.2378385593.workers.dev';
+
+        // ===== 金元宝兑换零花钱面板 =====
+        const ExchangePanel = ({ show, onClose, totalGold, activeChild, syncCode, showToast, onExchangeComplete }) => {
+            const [rate, setRate] = React.useState(null);
+            const [history, setHistory] = React.useState([]);
+            const [knowledge, setKnowledge] = React.useState(null);
+            const [exchangeAmount, setExchangeAmount] = React.useState(500);
+            const [applying, setApplying] = React.useState(false);
+            const [applyResult, setApplyResult] = React.useState(null);
+            const [exchangeRecords, setExchangeRecords] = React.useState([]);
+            const [quizOpen, setQuizOpen] = React.useState(false);
+            const [priceItems, setPriceItems] = React.useState([]);
+            const [rateExpanded, setRateExpanded] = React.useState(false);
+            const [walletExplainExpanded, setWalletExplainExpanded] = React.useState(false);
+            const [exchangeTab, setExchangeTab] = React.useState('learn'); // 'learn' | 'exchange'
+            const [baseRate, setBaseRate] = React.useState(() => {
+                try { const s = localStorage.getItem('app_exchange_base_rate'); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+            });
+            const [volatility, setVolatility] = React.useState(() => {
+                try { const s = localStorage.getItem('app_exchange_volatility'); return s ? JSON.parse(s) : { amplifier: 10, realRateToday: 0, realRateYesterday: 0, todayDate: '' }; } catch (e) { return { amplifier: 10, realRateToday: 0, realRateYesterday: 0, todayDate: '' }; }
+            });
+
+            React.useEffect(() => {
+                if (!show) return;
+                // 读取持久化的基准汇率
+                try {
+                    const stored = localStorage.getItem('app_exchange_base_rate');
+                    if (stored) setBaseRate(JSON.parse(stored));
+                } catch (e) {}
+                // 获取今日汇率
+                fetch(`${EXCHANGE_WORKER_URL}/api/rate`).then(r => r.json()).then(async d => {
+                    if (d.ok && d.rate) {
+                        setRate(d.rate);
+                        // 首次使用时保存基准汇率
+                        if (!localStorage.getItem('app_exchange_base_rate')) {
+                            localStorage.setItem('app_exchange_base_rate', JSON.stringify(d.rate));
+                            setBaseRate(d.rate);
+                        }
+                        // 更新真实汇率记录（用于放大倍数计算）
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        const realRate = d.rate.rates?.USD || 0.14;
+                        setVolatility(prev => {
+                            const updated = { ...prev };
+                            if (prev.todayDate !== todayStr) {
+                                updated.realRateYesterday = prev.realRateToday || realRate;
+                                updated.realRateToday = realRate;
+                                updated.todayDate = todayStr;
+                            }
+                            localStorage.setItem('app_exchange_volatility', JSON.stringify(updated));
+                            return updated;
+                        });
+                    }
+                }).catch(() => {});
+                // 获取历史汇率
+                fetch(`${EXCHANGE_WORKER_URL}/api/rate/history`).then(r => r.json()).then(d => {
+                    if (d.ok && d.history) setHistory(d.history);
+                }).catch(() => {});
+                // 获取知识卡片
+                fetch(`${EXCHANGE_WORKER_URL}/api/knowledge`).then(r => r.json()).then(d => {
+                    if (d.ok && d.card) setKnowledge(d.card);
+                }).catch(() => {});
+                // 获取物价数据
+                fetch(`${EXCHANGE_WORKER_URL}/api/price/current`).then(r => r.json()).then(d => {
+                    if (d.ok && d.items) setPriceItems(d.items);
+                }).catch(() => {});
+                // 获取兑换记录
+                if (syncCode || activeChild) {
+                    const effectiveCode = syncCode || 'local_' + activeChild;
+                    fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`).then(r => r.json()).then(d => {
+                        if (d.records) {
+                            setExchangeRecords(d.records);
+                            // 恢复最近一笔待核销申请的二维码
+                            const pending = d.records.find(r => r.status === 'pending');
+                            if (pending) {
+                                setApplyResult({ applyId: pending.id, verifyCode: pending.verifyCode, cnyAmount: pending.cnyAmount });
+                            } else {
+                                setApplyResult(null);
+                            }
+                        }
+                    }).catch(() => {});
+                }
+            }, [show, syncCode]);
+
+            if (!show) return null;
+
+            // 汇率计算（含教育性放大）
+            const currentRate = rate?.rates?.USD || 0.14;
+            const baseCnyUsd = baseRate?.rates?.USD || currentRate;
+            const rawTodayRate = currentRate / baseCnyUsd; // 真实汇率乘数
+            // 放大真实世界汇率变化
+            const amplifier = volatility.amplifier || 10;
+            const realChange = (volatility.realRateToday && volatility.realRateYesterday)
+                ? volatility.realRateToday / volatility.realRateYesterday
+                : 1;
+            const amplifiedChange = 1 + (realChange - 1) * amplifier;
+            const todayRate = rawTodayRate * amplifiedChange;
+            const baseCentsPerGold = (() => { try { return parseFloat(localStorage.getItem('app_exchange_base_cents') || '1'); } catch(e) { return 1; } })();
+            const cnyPerGold = todayRate * baseCentsPerGold / 100; // 1 金元宝 = X 元
+            // 每日对比
+            const yesterdayRate = rawTodayRate * (1 + (realChange - 1) * amplifier * (volatility.realRateYesterday ? (volatility.realRateYesterday / volatility.realRateToday) : 1));
+            const yesterdayCnyPerGold = yesterdayRate * baseCentsPerGold / 100;
+            const dailyChange = cnyPerGold - yesterdayCnyPerGold;
+            const dailyChangePercent = yesterdayCnyPerGold > 0 ? ((dailyChange / yesterdayCnyPerGold) * 100).toFixed(1) : '0.0';
+
+            const canExchange = totalGold >= 500;
+            const exchangeAmountClamped = Math.min(exchangeAmount, totalGold);
+            const expectedCny = (exchangeAmountClamped * cnyPerGold).toFixed(2);
+            const totalCny = (totalGold * cnyPerGold).toFixed(2);
+
+            // 趋势建议
+            const trendAdvice = todayRate > 1.03 ? '📈 现在汇率不错，是个好时机！' :
+                               todayRate < 0.97 ? '📉 现在汇率偏低，可以再等等。' :
+                               '➡️ 汇率平稳，正常兑换。';
+
+            // 迷你趋势图数据（始终包含今天的实时汇率）
+            const histRates = history.slice(-6).map(h => h.usd / baseCnyUsd);
+            const chartData = [...histRates, todayRate]; // 今天的实时数据作为最后一个点
+            const chartMin = Math.min(...chartData, 0.95);
+            const chartMax = Math.max(...chartData, 1.05);
+            const chartH = 60;
+            const chartW = 200;
+
+            const handleApply = async () => {
+                // 读取兑换限制配置
+                const minGold = (() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })();
+                const maxSingle = (() => { try { return parseInt(localStorage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })();
+                const maxWeekly = (() => { try { return parseInt(localStorage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })();
+
+                if (exchangeAmountClamped < minGold) return showToast('warning', `最低兑换 ${minGold} 金元宝`);
+                if (maxSingle > 0 && exchangeAmountClamped > maxSingle) return showToast('warning', `单次兑换上限 ${maxSingle} 金元宝`);
+
+                // 检查每周上限
+                if (maxWeekly > 0) {
+                    const now = new Date();
+                    const dayOfWeek = now.getDay() || 7; // 周日=7
+                    const weekStart = new Date(now);
+                    weekStart.setDate(weekStart.getDate() - dayOfWeek + 1);
+                    weekStart.setHours(0, 0, 0, 0);
+                    const weeklyUsed = exchangeRecords
+                        .filter(r => r.status === 'verified' && new Date(r.verifiedAt || r.createdAt) >= weekStart)
+                        .reduce((sum, r) => sum + (r.goldAmount || 0), 0);
+                    if (weeklyUsed + exchangeAmountClamped > maxWeekly) {
+                        const remaining = Math.max(0, maxWeekly - weeklyUsed);
+                        return showToast('warning', `每周上限 ${maxWeekly} 金元宝，本周已用 ${weeklyUsed}，还可兑换 ${remaining}`);
+                    }
+                }
+                setApplying(true);
+                try {
+                    const resp = await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/apply`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            syncCode: syncCode || 'local_' + activeChild,
+                            childName: activeChild,
+                            goldAmount: exchangeAmountClamped,
+                            rate: cnyPerGold,
+                            cnyAmount: parseFloat(expectedCny)
+                        })
+                    });
+                    const data = await resp.json();
+                    if (data.ok) {
+                        setApplyResult(data);
+                        showToast('success', `兑换申请已提交！请家长扫码核销 ${expectedCny} 元`);
+                        // 刷新兑换记录
+                        const effectiveCode = syncCode || 'local_' + activeChild;
+                        fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`).then(r => r.json()).then(d => {
+                            if (d.records) setExchangeRecords(d.records);
+                        }).catch(() => {});
+                    } else if (data.error && data.error.includes('未核销')) {
+                        // 有未核销记录，找到并取消后重试
+                        const effectiveCode = syncCode || 'local_' + activeChild;
+                        const statusResp = await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`);
+                        const statusData = await statusResp.json();
+                        const pendingRecord = (statusData.records || []).find(r => r.status === 'pending');
+                        if (pendingRecord) {
+                            // 取消旧的
+                            await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/cancel`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ applyId: pendingRecord.id, syncCode: effectiveCode })
+                            });
+                            // 重试申请
+                            const retryResp = await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/apply`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    syncCode: effectiveCode,
+                                    childName: activeChild,
+                                    goldAmount: exchangeAmountClamped,
+                                    rate: cnyPerGold,
+                                    cnyAmount: parseFloat(expectedCny)
+                                })
+                            });
+                            const retryData = await retryResp.json();
+                            if (retryData.ok) {
+                                setApplyResult(retryData);
+                                showToast('success', '已取消旧申请，新兑换已提交！');
+                                const statusResp2 = await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`);
+                                const statusData2 = await statusResp2.json();
+                                if (statusData2.records) setExchangeRecords(statusData2.records);
+                            } else {
+                                showToast('error', retryData.error || '重试失败');
+                            }
+                        } else {
+                            showToast('error', data.error);
+                        }
+                    } else {
+                        showToast('error', data.error || '申请失败');
+                    }
+                } catch (e) {
+                    showToast('error', '网络错误，请重试');
+                }
+                setApplying(false);
+            };
+
+            return (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="p-4 bg-gradient-to-r from-amber-500 to-yellow-500 text-white flex justify-between items-center shrink-0">
+                            <h2 className="text-lg font-bold flex items-center gap-2">💱 金元宝银行</h2>
+                            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+
+                        {/* Tab 栏 */}
+                        <div className="px-4 pt-3 pb-0 shrink-0">
+                            <div className="bg-gray-100 rounded-xl p-1 flex relative">
+                                <div className="absolute top-1 bottom-1 rounded-lg bg-white shadow-sm transition-all duration-300"
+                                    style={{
+                                        width: 'calc(50% - 4px)',
+                                        left: exchangeTab === 'learn' ? '4px' : 'calc(50%)',
+                                    }}
+                                />
+                                <button onClick={() => setExchangeTab('learn')}
+                                    className={`flex-1 py-2 text-sm font-bold rounded-lg relative z-10 transition-colors ${exchangeTab === 'learn' ? 'text-amber-700' : 'text-gray-400'}`}>
+                                    📖 科普知识
+                                </button>
+                                <button onClick={() => setExchangeTab('exchange')}
+                                    className={`flex-1 py-2 text-sm font-bold rounded-lg relative z-10 transition-colors ${exchangeTab === 'exchange' ? 'text-amber-700' : 'text-gray-400'}`}>
+                                    💰 兑换
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {exchangeTab === 'learn' ? (
+                                <>
+                            {/* 科普知识 tab */}
+                            {/* 1. 我的钱包 */}
+                            <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
+                                <h3 className="text-sm font-bold text-amber-700 mb-3">👛 我的钱包</h3>
+                                <div className="text-center mb-2">
+                                    <div className="text-4xl font-black text-amber-500">{totalGold.toLocaleString()}</div>
+                                    <div className="text-xs text-gray-500">金元宝</div>
+                                </div>
+                                <div className="text-center mb-3">
+                                    <span className="text-sm text-gray-500">≈ </span>
+                                    <span className="text-lg font-bold text-emerald-600">¥{totalCny}</span>
+                                    <span className="text-sm text-gray-500"> 人民币</span>
+                                </div>
+                                {priceItems.length > 0 && parseFloat(totalCny) > 0 && (
+                                    <div className="bg-white/60 rounded-xl px-3 py-2 text-xs text-amber-700">
+                                        = <span className="font-bold">{(parseFloat(totalCny) / priceItems[0].currentPrice).toFixed(1)}</span> 杯{priceItems[0].brand}{priceItems[0].name} {priceItems[0].icon}
+                                    </div>
+                                )}
+                                {totalGold > 0 && (
+                                    <>
+                                        {Math.abs(dailyChange) > 0.001 && (
+                                            <div className={`mt-2 text-xs font-bold ${dailyChange > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                                {dailyChange > 0 ? '📈' : '📉'} 比昨天{dailyChange > 0 ? '多了' : '少了'} {Math.abs(totalGold * dailyChange).toFixed(2)} 元（{dailyChange > 0 ? '+' : ''}{dailyChangePercent}%）
+                                            </div>
+                                        )}
+                                        <button onClick={() => setWalletExplainExpanded(!walletExplainExpanded)}
+                                            className="mt-1 text-xs text-amber-600 hover:text-amber-800 font-bold">
+                                            💡 为什么会变？{walletExplainExpanded ? '收起 ▲' : '展开 ▼'}
+                                        </button>
+                                        {walletExplainExpanded && (() => {
+                                            const realChangePercent = volatility.realRateToday && volatility.realRateYesterday
+                                                ? ((volatility.realRateToday / volatility.realRateYesterday - 1) * 100).toFixed(2)
+                                                : '0.00';
+                                            const amp = volatility.amplifier || 10;
+                                            const amplifiedPercent = (parseFloat(realChangePercent) * amp).toFixed(2);
+                                            const isUp = parseFloat(realChangePercent) > 0;
+                                            const yesterdayCny = (totalGold * yesterdayCnyPerGold).toFixed(2);
+                                            const todayCny = (totalGold * cnyPerGold).toFixed(2);
+                                            return (
+                                                <div className="mt-2 bg-white/60 rounded-xl p-3 text-xs text-gray-600 space-y-2">
+                                                    <div>
+                                                        <div className="font-bold text-gray-700 mb-1">🌍 世界发生了什么？</div>
+                                                        <p>人民币对美元{isUp ? '升值' : '贬值'}了 <span className={`font-bold ${isUp ? 'text-red-500' : 'text-green-600'}`}>{isUp ? '+' : ''}{realChangePercent}%</span></p>
+                                                        <p className="text-xs text-gray-500">1 元人民币以前能换 {volatility.realRateYesterday?.toFixed(4) || '—'} 美元，现在能换 {volatility.realRateToday?.toFixed(4) || '—'} 美元</p>
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-gray-700 mb-1">🪙 金元宝银行怎么算？</div>
+                                                        <p>金元宝跟着人民币{isUp ? '一起升值' : '一起贬值'} {Math.abs(parseFloat(realChangePercent)).toFixed(2)}%</p>
+                                                        <p>× 放大倍数 <span className="font-bold text-amber-600">{amp} 倍</span></p>
+                                                        <p>= 你的金元宝实际{isUp ? '升值' : '贬值'} <span className={`font-bold ${isUp ? 'text-red-500' : 'text-green-600'}`}>{isUp ? '+' : ''}{amplifiedPercent}%</span></p>
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-gray-700 mb-1">💰 对你来说意味着什么？</div>
+                                                        <p>昨天 {totalGold.toLocaleString()} 金元宝 = {yesterdayCny} 元</p>
+                                                        <p>今天 {totalGold.toLocaleString()} 金元宝 = <span className="font-bold text-amber-600">{todayCny} 元</span>（{isUp ? '多了' : '少了'} {Math.abs(parseFloat(todayCny) - parseFloat(yesterdayCny)).toFixed(2)} 元）</p>
+                                                    </div>
+                                                    <div className="bg-gray-100 rounded-lg p-2 text-xs text-gray-500 font-mono">
+                                                        今日汇率 = 基准汇率 × (1 + 真实变化 × 放大倍数)<br/>
+                                                        = 1.00 × (1 + {realChangePercent}% × {amp})<br/>
+                                                        = 1.00 × {(1 + parseFloat(realChangePercent) / 100 * amp).toFixed(4)}<br/>
+                                                        = {(1 + parseFloat(realChangePercent) / 100 * amp).toFixed(4)}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </>
+                                )}
+                            </div>
+
+                            {/* 2. 能买什么（基于全部余额） */}
+                            {priceItems.length > 0 && (
+                                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-4 border border-amber-200">
+                                    <h3 className="text-sm font-bold text-amber-700 mb-2">🧋 我的余额能买什么</h3>
+                                    <div className="space-y-2">
+                                        {priceItems.map(item => {
+                                            const canBuy = parseFloat(totalCny) > 0 ? (parseFloat(totalCny) / item.currentPrice).toFixed(1) : '0';
+                                            return (
+                                                <div key={item.id} className="flex items-center justify-between bg-white/60 rounded-xl px-3 py-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-lg">{item.icon}</span>
+                                                        <div>
+                                                            <div className="text-xs font-bold text-gray-700">{item.brand} {item.name}</div>
+                                                            <div className="text-xs text-gray-500">{item.currentPrice} 元/份</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-sm font-black text-emerald-600">{canBuy}</div>
+                                                        <div className="text-xs text-gray-500">份</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 3. 为什么东西会变贵/变便宜（巨无霸解释） */}
+                            {priceItems.length > 0 && (() => {
+                                const bigMacCurrent = priceItems[0]?.bigMacCurrent || 25.5;
+                                const bigMacBase = priceItems[0]?.bigMacBase || bigMacCurrent;
+                                const bmChange = ((bigMacCurrent - bigMacBase) / bigMacBase * 100).toFixed(1);
+                                const bmChangeNum = parseFloat(bmChange);
+                                return (
+                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-4 border border-orange-100">
+                                    <h3 className="text-sm font-bold text-orange-700 mb-2">🤔 为什么东西会变贵/变便宜？</h3>
+                                    <div className="text-xs text-gray-600 leading-relaxed space-y-2 mb-3">
+                                        <p>你有没有发现，去年 10 块钱能买一杯奶茶，今年可能要 12 块？这就是<strong>物价在变化</strong>。</p>
+                                        <p>我们怎么知道整体物价是涨了还是跌了呢？用<strong>巨无霸指数</strong>来衡量！</p>
+                                        <p>🍔 <strong>为什么选巨无霸？</strong> 因为全世界的麦当劳巨无霸配料都一样——两片牛肉饼、生菜、芝士、面包。既然东西一样，价格变化就能反映整体物价水平，不会因为"东西不一样"而比不准。</p>
+                                        <p>📊 <strong>这个指数能帮我们了解什么？</strong> 巨无霸涨价 = 整体物价在涨 = 同样的钱能买到的东西变少了。对你的金元宝来说，也是同样的道理。</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-white rounded-xl px-3 py-2 text-center">
+                                            <div className="text-xl font-black text-orange-600">¥{bigMacCurrent.toFixed(1)}</div>
+                                            <div className="text-xs text-gray-500">巨无霸当前价</div>
+                                        </div>
+                                        <div>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${bmChangeNum > 0 ? 'bg-red-100 text-red-600' : bmChangeNum < 0 ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                                                {bmChangeNum > 0 ? `↑${bmChange}%` : bmChangeNum < 0 ? `↓${Math.abs(bmChangeNum)}%` : '持平'}
+                                            </span>
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                {bmChangeNum > 0 ? '物价上涨' : bmChangeNum < 0 ? '物价下降' : '物价基本没变'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {bmChangeNum > 2 && <p className="text-xs text-red-500 font-bold mt-2">📢 物价上涨了！你的金元宝能买到的东西变少了。</p>}
+                                    {bmChangeNum < -2 && <p className="text-xs text-green-600 font-bold mt-2">📢 物价下降了！你的金元宝更值钱了！</p>}
+                                    {Math.abs(bmChangeNum) <= 2 && <p className="text-xs text-gray-500 mt-2">➡️ 物价变化不大，金元宝的购买力基本没变。</p>}
+                                </div>
+                                );
+                            })()}
+
+                            {/* 4. CNY 在世界（汇率，可折叠） */}
+                            <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl border border-amber-200 overflow-hidden">
+                                {/* 收起状态：只显示 USD 汇率摘要 */}
+                                <button onClick={() => setRateExpanded(!rateExpanded)}
+                                    className="w-full p-4 flex items-center justify-between text-left hover:bg-amber-100/50 transition-colors">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-amber-800">🌍 CNY 在世界</h3>
+                                        <div className="text-xs text-amber-600 mt-1">
+                                            {rate ? `1 CNY ≈ $${rate.rates.USD?.toFixed(4)} USD` : '加载中...'}
+                                            {rate && <span className="ml-2 text-xs bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">● 实时</span>}
+                                        </div>
+                                        <div className="text-xs text-amber-700 font-bold mt-0.5">
+                                            🪙 {Math.round(1 / cnyPerGold)} 金元宝 = 1 元
+                                        </div>
+                                    </div>
+                                    <span className="text-amber-400 text-lg">{rateExpanded ? '▲' : '▼'}</span>
+                                </button>
+
+                                {/* 展开状态：完整汇率表 + 走势图 */}
+                                {rateExpanded && (
+                                    <div className="px-4 pb-4">
+                                        {/* 日期 + 数据源 */}
+                                        <div className="flex items-center justify-between mb-3 pt-2 border-t border-amber-200">
+                                            <span className="text-xs text-amber-600">{rate?.date || ''}</span>
+                                            <span className="text-xs text-amber-400">数据源：欧洲央行</span>
+                                        </div>
+
+                                        {/* 金元宝汇率 */}
+                                        <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-amber-100/60 border border-amber-200 mb-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-lg">🪙</span>
+                                                <span className="text-sm font-bold text-amber-700">金元宝 → 人民币</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-sm font-mono font-bold text-amber-700">{Math.round(1 / cnyPerGold)} 个 = 1 元</div>
+                                                <div className="text-xs text-amber-500">1 金元宝 = {(cnyPerGold * 100).toFixed(2)} 分</div>
+                                            </div>
+                                        </div>
+
+                                        {/* 核心：金元宝汇率 */}
+                                        <div className="text-center mb-4 pb-4 border-b border-amber-200">
+                                            <div className="text-xs text-amber-600 mb-1">金元宝兑人民币</div>
+                                            <div className="flex items-baseline justify-center gap-1">
+                                                <span className="text-3xl font-black text-amber-500">{(cnyPerGold * 100).toFixed(2)}</span>
+                                                <span className="text-sm text-amber-600">分 / 元宝</span>
+                                            </div>
+                                            <div className="text-sm text-amber-700 mt-1">
+                                                1,000 金元宝 = <span className="font-bold text-amber-600">{(1000 * cnyPerGold).toFixed(2)} 元</span>
+                                            </div>
+                                        </div>
+
+                                        {/* 人民币汇率表 */}
+                                        <div className="mb-4">
+                                            <div className="text-xs text-amber-600 mb-2">人民币汇率（1 CNY =）</div>
+                                            <div className="space-y-2">
+                                                {rate && [
+                                                    { flag: '🇺🇸', name: '美元', code: 'USD', value: rate.rates.USD, digits: 4, unit: '$' },
+                                                    { flag: '🇪🇺', name: '欧元', code: 'EUR', value: rate.rates.EUR, digits: 4, unit: '€' },
+                                                    { flag: '🇬🇧', name: '英镑', code: 'GBP', value: rate.rates.GBP, digits: 4, unit: '£' },
+                                                    { flag: '🇯🇵', name: '日元', code: 'JPY', value: rate.rates.JPY, digits: 2, unit: '¥' },
+                                                    { flag: '🇰🇷', name: '韩元', code: 'KRW', value: rate.rates.KRW, digits: 2, unit: '₩' },
+                                                ].map(c => {
+                                                    const histMatch = history.find(h => h[c.code.toLowerCase()]);
+                                                    const prevValue = histMatch ? histMatch[c.code.toLowerCase()] : null;
+                                                    const change = prevValue ? ((c.value - prevValue) / prevValue * 100) : 0;
+                                                    const isUp = change > 0.01;
+                                                    const isDown = change < -0.01;
+                                                    return (
+                                                        <div key={c.code} className="flex items-center justify-between py-2 px-3 rounded-xl bg-white/60 hover:bg-white transition-colors">
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-xl">{c.flag}</span>
+                                                                <div>
+                                                                    <div className="text-sm font-bold text-gray-700">{c.name}</div>
+                                                                    <div className="text-xs text-amber-500">{c.code}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-sm font-bold font-mono text-gray-700">{c.unit}{c.value?.toFixed(c.digits)}</div>
+                                                                {change !== 0 && (
+                                                                    <div className={`text-xs font-bold ${isUp ? 'text-red-400' : isDown ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                                        {isUp ? '↑' : isDown ? '↓' : '→'} {Math.abs(change).toFixed(2)}%
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* 走势图（合并进来） */}
+                                        {chartData.length >= 2 && (
+                                            <div className="pt-3 border-t border-amber-200">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-xs font-bold text-amber-700">📊 汇率走势</span>
+                                                    <span className="text-xs text-amber-500">近 7 天</span>
+                                                </div>
+                                                <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-20 mb-2">
+                                                    <line x1="0" y1={chartH / 3} x2={chartW} y2={chartH / 3} stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
+                                                    <line x1="0" y1={chartH * 2 / 3} x2={chartW} y2={chartH * 2 / 3} stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
+                                                    <polyline
+                                                        fill="none"
+                                                        stroke={todayRate >= 1 ? '#ef4444' : '#10b981'}
+                                                        strokeWidth="2"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        points={chartData.map((v, i) => {
+                                                            const x = (i / (chartData.length - 1)) * chartW;
+                                                            const y = chartH - ((v - chartMin) / (chartMax - chartMin || 1)) * (chartH - 10) - 5;
+                                                            return `${x},${y}`;
+                                                        }).join(' ')}
+                                                    />
+                                                    {chartData.length > 0 && (() => {
+                                                        const lastIdx = chartData.length - 1;
+                                                        const x = chartW;
+                                                        const y = chartH - ((chartData[lastIdx] - chartMin) / (chartMax - chartMin || 1)) * (chartH - 10) - 5;
+                                                        return <circle cx={x} cy={y} r="4" fill={todayRate >= 1 ? '#ef4444' : '#10b981'} />;
+                                                    })()}
+                                                </svg>
+                                                <div className="flex justify-between text-xs text-slate-500">
+                                                    <span>{history.length >= 7 ? history[history.length - 7]?.date?.slice(5) : ''}</span>
+                                                    <span>今天</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 趋势建议 */}
+                                        <div className="mt-3 pt-3 border-t border-slate-700">
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="text-slate-400">趋势：</span>
+                                                <span className={todayRate > 1.03 ? 'text-emerald-400 font-bold' : todayRate < 0.97 ? 'text-red-400 font-bold' : 'text-slate-300'}>
+                                                    {trendAdvice}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 兑换 tab */}
+                            </>
+                            ) : (
+                                <>
+                                    {/* 兑换 tab：简化钱包 */}
+                                    <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-2xl">👛</span>
+                                                <div>
+                                                    <div className="text-xl font-black text-amber-500">{totalGold.toLocaleString()} <span className="text-sm text-gray-500">金元宝</span></div>
+                                                    <div className="text-xs text-gray-500">≈ ¥{totalCny}</div>
+                                                </div>
+                                            </div>
+                                            {Math.abs(dailyChange) > 0.001 && (
+                                                <span className={`text-xs font-bold ${dailyChange > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                                    {dailyChange > 0 ? '📈' : '📉'} {dailyChange > 0 ? '+' : ''}{dailyChangePercent}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                            {/* 5. 兑换区域 */}
+                            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-100">
+                                <h3 className="text-sm font-bold text-amber-700 mb-3">💰 兑换</h3>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs text-gray-500">你的余额</span>
+                                    <span className="text-lg font-black text-amber-600">{totalGold.toLocaleString()} 金元宝</span>
+                                </div>
+                                <div className="mb-3">
+                                    {/* 快捷按钮 */}
+                                    <div className="flex gap-2 mb-2">
+                                        {(() => {
+                                            const minG = (() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })();
+                                            const presets = [minG, Math.max(minG, 1000), Math.max(minG, 2000), Math.max(minG, 5000)].filter((v, i, a) => a.indexOf(v) === i && v <= totalGold);
+                                            return presets.map(v => (
+                                                <button key={v} onClick={() => setExchangeAmount(v)}
+                                                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${exchangeAmountClamped === v ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                                                    {v >= 1000 ? `${v/1000}千` : v}
+                                                </button>
+                                            ));
+                                        })()}
+                                        <button onClick={() => setExchangeAmount(totalGold)}
+                                            className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${exchangeAmountClamped === totalGold ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                                            全部
+                                        </button>
+                                    </div>
+                                    <style>{`#exchange-slider::-webkit-slider-thumb { width: 28px; height: 28px; } #exchange-slider::-moz-range-thumb { width: 28px; height: 28px; }`}</style>
+                                    <input id="exchange-slider" type="range" min={(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()} max={totalGold} step="100"
+                                        value={exchangeAmountClamped}
+                                        onChange={e => setExchangeAmount(parseInt(e.target.value))}
+                                        className="w-full accent-amber-500"
+                                        disabled={!canExchange}
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>{(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()}</span>
+                                        <span>{totalGold.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-xl p-3 mb-3">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">兑换数量</span>
+                                        <span className="font-bold">{exchangeAmountClamped.toLocaleString()} 金元宝</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm mt-1">
+                                        <span className="text-gray-500">预计获得</span>
+                                        <span className="font-bold text-emerald-600">{expectedCny} 元</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>当前汇率</span>
+                                        <span>{(cnyPerGold * 100).toFixed(2)} 分/元宝</span>
+                                    </div>
+                                </div>
+                                {/* 预计兑换提示 */}
+                                {priceItems.length > 0 && parseFloat(expectedCny) > 0 && (() => {
+                                    const firstItem = priceItems[0];
+                                    const count = Math.floor(parseFloat(expectedCny) / firstItem.currentPrice);
+                                    return (
+                                        <div className="bg-emerald-50 rounded-lg px-3 py-2 mb-3 text-xs text-emerald-700">
+                                            预计获得 {expectedCny} 元 ≈ <span className="font-bold">{count} 份{firstItem.brand}{firstItem.name}</span> {firstItem.icon}
+                                        </div>
+                                    );
+                                })()}
+                                {/* 兑换时机建议 */}
+                                {Math.abs(dailyChange) > 0.001 && totalGold >= 500 && (
+                                    <div className={`rounded-lg px-3 py-2 mb-3 text-xs font-bold ${dailyChange > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                                        {dailyChange > 0
+                                            ? `💡 现在兑换比昨天划算！多赚 ${Math.abs(totalGold * dailyChange).toFixed(2)} 元`
+                                            : `⏳ 汇率在涨，再等等可能更划算`
+                                        }
+                                    </div>
+                                )}
+                                <div className="text-xs text-gray-500 mb-3">⏰ 每日限兑 1 次 · 最低 500 金元宝</div>
+                                {!canExchange && totalGold > 0 && (
+                                    <div className="text-xs text-amber-600 font-bold mb-2 text-center">
+                                        还差 {(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })() - totalGold} 个金元宝就能兑换了！继续加油 💪
+                                    </div>
+                                )}
+                                <button onClick={handleApply} disabled={!canExchange || applying}
+                                    className={`w-full py-3 rounded-xl font-bold text-white transition-all ${canExchange && !applying ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-md hover:shadow-lg active:scale-95' : 'bg-gray-300 cursor-not-allowed'}`}>
+                                    {applying ? '提交中...' : canExchange ? '申请兑换 💰' : `金元宝不足（需 ${(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()}）`}
+                                </button>
+                            </div>
+
+                            {/* 6. 兑换结果 */}
+                            {applyResult && (() => {
+                                const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(activeChild)}&gold=${exchangeAmountClamped}&cny=${expectedCny}&rate=${(cnyPerGold * 100).toFixed(2)}`;
+                                return (
+                                <div className="bg-green-50 rounded-2xl p-4 border border-green-200 text-center">
+                                    <div className="text-2xl mb-2">✅</div>
+                                    <div className="text-sm font-bold text-green-700">兑换申请已提交</div>
+                                    <div className="text-xs text-gray-500 mt-1">请家长扫码核销</div>
+                                    <div className="flex justify-center my-3 p-3 bg-white rounded-xl">
+                                        <img src={'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(verifyUrl)} alt="核销二维码" className="w-44 h-44 rounded-lg" />
+                                    </div>
+                                    <div className="text-2xl font-black text-green-600 tracking-widest">{applyResult.verifyCode}</div>
+                                    <div className="text-xs text-gray-500 mt-1">核销码（48 小时有效）· 金额 {expectedCny} 元</div>
+                                </div>
+                                );
+                            })()}
+
+                            {/* 7. 兑换记录 */}
+                            {exchangeRecords.length > 0 && (
+                                <div className="bg-white rounded-2xl p-4 border border-gray-100">
+                                    <h3 className="text-sm font-bold text-gray-700 mb-2">📜 兑换记录</h3>
+                                    <div className="space-y-2">
+                                        {exchangeRecords.filter(r => r.status !== 'cancelled').slice(0, 5).map(r => (
+                                            <div key={r.id} className="flex items-center justify-between text-xs py-2 border-b border-gray-50 last:border-0">
+                                                <div>
+                                                    <span className="text-gray-500">{new Date(r.createdAt).toLocaleDateString('zh-CN')}</span>
+                                                    <span className="ml-2 font-bold">{r.goldAmount} 金元宝</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-emerald-600">{r.cnyAmount} 元</span>
+                                                    {r.status === 'pending' && (
+                                                        <button onClick={() => setApplyResult({ applyId: r.id, verifyCode: r.verifyCode, cnyAmount: r.cnyAmount })}
+                                                            className="text-xs text-amber-600 hover:text-amber-800 font-bold px-2 py-0.5 rounded border border-amber-200 hover:bg-amber-50 transition-colors">核销码</button>
+                                                    )}
+                                                    {r.status === 'pending' && (
+                                                        <button onClick={async () => {
+                                                            try {
+                                                                const resp = await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/cancel`, {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ applyId: r.id, syncCode: syncCode || 'local_' + activeChild })
+                                                                });
+                                                                const data = await resp.json();
+                                                                if (data.ok) {
+                                                                    setExchangeRecords(prev => prev.map(rec => rec.id === r.id ? { ...rec, status: 'cancelled' } : rec));
+                                                                    showToast('success', '兑换已取消');
+                                                                } else {
+                                                                    showToast('error', data.error || '取消失败');
+                                                                }
+                                                            } catch (e) { showToast('error', '网络错误'); }
+                                                        }} className="text-xs text-red-400 hover:text-red-600 font-bold px-2 py-0.5 rounded border border-red-200 hover:bg-red-50 transition-colors">取消</button>
+                                                    )}
+                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${r.status === 'verified' ? 'bg-green-100 text-green-700' : r.status === 'cancelled' ? 'bg-gray-100 text-gray-500' : 'bg-amber-100 text-amber-700'}`}>
+                                                        {r.status === 'verified' ? '✅ 已核销' : r.status === 'cancelled' ? '❌ 已取消' : '⏳ 待核销'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const FamilyMessagePanel = ({ show, onClose, messages, activeChild, onSendReply, aiReply, isLoadingAi }) => {
             const [input, setInput] = React.useState('');
             if (!show) return null;
@@ -8672,6 +9367,7 @@
                 { id: 'push', label: '通知', icon: '🔔' },
                 { id: 'sync', label: '同步', icon: '☁️' },
                 { id: 'wecom', label: '企业微信', icon: '💬' },
+                { id: 'price', label: '汇率和物价', icon: '💱' },
                 { id: 'data', label: '数据', icon: '💾' }
             ];
 			if (!showSettings) return null;
@@ -9168,6 +9864,175 @@
                                         ⚠️ 请先配置 Webhook Key 以启用企业微信推送
                                     </div>
                                 )}
+                            </div>
+                       </section>
+                       )}
+
+                       {activeSettingsTab === 'price' && (
+                       <section className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-sm">
+                            <h3 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><span className="text-xl">💱</span> 汇率与物价管理</h3>
+                            <p className="text-sm text-emerald-700/80 mb-4">管理金元宝的汇率和商品物价。汇率会随真实世界汇率变化，物价会随巨无霸指数自动调整。</p>
+
+                            <div className="space-y-4">
+                                {/* 基础汇率 */}
+                                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                                    <h4 className="text-xs font-bold text-gray-700 mb-2">🪙 基础汇率</h4>
+                                    <p className="text-[10px] text-gray-500 mb-3">设定多少个金元宝可以兑换 1 元人民币。</p>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <input type="number" min="1" max="10000" step="1"
+                                            defaultValue={(() => { try { const cents = parseFloat(localStorage.getItem('app_exchange_base_cents') || '1'); return Math.round(100 / cents); } catch(e) { return 100; } })()}
+                                            onBlur={e => {
+                                                const goldPerYuan = Math.max(1, parseInt(e.target.value) || 100);
+                                                const centsPerGold = (100 / goldPerYuan).toFixed(4);
+                                                localStorage.setItem('app_exchange_base_cents', centsPerGold);
+                                                e.target.value = goldPerYuan;
+                                            }}
+                                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                            className="w-24 text-center text-lg font-black text-amber-600 border border-amber-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                        />
+                                        <span className="text-sm text-gray-500">个金元宝 = 1 元</span>
+                                    </div>
+                                    <p className="text-[10px] text-gray-400">默认 100 个金元宝 = 1 元（即 1 金元宝 = 1 分）</p>
+                                </div>
+
+                                {/* 教育性波动设置 */}
+                                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                                    <h4 className="text-xs font-bold text-gray-700 mb-2">📊 汇率波动放大</h4>
+                                    <p className="text-[10px] text-gray-500 mb-3">
+                                        真实世界汇率每天变化很小（不到 0.1%），孩子感受不到。我们把真实变化放大 N 倍，让孩子能直观感受到"汇率在波动"。
+                                    </p>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <input type="range" min="0" max="50" step="1"
+                                            defaultValue={(() => { try { return JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })()}
+                                            onChange={e => {
+                                                const val = parseInt(e.target.value);
+                                                try {
+                                                    const existing = JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}');
+                                                    existing.amplifier = val;
+                                                    localStorage.setItem('app_exchange_volatility', JSON.stringify(existing));
+                                                } catch(e) {}
+                                            }}
+                                            className="flex-1 accent-emerald-500"
+                                        />
+                                        <span className="text-lg font-black text-emerald-600 w-12 text-right">{(() => { try { return JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })()}x</span>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] text-gray-400">
+                                        <span>1x（关闭）</span>
+                                        <span>50x（剧烈）</span>
+                                    </div>
+                                    <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
+                                        {(() => {
+                                            const amp = (() => { try { return JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })();
+                                            if (amp === 0) return '波动已关闭，汇率固定不变。';
+                                            const dailyChange = 0.15 * amp; // 假设真实日变化 0.15%
+                                            return `当前效果：真实日变化 ×${amp} 倍。例如真实变化 +0.15% → 放大后 +${dailyChange.toFixed(1)}%。1000 金元宝每天约变化 ${(1000 * 0.01 * dailyChange / 100).toFixed(2)} 元。`;
+                                        })()}
+                                    </div>
+                                </div>
+                                {/* 商品价格列表 */}
+                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                    <div className="p-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between text-xs font-bold text-gray-500">
+                                        <span>商品</span>
+                                        <span>当前价格（元）</span>
+                                    </div>
+                                    {[
+                                        { id: 'mxbc_lnm', icon: '🧃', name: '蜜雪冰城 柠檬水', default: 4 },
+                                        { id: 'bwcj_bcjx', icon: '🍵', name: '霸王茶姬 伯牙绝弦', default: 16 },
+                                        { id: 'sbc_latte', icon: '☕', name: '星巴克 大杯拿铁', default: 30 },
+                                        { id: 'mcd_bm', icon: '🍔', name: '麦当劳 巨无霸套餐', default: 26 },
+                                        { id: 'coca_can', icon: '🥤', name: '可口可乐 罐装', default: 3.5 },
+                                    ].map(item => (
+                                        <div key={item.id} className="flex items-center justify-between p-3 border-b border-gray-50 last:border-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-lg">{item.icon}</span>
+                                                <span className="text-sm font-medium text-gray-700">{item.name}</span>
+                                            </div>
+                                            <input
+                                                type="number"
+                                                min="0.1"
+                                                step="0.5"
+                                                defaultValue={item.default}
+                                                className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-sm text-center font-bold"
+                                                onBlur={async (e) => {
+                                                    const val = parseFloat(e.target.value);
+                                                    if (val > 0) {
+                                                        try {
+                                                            await fetch(`${EXCHANGE_WORKER_URL}/api/price/update`, {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ itemId: item.id, newPrice: val })
+                                                            });
+                                                            showToast('success', `${item.name} 价格已更新为 ${val} 元`);
+                                                        } catch (e) { showToast('error', '更新失败'); }
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* 操作按钮 */}
+                                <button onClick={async () => {
+                                    try {
+                                        const resp = await fetch(`${EXCHANGE_WORKER_URL}/api/price/init`, { method: 'POST' });
+                                        const data = await resp.json();
+                                        if (data.ok) showToast('success', '物价数据已重新查询');
+                                        else showToast('error', '查询失败');
+                                    } catch (e) { showToast('error', '网络错误'); }
+                                }} className="w-full py-2 bg-emerald-500 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors">
+                                    🔍 重新查询价格（DeepSeek）
+                                </button>
+
+                                <button onClick={async () => {
+                                    try {
+                                        const resp = await fetch(`${EXCHANGE_WORKER_URL}/api/update-bigmac`);
+                                        const data = await resp.json();
+                                        if (data.ok) showToast('success', 'Big Mac 指数已更新');
+                                        else showToast('error', '更新失败');
+                                    } catch (e) { showToast('error', '网络错误'); }
+                                }} className="w-full py-2 bg-gray-100 text-gray-600 text-sm font-bold rounded-lg hover:bg-gray-200 transition-colors">
+                                    🍔 更新 Big Mac 指数
+                                </button>
+
+                                {/* 说明 */}
+                                <div className="text-xs text-gray-400 space-y-1">
+                                    <p>• 价格会随 Big Mac 指数自动调整（每年更新 2 次）</p>
+                                    <p>• 手动修改的价格会覆盖自动查询结果</p>
+                                    <p>• 点击"重新查询"会覆盖手动修改</p>
+                                </div>
+
+                                {/* 兑换限制设置 */}
+                                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                                    <h4 className="text-xs font-bold text-gray-700 mb-3">📊 兑换限制</h4>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">最低兑换金额（金元宝）</label>
+                                            <input type="number" min="1" max="10000" step="100"
+                                                defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()}
+                                                onBlur={e => { localStorage.setItem('app_exchange_min_gold', String(Math.max(1, parseInt(e.target.value) || 500))); }}
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">单次兑换上限（金元宝）</label>
+                                            <input type="number" min="0" max="100000" step="100"
+                                                defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })()}
+                                                onBlur={e => { localStorage.setItem('app_exchange_max_single', String(Math.max(0, parseInt(e.target.value) || 0))); }}
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold"
+                                            />
+                                            <p className="text-[10px] text-gray-400 mt-1">0 = 不限制</p>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">每周兑换总上限（金元宝）</label>
+                                            <input type="number" min="0" max="100000" step="100"
+                                                defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })()}
+                                                onBlur={e => { localStorage.setItem('app_exchange_max_weekly', String(Math.max(0, parseInt(e.target.value) || 0))); }}
+                                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold"
+                                            />
+                                            <p className="text-[10px] text-gray-400 mt-1">0 = 不限制。统计自然周（周一到周日）内的已核销兑换总额。</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                        </section>
                        )}
@@ -12315,6 +13180,7 @@
             const [wecomTestStatus, setWecomTestStatus] = React.useState('');
             const [familyMessages, setFamilyMessages] = React.useState([]);
             const [showFamilyPanel, setShowFamilyPanel] = React.useState(false);
+            const [showExchange, setShowExchange] = React.useState(false);
             const [familyAiReply, setFamilyAiReply] = React.useState('');
             const [familyAiLoading, setFamilyAiLoading] = React.useState(false);
             const [wecomPushLog, setWecomPushLog] = useStickyState({}, 'app_wecom_push_log');
@@ -17236,14 +18102,15 @@ ${context}
                                     })}
                                     <button onClick={handleAddProfile} className="w-7 h-7 rounded-full border border-dashed border-white/40 flex items-center justify-center text-white/60 text-xs flex-shrink-0">+</button>
                                   </div>
-                                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                                    <button onClick={() => setShowEvolutionPath(true)} className="p-1.5 rounded-lg active:scale-95 relative" title="进化之路"><span className="text-base">📈</span>{levelUpQueue.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}</button>
-                                    <button onClick={() => setShowAchievements(true)} className="p-1.5 rounded-lg active:scale-95 relative" title="成就墙"><span className="text-base">🏆</span>{unlockQueue.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}</button>
-                                    <button onClick={() => setShowCompletedWall(true)} className="p-1.5 rounded-lg active:scale-95" title="目标达成墙"><span className="text-base">🎯</span></button>
-                                    <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-1.5 rounded-lg active:scale-95" title="学习数据统计"><span className="text-base">📊</span></button>
-                                    <button onClick={() => { setShowMilestones(true); }} className="p-1.5 rounded-lg active:scale-95" title="大事纪"><span className="text-base">📜</span></button>
-                                    <button onClick={() => setShowHomeworkExamModal(true)} className="p-1.5 rounded-lg active:scale-95" title="作业与考试"><span className="text-base">📝</span></button>
-                                    <div className="flex items-center gap-0.5 ml-0.5 cursor-pointer active:scale-95 px-1.5 py-0.5 rounded" onClick={() => setShowGoldHistory(true)}>
+                                  <div className="flex items-center flex-shrink-0">
+                                    <button onClick={() => setShowEvolutionPath(true)} className="p-1 rounded-lg active:scale-95 relative" title="进化之路"><span className="text-sm">📈</span>{levelUpQueue.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}</button>
+                                    <button onClick={() => setShowAchievements(true)} className="p-1 rounded-lg active:scale-95 relative" title="成就墙"><span className="text-sm">🏆</span>{unlockQueue.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}</button>
+                                    <button onClick={() => setShowCompletedWall(true)} className="p-1 rounded-lg active:scale-95" title="目标达成墙"><span className="text-sm">🎯</span></button>
+                                    <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-1 rounded-lg active:scale-95" title="学习数据统计"><span className="text-sm">📊</span></button>
+                                    <button onClick={() => { setShowMilestones(true); }} className="p-1 rounded-lg active:scale-95" title="大事纪"><span className="text-sm">📜</span></button>
+                                    <button onClick={() => setShowHomeworkExamModal(true)} className="p-1 rounded-lg active:scale-95" title="作业与考试"><span className="text-sm">📝</span></button>
+                                    <button onClick={() => setShowExchange(true)} className="p-1 rounded-lg active:scale-95" title="兑换零花钱"><span className="text-sm">💱</span></button>
+                                    <div className="flex items-center gap-0.5 ml-0.5 cursor-pointer active:scale-95 px-1 py-0.5 rounded" onClick={() => setShowGoldHistory(true)}>
                                       <Coins className="w-3.5 h-3.5 text-yellow-300" />
                                       <span className="text-xs font-black text-yellow-100">{totalGold}</span>
                                     </div>
@@ -17371,23 +18238,28 @@ ${context}
                                         ) : null}
                                 </div>
 
-                                {/* 右侧：功能按钮岛 (保持不变) */}
-                                <div className="w-full lg:w-auto order-3 lg:justify-self-end flex justify-center lg:justify-end overflow-x-auto no-scrollbar">
-                                   <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20 shadow-inner text-white">
-                                      <button onClick={() => setShowEvolutionPath(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="进化之路"><span className="text-xl filter drop-shadow-sm">📈</span>{levelUpQueue.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 border border-white rounded-full animate-ping"></span>}</button>
-                                      <button onClick={() => setShowAchievements(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="成就墙"><span className="text-xl filter drop-shadow-sm">🏆</span>{unlockQueue.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 border border-white rounded-full animate-ping"></span>}</button>
-									  <button onClick={() => setShowCompletedWall(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="目标达成墙"><span className="text-xl filter drop-shadow-sm">🎯</span></button>
-                                      <button onClick={() => setShowMilestones(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="大事纪"><span className="text-xl filter drop-shadow-sm">📜</span></button>
-                                      <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="学习数据统计"><span className="text-xl filter drop-shadow-sm">📊</span></button>
-                                      <button onClick={() => setShowHomeworkExamModal(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="作业与考试成绩登记"><span className="text-xl filter drop-shadow-sm">📝</span></button>
-                                      <div className="w-px h-5 bg-white/20 mx-1"></div>
-                                      <button onClick={() => { setShopInitialTab('buy'); setShowShop(true); }} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="时空集市"><div className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 rounded-full animate-bounce shadow-sm border border-white/30">NEW</div><span className="text-xl filter drop-shadow-sm">🏪</span></button>
-                                      <div onClick={() => canSpinLuckyWheel && setShowWheelChoice(true)} className={`hidden xl:flex flex-col items-center justify-center mx-1 px-2 py-0.5 rounded-lg border cursor-pointer h-9 transition-colors ${canSpinLuckyWheel ? 'bg-amber-400/80 border-amber-200 animate-pulse text-black' : 'bg-transparent border-transparent hover:bg-white/10 text-white'}`}><div className="flex items-center gap-1"><span className="text-xs">🧩</span><span className="text-xs font-black">{todayFragmentStats.completed}/{todayFragmentStats.required}</span></div></div>
-                                      <div className="flex items-center gap-1 mx-2 cursor-pointer hover:bg-white/10 p-1 rounded transition-colors" onClick={() => setShowGoldHistory(true)}><Coins className="w-4 h-4 text-yellow-300 drop-shadow-sm" /><span className="text-sm font-black text-yellow-100">{totalGold}</span></div>
-                                      <div className="flex items-center gap-1 mx-1 cursor-pointer hover:bg-white/10 p-1 rounded transition-colors" onClick={() => setShowStarHistory(true)}><span className="text-sm">⭐</span><span className="text-sm font-black text-yellow-100">{totalStars}</span></div>
-                                      <div className="w-px h-5 bg-white/20 mx-1"></div>
-                                      <button onClick={() => setShowThemeModal(true)} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="切换主题"><span className="text-xl">🎨</span></button>
-                                      <button onClick={handleOpenSettings} className="p-2 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="设置"><span className="text-xl">🛠️</span></button>
+                                {/* 右侧：功能按钮岛（上下两层，统一背景框） */}
+                                <div className="w-full lg:w-auto order-3 lg:justify-self-end flex flex-col items-center gap-1 bg-white/10 backdrop-blur-md p-2 rounded-2xl border border-white/20 shadow-inner text-white">
+                                   {/* 上层：工具类按钮 */}
+                                   <div className="flex items-center gap-1">
+                                      <button onClick={() => setShowEvolutionPath(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="进化之路"><span className="text-base filter drop-shadow-sm">📈</span>{levelUpQueue.length > 0 && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-red-500 border border-white rounded-full animate-ping"></span>}</button>
+                                      <button onClick={() => setShowAchievements(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="成就墙"><span className="text-base filter drop-shadow-sm">🏆</span>{unlockQueue.length > 0 && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-red-500 border border-white rounded-full animate-ping"></span>}</button>
+                                      <button onClick={() => setShowCompletedWall(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="目标达成墙"><span className="text-base filter drop-shadow-sm">🎯</span></button>
+                                      <button onClick={() => setShowMilestones(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="大事纪"><span className="text-base filter drop-shadow-sm">📜</span></button>
+                                      <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="学习数据统计"><span className="text-base filter drop-shadow-sm">📊</span></button>
+                                      <button onClick={() => setShowHomeworkExamModal(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="作业与考试"><span className="text-base filter drop-shadow-sm">📝</span></button>
+                                      <div className="w-px h-4 bg-white/20 mx-0.5"></div>
+                                      <button onClick={() => setShowThemeModal(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="切换主题"><span className="text-base">🎨</span></button>
+                                      <button onClick={handleOpenSettings} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="设置"><span className="text-base">🛠️</span></button>
+                                   </div>
+                                   {/* 下层：经济类按钮 */}
+                                   <div className="flex items-center gap-1">
+                                      <button onClick={() => { setShopInitialTab('buy'); setShowShop(true); }} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95 relative" title="时空集市"><div className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-0.5 rounded-full animate-bounce shadow-sm">NEW</div><span className="text-base filter drop-shadow-sm">🏪</span></button>
+                                      <div onClick={() => canSpinLuckyWheel && setShowWheelChoice(true)} className={`flex flex-col items-center justify-center px-2 py-1 rounded-lg border cursor-pointer transition-colors ${canSpinLuckyWheel ? 'bg-amber-400/80 border-amber-200 animate-pulse text-black' : 'bg-transparent border-transparent hover:bg-white/10 text-white'}`}><div className="flex items-center gap-1"><span className="text-xs">🧩</span><span className="text-xs font-black">{todayFragmentStats.completed}/{todayFragmentStats.required}</span></div></div>
+                                      <button onClick={() => setShowExchange(true)} className="p-1.5 rounded-lg hover:bg-white/20 transition-colors active:scale-95" title="兑换零花钱"><span className="text-xl">💱</span></button>
+                                      <div className="w-px h-4 bg-white/20 mx-0.5"></div>
+                                      <div className="flex items-center gap-0.5 cursor-pointer hover:bg-white/10 px-1.5 py-1 rounded transition-colors" onClick={() => setShowGoldHistory(true)}><Coins className="w-3.5 h-3.5 text-yellow-300 drop-shadow-sm" /><span className="text-xs font-black text-yellow-100">{totalGold}</span></div>
+                                      <div className="flex items-center gap-0.5 cursor-pointer hover:bg-white/10 px-1.5 py-1 rounded transition-colors" onClick={() => setShowStarHistory(true)}><span className="text-xs">⭐</span><span className="text-xs font-black text-yellow-100">{totalStars}</span></div>
                                    </div>
                                 </div>
                               </div>
@@ -18010,6 +18882,16 @@ ${context}
                         />
                     </>
                   )}
+
+                  {/* 金元宝兑换面板 */}
+                  <ExchangePanel
+                      show={showExchange}
+                      onClose={() => setShowExchange(false)}
+                      totalGold={totalGold}
+                      activeChild={activeChild}
+                      syncCode={syncCode}
+                      showToast={showToast}
+                  />
 
                   {/* 企业微信家长消息 */}
                   {wecomEnabled && syncCode && (
