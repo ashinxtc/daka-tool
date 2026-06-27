@@ -8342,7 +8342,7 @@
         const EXCHANGE_WORKER_URL = 'https://daka-exchange.2378385593.workers.dev';
 
         // ===== 金元宝兑换零花钱面板 =====
-        const ExchangePanel = ({ show, onClose, totalGold, activeChild, syncCode, showToast, onExchangeComplete }) => {
+        const ExchangePanel = ({ show, onClose, totalGold, activeChild, syncCode, showToast, onExchangeComplete, setWheelHistory }) => {
             const [rate, setRate] = React.useState(null);
             const [history, setHistory] = React.useState([]);
             const [knowledge, setKnowledge] = React.useState(null);
@@ -18904,6 +18904,7 @@ ${context}
                       activeChild={activeChild}
                       syncCode={syncCode}
                       showToast={showToast}
+                      setWheelHistory={setWheelHistory}
                   />
 
                   {/* 企业微信家长消息 */}
