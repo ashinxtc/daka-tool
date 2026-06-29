@@ -1365,6 +1365,40 @@
     </script>
 
     <script type="text/babel">
+function getCheckinEntries(taskRecord, dateKey) {
+                const val = (taskRecord || {})[dateKey];
+                if (val === undefined || val === null) return [];
+                if (typeof val === 'number') return [{ m: val, u: 0, t: 0 }];
+                if (Array.isArray(val)) return val.filter(e => e && typeof e.m === 'number');
+                return [];
+            };
+            function getCheckinMinutes(taskRecord, dateKey) { return getCheckinEntries(taskRecord, dateKey).reduce((sum, e) => sum + (e.m || 0), 0); }
+            function getCheckinUnits(taskRecord, dateKey) { return getCheckinEntries(taskRecord, dateKey).reduce((sum, e) => sum + (e.u || 0), 0); }
+            function getCheckinSessionCount(taskRecord, dateKey) {
+                const val = (taskRecord || {})[dateKey];
+                if (val === undefined || val === null) return 0;
+                if (typeof val === 'number') return 1;
+                if (Array.isArray(val)) return val.length;
+                return 0;
+            };
+            function getTaskTotalMinutes(taskRecord) {
+                let total = 0;
+                Object.values(taskRecord || {}).forEach(val => {
+                    if (typeof val === 'number') total += val;
+                    else if (Array.isArray(val)) val.forEach(e => { total += (e.m || 0); });
+                });
+                return total;
+            };
+            function getTaskTotalSessions(taskRecord) {
+                let total = 0;
+                Object.values(taskRecord || {}).forEach(val => {
+                    if (typeof val === 'number') total += 1;
+                    else if (Array.isArray(val)) total += val.length;
+                });
+                return total;
+            };
+            // ===== 多次打卡辅助函数 END =====
+
         const { useState, useEffect, useMemo, useRef, useContext, createContext, useCallback, memo } = React;
 
         // 性能模式 Context — 全局共享 isLowPerf 状态
@@ -6362,7 +6396,7 @@
                 const childTasks = tasks?.[activeChild] || [];
                 
                 // 辅助：统计总打卡数
-                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => sum + Object.keys(taskRecord).length, 0);
+                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => sum + getTaskTotalSessions(taskRecord), 0);
                 
                 // 辅助：统计特定学科打卡数 (正则匹配任务名)
                 const getSubjectCount = (regex, excludeKeywords = []) => {
@@ -10306,7 +10340,7 @@
 									if (task.earlyCompleted) { completedTasksForSetting.push(task); } else { ongoingTasksForSetting.push(task); }
 									return;
 								}
-								const count = Object.keys(checkins[activeChild]?.[task.id] || {}).length;
+								const count = (task.multiCheckin && task.frequencyType === "daily_must") ? getTaskTotalSessions(checkins[activeChild]?.[task.id] || {}) : Object.keys(checkins[activeChild]?.[task.id] || {}).length;
 								if (count >= (task.targetCount || 0)) {
 									completedTasksForSetting.push(task);
 								} else {
@@ -10488,26 +10522,106 @@
 											</button>
 										</div>
 
-										{/* 每日必做：周完成度阈值 */}
+										{/* 每日必做：周完成度阈值 & 多次打卡 */}
 										{task.frequencyType === 'daily_must' && (
-											<div className="col-span-3 grid grid-cols-3 gap-2 items-end">
-												<div className="col-span-2">
-													<label className="text-xs text-red-500 font-bold">达标完成度阈值</label>
-													<div className="flex items-center gap-2">
-														<input
-															type="number"
-															min="0"
-															max="100"
-															value={task.dailyCompletionThresholdPercent ?? 80}
-															onChange={(e) => updateTaskSetting(task.id, 'dailyCompletionThresholdPercent', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-															className="w-20 bg-white border border-red-200 outline-none focus:border-red-400 rounded p-1 text-red-600 font-bold text-center"
-														/>
-														<span className="text-[11px] text-gray-500">每周完成比例 ≥ 阈值 时，按完成比例 × 完成奖励发放。</span>
+											<div className="col-span-3 space-y-2">
+												<div className="grid grid-cols-3 gap-2 items-end">
+													<div className="col-span-2">
+														<label className="text-xs text-red-500 font-bold">达标完成度阈值</label>
+														<div className="flex items-center gap-2">
+															<input
+																type="number"
+																min="0"
+																max="100"
+																value={task.dailyCompletionThresholdPercent ?? 80}
+																onChange={(e) => updateTaskSetting(task.id, 'dailyCompletionThresholdPercent', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+																className="w-20 bg-white border border-red-200 outline-none focus:border-red-400 rounded p-1 text-red-600 font-bold text-center"
+															/>
+															<span className="text-[11px] text-gray-500">每周完成比例 &ge; 阈值 时，按完成比例 &times; 完成奖励发放。</span>
+														</div>
 													</div>
 												</div>
-											</div>
-										)}
 
+												<div className="mt-2 pt-2 border-t border-purple-200">
+													<div className="flex items-center justify-between mb-2">
+														<span className="text-xs font-bold text-purple-700">📚 多次打卡</span>
+														<button
+															onClick={() => updateTaskSetting(task.id, 'multiCheckin', !task.multiCheckin)}
+															className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${task.multiCheckin ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-purple-100'}`}
+														>{task.multiCheckin ? '已开启 ✓' : '允许当天多次打卡'}</button>
+													</div>
+													{task.multiCheckin && (
+													<div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+														<div>
+															<label className="text-[11px] text-purple-700 font-bold">计量单位</label>
+															<div className="flex gap-1 flex-wrap">
+																{['', '课时', '单元', '知识点', '道题', '页'].map(opt => (
+																	<button key={opt}
+																		onClick={() => updateTaskSetting(task.id, 'multiUnitLabel', opt)}
+																		className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${(task.multiUnitLabel || '') === opt ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-100'}`}
+																	>{opt || '无(仅计分钟)'}</button>
+																))}
+															</div>
+														</div>
+														<div className="bg-white rounded border border-purple-200 p-2">
+															<div className="flex items-center justify-between mb-1">
+																<span className="text-[11px] font-bold text-purple-800">🎁 奖励触发器</span>
+																<label className="text-[10px] text-gray-500">0=不触发</label>
+															</div>
+															<div className="grid grid-cols-2 gap-2 items-center">
+																<input type="number" min="0" max="99"
+																	value={task.bonusThreshold ?? 0}
+																	onChange={(e) => updateTaskSetting(task.id, 'bonusThreshold', Math.max(0, parseInt(e.target.value) || 0))}
+																	className="w-16 bg-white border border-purple-200 rounded p-1 text-purple-700 font-bold text-center text-xs"
+																/>
+																<span className="text-[10px] text-gray-600">每完成</span>
+																<select
+																	value={task.bonusThresholdType ?? 'count'}
+																	onChange={(e) => updateTaskSetting(task.id, 'bonusThresholdType', e.target.value)}
+																	className="bg-white border border-purple-200 rounded p-1 text-[11px] text-purple-700"
+																>
+																	<option value="count">打卡次数</option>
+																	{task.multiUnitLabel && <option value="units">累计{task.multiUnitLabel}</option>}
+																</select>
+																<span className="text-[10px] text-gray-600">次后</span>
+															</div>
+															<div className="flex items-center gap-2 mt-2">
+																<button
+																	onClick={() => updateTaskSetting(task.id, 'bonusType', 'wheel')}
+																	className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${(task.bonusType ?? 'wheel') === 'wheel' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-amber-100'}`}
+																>🎡 触发转盘</button>
+																<button
+																	onClick={() => updateTaskSetting(task.id, 'bonusType', 'multiply')}
+																	className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${task.bonusType === 'multiply' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
+																>🔥 金元宝翻倍</button>
+																{task.bonusType === 'multiply' && (
+																	<input type="number" min="2" max="10"
+																		value={task.bonusMultiplier ?? 2}
+																		onChange={(e) => updateTaskSetting(task.id, 'bonusMultiplier', Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
+																		className="w-12 bg-white border border-green-300 rounded p-1 text-green-700 font-bold text-center text-xs"
+																	/>)}
+																{(task.bonusType === 'multiply' && task.bonusMultiplier > 2) && <span className="text-[10px] text-green-700 font-bold">倍</span>}
+															</div>
+															{task.bonusThreshold > 0 && (
+																<div className="mt-2 text-[10px] text-purple-600 bg-purple-100 rounded p-1.5">
+																	💡
+																	{(task.bonusThresholdType ?? 'count') === 'count'
+																		? (task.bonusType === 'wheel'
+																			? `每完成 ${task.bonusThreshold} 次打卡 &rarr; 触发幸运大转盘`
+																			: `每完成 ${task.bonusThreshold} 次打卡 &rarr; 本次金元宝 &times;${task.bonusMultiplier || 2}`)
+																		: (task.bonusType === 'wheel'
+																			? `每累计 ${task.bonusThreshold} ${task.multiUnitLabel} &rarr; 触发幸运大转盘`
+																			: `每累计 ${task.bonusThreshold} ${task.multiUnitLabel} &rarr; 本次金元宝 &times;${task.bonusMultiplier || 2}`)
+																	}
+																	&nbsp;（每天独立计数，跨天清零）
+																</div>
+															)}
+														</div>
+													</div>
+													)}
+												</div>
+											</div>
+											)}
 										{/* 每周选做：每周目标次数 + 超额奖励比例 */}
 										{task.frequencyType === 'weekly_optional' && (
 											<div className="col-span-3 grid grid-cols-3 gap-2 items-end">
@@ -10635,23 +10749,143 @@
             );
         };
 
-        const TimeEntryModal = ({ editingEntry, tasks, activeChild, removeCheckin, setEditingEntry, saveCheckin, theme, inventory, useRepairCard }) => {
+        const TimeEntryModal = ({ editingEntry, tasks, activeChild, removeCheckin, setEditingEntry, saveCheckin, theme, inventory, useRepairCard, checkins, activeBuffs }) => {
             if (!editingEntry) return null;
             const task = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId);
             const [val, setVal] = useState(editingEntry.duration);
-            
+            const [units, setUnits] = useState(editingEntry.units || 0);
+            const [unitsStr, setUnitsStr] = useState(''); // 字符串形态，避免显示 0
+            const unitsInputRef = React.useRef(null); // 单位输入框 ref，用于 Enter 跳转
+            const [editSessionIdx, setEditSessionIdx] = useState(null);
+            const isMulti = task?.multiCheckin && task?.frequencyType === 'daily_must';
+
             // 市集功能：补签判断（使用 getLocalDateKey 解决凌晨0-8点日期判定问题）
             const hasRepairCard = (inventory['item_fire'] || 0) > 0;
             const isPast = editingEntry.date < getLocalDateKey(0);
 
+            // 多次打卡：读取今天已有的打卡记录
+            const todaySessions = React.useMemo(() => {
+                if (!isMulti || !editingEntry) return [];
+                const taskRecord = checkins?.[activeChild]?.[task.id];
+                return getCheckinEntries(taskRecord, editingEntry.date);
+            }, [isMulti, editingEntry, checkins, activeChild, task?.id]);
+            const todaySessionCount = todaySessions.length;
+            const todayTotalMinutes = todaySessions.reduce((s, e) => s + (e.m || 0), 0);
+            const todayTotalUnits = todaySessions.reduce((s, e) => s + (e.u || 0), 0);
+            // 奖励预览
+            const investBuff = activeBuffs?.[activeChild];
+            const investMul = (investBuff?.investMultiplier && investBuff.investMultiplier > 1 && (!investBuff.investExpire || investBuff.investExpire > Date.now())) ? investBuff.investMultiplier : 1;
+            const previewGold = React.useMemo(() => {
+                if (!isMulti) return (task?.reward || 0) * investMul;
+                if (task?.multiUnitLabel) {
+                    // 有单位标签：按单位逐个计算预览
+                    const prevUnits = todayTotalUnits;
+                    const thisUnits = units || 1;
+                    let total = 0;
+                    for (let u = 1; u <= thisUnits; u++) {
+                        total += (task?.reward || 0) * (prevUnits + u) * investMul;
+                    }
+                    return total;
+                }
+                // 无单位标签：按打卡次数
+                return (task?.reward || 0) * (todaySessionCount + 1) * investMul;
+            }, [isMulti, task, investMul, todayTotalUnits, todaySessionCount, units]);
+            const rewardsPreviewText = React.useMemo(() => {
+                if (!isMulti) return '';
+                if (task?.multiUnitLabel) {
+                    const prevUnits = todayTotalUnits;
+                    const thisUnits = units || 1;
+                    const label = task.multiUnitLabel;
+                    const lines = [];
+                    lines.push(`🎯 今天已累计 ${prevUnits} ${label}，本次完成 ${thisUnits} ${label}`);
+                    for (let u = 1; u <= thisUnits; u++) {
+                        const unitGold = (task?.reward || 0) * (prevUnits + u) * investMul;
+                        lines.push(`　第 ${prevUnits + u} 个${label} 基础奖励 ×${prevUnits + u} → ${unitGold} 金元宝`);
+                    }
+                    lines.push(`　预计共获得 ${previewGold} 金元宝`);
+                    return lines;
+                }
+                return [`🎯 本次是今天第 ${todaySessionCount + 1} 次打卡 → 基础奖励 ×${todaySessionCount + 1} → 预计获得 ${previewGold} 金元宝`];
+            }, [isMulti, task, todayTotalUnits, todaySessionCount, units, previewGold, investMul]);
+
             useEffect(() => {
-                setVal(editingEntry.duration);
-            }, [editingEntry]);
+                if (isMulti) {
+                    setVal('');
+                    setUnits(0);
+                    setUnitsStr('');
+                    setEditSessionIdx(null);
+                } else {
+                    setVal(editingEntry.duration);
+                }
+            }, [editingEntry, isMulti]);
+
+            // 点击已有记录进入编辑模式
+            const enterEditMode = (s, i) => {
+                setEditSessionIdx(i);
+                setVal(String(s.m || ''));
+                setUnits(s.u || 0);
+                setUnitsStr(String(s.u || ''));
+            };
+            // 取消编辑回到新增模式
+            const cancelEdit = () => {
+                setEditSessionIdx(null);
+                setVal('');
+                setUnits(0);
+                setUnitsStr('');
+            };
+
+            const isEditing = editSessionIdx !== null && editSessionIdx >= 0;
+            const submitLabel = isMulti ? (isEditing ? '更新打卡' : (todaySessionCount === 0 ? '确认' : '再打一次卡')) : '保存';
 
             return (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
-                        <h3 className="text-center text-lg font-bold text-gray-800 mb-6">{task?.name} - {editingEntry.date}</h3>
+                    <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-center text-lg font-bold text-gray-800 mb-2">{task?.name} - {editingEntry.date}</h3>
+                        {/* 多次打卡：今日已打卡汇总 + 奖励预览 */}
+                        {isMulti && (
+                            <div className="mb-3 space-y-2">
+                                {todaySessionCount > 0 && (
+                                    <div className="bg-purple-50 border border-purple-200 rounded-lg">
+                                        <div className="text-[10px] font-semibold text-purple-700 px-2 pt-2 pb-1 sticky top-0 bg-purple-50 rounded-t-lg">📋 今日打卡</div>
+                                        <div className="px-2 pb-2 max-h-32 overflow-y-auto">
+                                        {todaySessions.map((s, i) => (
+                                            <div key={i}
+                                                className={`flex items-center justify-between text-[10px] py-0.5 px-1 border-b border-purple-50 last:border-0 rounded ${editSessionIdx === i ? 'bg-purple-200 ring-1 ring-purple-400' : 'text-purple-600'}`}
+                                            >
+                                                <span>{editSessionIdx === i ? '✏️ 编辑中' : ''} 第{i+1}次 · {s.m}分钟{task.multiUnitLabel ? ` · ${s.u || 0}${task.multiUnitLabel}` : ''}</span>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-gray-400">{s.t ? new Date(s.t).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'}) : ''}</span>
+                                                    {editSessionIdx !== i && (
+                                                        <span onClick={(e) => { e.stopPropagation(); enterEditMode(s, i); }} className="cursor-pointer text-gray-400 hover:text-purple-600 text-xs leading-none" title="编辑此记录">✏️</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    </div>
+                                )}
+                                <div className="text-[11px] text-purple-700 bg-purple-50 rounded-lg p-1.5 text-center font-semibold">
+                                    今日累计：{todaySessionCount}次 | {todayTotalMinutes}分钟{task.multiUnitLabel ? ` | ${todayTotalUnits}${task.multiUnitLabel}` : ''}
+                                </div>
+                                {!isEditing && isMulti && (
+                                    <div className="text-[11px] text-amber-700 bg-amber-50 rounded-lg p-2 text-center font-semibold">
+                                        {Array.isArray(rewardsPreviewText)
+                                            ? rewardsPreviewText.map((line, idx) => <div key={idx} className={idx === rewardsPreviewText.length - 1 ? 'mt-1 pt-1 border-t border-amber-100' : (idx === 0 ? '' : '')}>{line}</div>)
+                                            : rewardsPreviewText}
+                                    </div>
+                                )}
+                                {!isEditing && !isMulti && (
+                                    <div className="text-[11px] text-amber-600 bg-amber-50 rounded-lg p-2 text-center font-semibold">
+                                        🎯 本次打卡 → 预计获得 {previewGold} 金元宝
+                                    </div>
+                                )}
+                                {isEditing && (
+                                    <div className="text-[11px] text-indigo-600 bg-indigo-50 rounded-lg p-2 text-center font-bold">
+                                        ✏️ 正在编辑今天第 {editSessionIdx + 1} 次打卡
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {/* ================= 拦截过期未打卡 ================= */}
                         {editingEntry.isNew && isPast ? (
                             <div className="mb-4">
@@ -10672,20 +10906,53 @@
                                 )}
                             </div>
                         ) : (
-                            <div className="mb-6 relative">
-                                <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveCheckin(val); } }} className={`w-full text-center text-4xl font-bold border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 placeholder-gray-200`} placeholder="30" />
-                                <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
+                            <div className="mb-4 space-y-3">
+                                {isMulti ? (
+                                    <div>
+                                        <div className="relative">
+                                            <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (isMulti && task.multiUnitLabel && unitsInputRef.current) { unitsInputRef.current.focus(); } else { saveCheckin(val, units); } } }} className={`w-full text-center text-3xl font-bold border-b-2 border-purple-400 focus:border-purple-500 focus:outline-none pb-1.5 placeholder-gray-200 rounded-lg bg-purple-50/30 border border-purple-100`} placeholder="30" />
+                                            <span className="absolute right-3 bottom-2 text-purple-400 text-xs font-medium">分钟</span>
+                                        </div>
+                                        <div className="flex flex-wrap justify-center gap-1.5 mt-2">
+                                            {[5,10,15,20,30,45,60].map(m => (
+                                                <button
+                                                    key={m}
+                                                    type="button"
+                                                    onClick={() => setVal(String(m))}
+                                                    className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
+                                                        String(val) === String(m)
+                                                            ? 'bg-purple-600 text-white ring-2 ring-purple-300'
+                                                            : 'bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-200'
+                                                    }`}
+                                                >{m}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <input type="number" autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveCheckin(val, units); } }} className={`w-full text-center text-4xl font-bold border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 placeholder-gray-200`} placeholder="30" />
+                                        <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
+                                    </div>
+                                )}
+                                {/* 多次打卡 + 有单位标签时显示单位输入 */}
+                                {isMulti && task.multiUnitLabel && (
+                                    <div className="relative">
+                                        <input type="number" ref={unitsInputRef} min="1" max="999" value={unitsStr} onChange={(e) => { setUnitsStr(e.target.value); const n = parseInt(e.target.value); if (!isNaN(n) && n >= 0) setUnits(n); else if (e.target.value === '') setUnits(0); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveCheckin(val, units || 1); } }} className={`w-full text-center text-2xl font-bold border-b-2 border-gray-200 focus:border-purple-400 focus:outline-none pb-2 bg-purple-50/50 rounded-lg border border-purple-100`} placeholder={`输入本次${task.multiUnitLabel}数`} />
+                                        <span className="absolute right-4 bottom-3 text-purple-400 text-sm font-medium">本次完成{task.multiUnitLabel}</span>
+                                    </div>
+                                )}
                             </div>
                         )}
-                        
+
                         <div className="flex gap-3">
-                            <button onClick={() => setEditingEntry(null)} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition-colors">取消</button>
-                            {!editingEntry.isNew && <button onClick={removeCheckin} className="flex-1 py-3 rounded-xl bg-red-100 text-red-600 font-bold hover:bg-red-200 transition-colors">删除</button>}
-                            
-                            {/* ================= 隐藏普通保存按钮 ================= */}
+                            {isMulti && isEditing && (
+                                <button onClick={() => removeCheckin(editSessionIdx)} className="flex-1 py-3 rounded-xl border border-red-200 text-red-500 bg-white hover:bg-red-50 font-bold transition-colors">删除该次</button>
+                            )}
+                            {!isMulti && !editingEntry.isNew && <button onClick={() => removeCheckin(null)} className="flex-1 py-3 rounded-xl bg-red-100 text-red-600 font-bold hover:bg-red-200 transition-colors">删除</button>}
+                            <button onClick={() => setEditingEntry(null)} className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition-colors">{isEditing ? '放弃编辑' : '取消'}</button>
                             {!(editingEntry.isNew && isPast) && (
-                                <button onClick={() => saveCheckin(val)} className={`flex-1 py-3 rounded-xl ${theme.primaryBg} ${theme.primaryBgHover} text-white font-bold transition-colors shadow-md`}>保存</button>
-                            )}                            
+                                <button onClick={() => saveCheckin(val, units, editSessionIdx)} className={`flex-1 py-3 rounded-xl ${isMulti ? 'bg-purple-600 hover:bg-purple-700' : theme.primaryBg + ' ' + theme.primaryBgHover} text-white font-bold transition-colors shadow-md`}>{submitLabel}</button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -10694,7 +10961,7 @@
 
         const TaskCardInner = (({ task, checkins, activeChild, globalDates, theme, inventory, onUseSkipCard, equippedGear, onEarlyComplete }) => {
             const record = checkins[activeChild]?.[task.id] || {};
-            const currentCount = Object.keys(record).length;
+            const currentCount = (task.multiCheckin && (task.frequencyType || "count") === "daily_must") ? getTaskTotalSessions(record) : Object.keys(record).length;
             const frequencyType = task.frequencyType || 'count';
             // 每日必做/每周选做不按目标次数判定完结，由周结算发放完成奖励
             const isCountType = frequencyType === 'count';
@@ -10712,12 +10979,18 @@
             const weeklyTarget = (task.weeklyTargetCount ?? 3);
             const weekRemain = Math.max(0, weeklyTarget - weekDone);
             const weekProgress = frequencyType === 'weekly_optional' ? Math.min(100, (weekDone / weeklyTarget) * 100) : 0;
+            const isMultiTask = task.multiCheckin && frequencyType === 'daily_must';
+            const effectiveSessionCount = isMultiTask ? getTaskTotalSessions(record) : Object.keys(record).length;
+            const todaySessions = isMultiTask ? getCheckinSessionCount(record, today) : (!!record[today] ? 1 : 0);
+            const todayMinutes = isMultiTask ? getCheckinMinutes(record, today) : (record[today] || 0);
+            const todayUnits = isMultiTask ? getCheckinUnits(record, today) : 0;
+            const unitLabel = isMultiTask ? (task.multiUnitLabel || '') : '';
             const stats = (() => {
-                    const totalMinutes = Object.values(record).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
-                    const avg = currentCount > 0 ? Math.round(totalMinutes / currentCount) : 0;
+                    const totalMinutes = isMultiTask ? getTaskTotalMinutes(record) : Object.values(record).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+                    const avg = effectiveSessionCount > 0 ? Math.round(totalMinutes / effectiveSessionCount) : 0;
                     const targetDate = new Date(task.deadline || globalDates.end);
                     const progress = isCountType ? Math.min(100, (currentCount / targetCount) * 100) : (frequencyType === 'weekly_optional' ? weekProgress : 0);
-                    const baseIncome = currentCount * task.reward;
+                    const baseIncome = effectiveSessionCount * task.reward;
                     let totalIncome = baseIncome;
                     if (isCompleted) totalIncome += (task.completedReward || 0);
                     return { avg, targetDate, progress, totalIncome };
@@ -10782,12 +11055,18 @@
 							)}
 						</div>
 						<div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
-							<div className="bg-gray-50 rounded-lg p-2 flex flex-col items-center justify-center gap-0.5"><FileText className="w-3.5 h-3.5 text-amber-500" /><span className="text-center">累积<br/><span className="font-bold text-gray-700">{currentCount}次</span></span></div>
+							<div className="bg-gray-50 rounded-lg p-2 flex flex-col items-center justify-center gap-0.5"><FileText className="w-3.5 h-3.5 text-amber-500" /><span className="text-center">累积<br/><span className="font-bold text-gray-700">{isMultiTask ? effectiveSessionCount : currentCount}次</span></span></div>
 							<div className="bg-gray-50 rounded-lg p-2 flex flex-col items-center justify-center gap-0.5"><Clock className="w-3.5 h-3.5 text-gray-400" /><span className="text-center">均时<br/><span className="font-bold text-gray-700">{stats.avg}分</span></span></div>
 							<div className="bg-gray-50 rounded-lg p-2 flex flex-col items-center justify-center gap-0.5"><Target className="w-3.5 h-3.5 text-gray-400" /><span className="text-center">截止<br/><span className="font-bold text-gray-700">{stats.targetDate.getMonth()+1}/{stats.targetDate.getDate()}</span></span></div>
 						</div>
 					</div>
-                    {hasSkipCard && !isCheckedToday && !isCompleted && (
+                    				{/* 多次打卡：今日打卡汇总 */}
+				{isMultiTask && todaySessions > 0 && (
+					<div className="mt-2 bg-purple-50 border border-purple-200 rounded-lg p-2 text-[10px] text-purple-700">
+						📋 今日已打卡 {todaySessions} 次 · 累计 {todayMinutes} 分钟{unitLabel ? ` · ${todayUnits}${unitLabel}` : ''}
+					</div>
+				)}
+					{hasSkipCard && !isCheckedToday && !isCompleted && (
                          <button onClick={() => onUseSkipCard(task)} className="mt-3 w-full py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold border border-indigo-100 hover:bg-indigo-100 transition-colors">使用免作业金牌跳过</button>
                     )}
 					{!isCompleted && currentCount > 0 && (
@@ -12877,6 +13156,9 @@
         });
 
         const App = () => {
+            // ===== 多次打卡辅助函数 (Phase 2) — var declarations for hoisting =====
+            
+
 			const [activeChild, setActiveChild] = useState(() => {
 				try {
 					const savedProfiles = JSON.parse(localStorage.getItem('app_profiles_v1'));
@@ -13169,6 +13451,25 @@
 
             const [tasks, setTasks] = useStickyState(DEFAULT_TASKS, 'app_tasks_v2');
             const [checkins, setCheckins] = useStickyState({}, 'app_checkins_v2');
+            // 数据迁移：为已存在的任务补充多次打卡相关字段 (Phase 11)
+            const migrationDoneRef = React.useRef(false);
+            React.useEffect(() => {
+                if (migrationDoneRef.current) return;
+                migrationDoneRef.current = true;
+                let needsUpdate = false;
+                const updated = {};
+                Object.entries(tasks).forEach(([child, taskList]) => {
+                    if (!Array.isArray(taskList)) return;
+                    const defaults = { multiCheckin: false, multiUnitLabel: '', bonusThreshold: 0, bonusThresholdType: 'count', bonusType: 'wheel', bonusMultiplier: 2 };
+                    const newList = taskList.map(t => {
+                        const missing = {};
+                        Object.entries(defaults).forEach(([k, v]) => { if (t[k] === undefined) { missing[k] = v; needsUpdate = true; } });
+                        return Object.keys(missing).length > 0 ? { ...t, ...missing } : t;
+                    });
+                    updated[child] = newList;
+                });
+                if (needsUpdate) setTasks(prev => ({ ...prev, ...updated }));
+            }, []);
 			// === 新增记录家长豁免的日期 ===
 			const [exemptedDays, setExemptedDays] = useStickyState({}, 'app_exempted_days_v1');
 			// --- 【新增】核心逻辑：动态计算进行中和已达成的任务 ---
@@ -13183,7 +13484,9 @@
 						if (task.earlyCompleted) { completed.push(task); } else { ongoing.push(task); }
 						return;
 					}
-					const count = Object.keys(checkins[deferredActiveChild]?.[task.id] || {}).length;
+					const count = (task.multiCheckin && freq === "daily_must")
+						? getTaskTotalSessions(checkins[deferredActiveChild]?.[task.id] || {})
+						: Object.keys(checkins[deferredActiveChild]?.[task.id] || {}).length;
 					if (count >= (task.targetCount || 0)) {
 						completed.push(task);
 					} else {
@@ -13492,7 +13795,7 @@
                     const levelInfo = (() => {
                         let xp = 0;
                         const childCheckins = checkins[name] || {};
-                        xp += Object.values(childCheckins).reduce((sum, taskRecord) => sum + Object.keys(taskRecord).length, 0) * 10;
+                        xp += Object.values(childCheckins).reduce((sum, taskRecord) => sum + getTaskTotalSessions(taskRecord), 0) * 10;
                         const childTasks = tasks[name] || [];
                         let earnedGold = 0;
                         childTasks.forEach(task => {
@@ -13638,19 +13941,32 @@
                         const currentCount = Object.keys(record).length;
                         
                         Object.keys(record).forEach(date => {
-                            // 【新增】如果这笔打卡已经记录在历史账单里了，这里就跳过，防止重复计算资产
+                            const val = record[date];
+                            // 多次打卡数组
+                            if (Array.isArray(val)) {
+                                val.forEach(entry => {
+                                    const t = entry.t || 0;
+                                    const histKey = t ? `${child}-TASK-${task.id}-${date}_${t}` : `${child}-TASK-${task.id}-${date}`;
+                                    if (cWheelHistory[histKey]) return;
+                                    let multiplier = 1;
+                                    const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
+                                    if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
+                                        multiplier = childBuffs.investMultiplier;
+                                    }
+                                    total += task.reward * multiplier;
+                                });
+                                return;
+                            }
+                            // 旧格式：数字
                             const historyKey = `${child}-TASK-${task.id}-${date}`;
                             if (cWheelHistory[historyKey]) return;
-
-                            // 下面是兼容旧数据的逻辑
                             let multiplier = 1;
-                            // 【修改】日期必须 >= 有效开始日 且 <= 过期时间 才享受倍率。旧存档缺 investStart 时用「过期日-30天」推算，兼容历史数据
-							const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
-							if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
-								multiplier = childBuffs.investMultiplier;
-							}
-							total += task.reward * multiplier;
-                        });
+                            const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
+                            if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
+                                multiplier = childBuffs.investMultiplier;
+                            }
+                            total += task.reward * multiplier;
+                        })
 
                         // 每日必做/每周选做：仅 earlyCompleted 时计入完成奖励（已从周结算移除）
                         const freq = task.frequencyType || 'count';
@@ -14640,16 +14956,18 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         type = 'income';
 					// 【新增】解析打卡固化记录，让明细显示正确的名字
                     } else if (key.includes('TASK')) {
-                         // key格式: Child-TASK-TaskId-YYYY-MM-DD
-                
-						// 【修复】用正则提取末尾的 YYYY-MM-DD 格式日期，兼容不同长度的 taskId
-						const dateMatch = key.match(/(\d{4}-\d{2}-\d{2})$/);
-						const dateStr = dateMatch ? dateMatch[1] : key.slice(-10);
+                         // key格式: Child-TASK-TaskId-YYYY-MM-DD 或 Child-TASK-TaskId-YYYY-MM-DD_timestamp
 
-						// TaskId：从 "-TASK-" 后面、日期前面的部分提取
-						const taskId = key.split('-TASK-')[1]?.replace(/-\d{4}-\d{2}-\d{2}$/, '') || '';
+						// 【修复】支持多次打卡的 _timestamp 后缀
+						const dateMatch = key.match(/(\d{4}-\d{2}-\d{2})_(\d{13})$/);
+						const simpleDateMatch = key.match(/(\d{4}-\d{2}-\d{2})$/);
+						const dateStr = dateMatch ? dateMatch[1] : (simpleDateMatch ? simpleDateMatch[1] : key.slice(-10));
+						const isMulti = !!dateMatch;
 
-						date = dateStr; // 现在 date 就是完整的 "2026-02-15" 了
+						// TaskId：从 "-TASK-" 后面、日期前面的部分提取（兼容 _timestamp 后缀）
+						const taskId = key.split('-TASK-')[1]?.replace(/-?\d{4}-\d{2}-\d{2}(_\d{13})?$/, '') || '';
+
+						date = dateStr;
                          const task = (tasks[deferredActiveChild]||[]).find(t => t.id === taskId);
                          // 计算倍率用于显示：如果金额除以基础奖励 > 1，说明有加成
                          let label = task ? `打卡：${task.name}` : '任务打卡';
@@ -14657,9 +14975,17 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                              const mult = Math.round(value / task.reward);
                              label += ` (x${mult})`;
                          }
+                         if (isMulti) label += ' 📚';
                          name = label;
                          type = 'income';
-					} else if (key.includes('HOMEWORK') && !key.includes('REVOKE')) {
+} else if (key.includes('BONUS_MULTI') && key.indexOf('-BONUS_MULTI-') > 0) {
+                        // 多次打卡连击奖励 BONUS_MULTI
+						const dateMatch2 = key.match(/(\d{4}-\d{2}-\d{2})/);
+						date = dateMatch2 ? dateMatch2[1] : '';
+						const btId = key.split('-BONUS_MULTI-')[1]?.split('-')[0] || '';
+						const btTask = (tasks[deferredActiveChild]||[]).find(t => t.id === btId);
+						name = btTask ? `连击奖励：${btTask.name}` : '连击奖励';
+						} else if (key.includes('HOMEWORK') && !key.includes('REVOKE')) {
                         if (key.includes('__')) {
                             const parts = key.split('__');
                             const head = parts[0] || '';
@@ -14746,7 +15072,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 
                 // 1. 打卡经验: 10 XP/次
                 const childCheckins = checkins[child] || {};
-                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => sum + Object.keys(taskRecord).length, 0);
+                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => sum + getTaskTotalSessions(taskRecord), 0);
                 xp += totalCheckinsCount * 10;
                 
                 // 2. 财富经验: 1 XP/1 金元宝 (净收入，不扣除消费)
@@ -17151,6 +17477,7 @@ ${context}
                 }
             };
 
+            
             const handleCellClick = (taskId, date) => {
                 const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
                 if (!task) return;
@@ -17158,8 +17485,15 @@ ${context}
                 if (task.deadline && date > task.deadline) return;
                 const childData = checkins[deferredActiveChild] || {};
                 const taskData = childData[taskId] || {};
-                const duration = taskData[date];
-                setEditingEntry({ taskId, date, duration: duration || '', isNew: duration === undefined });
+                const rawVal = taskData[date];
+                const isMultiTaskType = task.multiCheckin && task.frequencyType === 'daily_must';
+                const hasExistingRecord = rawVal !== undefined && rawVal !== null && rawVal !== '' && !(isMultiTaskType && Array.isArray(rawVal) && rawVal.length === 0);
+                // 多次打卡：始终让用户输入本次时长，不预设值
+                const existingDuration = isMultiTaskType ? ''
+                    : hasExistingRecord
+                        ? (typeof rawVal === 'number' ? rawVal : (rawVal === '免' ? '' : (rawVal || '')))
+                        : '';
+                setEditingEntry({ taskId, date, duration: existingDuration || '', isNew: !hasExistingRecord, sessionIndex: null });
             };
 
 			// === 处理断签单元格的点击操作 ===
@@ -17170,86 +17504,141 @@ ${context}
 			};
 
             // saveCheckin function updated to include buffs and shop logic
-            const saveCheckin = (duration) => {
+            const saveCheckin = (duration, units = 0, sessionIndex = null) => {
                 if (saveCheckinLockRef.current) return; // 防重复提交
                 saveCheckinLockRef.current = true;
                 setTimeout(() => { saveCheckinLockRef.current = false; }, 500);
-                // --- 【新增】全能数据统计更新函数 ---
 
                 if (!editingEntry) return;
-                if (!duration || isNaN(duration) || parseInt(duration) <= 0) return; 
-                
+                if (!duration || isNaN(duration) || parseInt(duration) <= 0) return;
+
+                const currentTask = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId);
+                if (!currentTask) return;
+                const isMulti = currentTask.multiCheckin && currentTask.frequencyType === 'daily_must';
+                const isEditMode = isMulti && sessionIndex !== null && sessionIndex >= 0;
+                // 多次打卡且设置了单位标签时，单位不能为 0
+                if (isMulti && currentTask.multiUnitLabel && (!units || parseInt(units) <= 0)) {
+                    showToast('warning', `请填写本次完成的${currentTask.multiUnitLabel}数量（至少为 1）`);
+                    return;
+                }
+                // 编辑模式：使用原有时间戳，保持 wheelHistory key 不变
+                const sessionTimestamp = isMulti && isEditMode ? 0 : (isMulti ? Date.now() : 0);
+
                 const newCheckins = { ...checkins };
                 const childData = newCheckins[activeChild] || {};
-                const taskData = childData[editingEntry.taskId] || {}; 
-                
-                // 设置打卡时间（支持补签）
-                newCheckins[activeChild] = { ...childData, [editingEntry.taskId]: { ...taskData, [editingEntry.date]: parseInt(duration) } };
+                const taskData = childData[editingEntry.taskId] || {};
+
+                // 多次打卡：数组存储；普通打卡：数字存储
+                if (isMulti) {
+                    const existingVal = taskData[editingEntry.date];
+                    const existingArr = typeof existingVal === 'number' ? [{ m: existingVal, u: 0, t: Date.now() - 1 }]
+                        : (Array.isArray(existingVal) ? [...existingVal] : []);
+                    if (isEditMode) {
+                        // 编辑：覆盖指定索引的条目，保留原始时间戳
+                        existingArr[sessionIndex] = { m: parseInt(duration), u: parseInt(units) || 0, t: existingArr[sessionIndex].t || Date.now() };
+                    } else {
+                        // 新增：追加
+                        existingArr.push({ m: parseInt(duration), u: parseInt(units) || 0, t: Date.now() });
+                    }
+                    newCheckins[activeChild] = { ...childData, [editingEntry.taskId]: { ...taskData, [editingEntry.date]: existingArr } };
+                } else {
+                    newCheckins[activeChild] = { ...childData, [editingEntry.taskId]: { ...taskData, [editingEntry.date]: parseInt(duration) } };
+                }
                 setCheckins(newCheckins);
                 setEditingEntry(null);
-                triggerSyncUpload(); // 自动云同步				// 【新增：埋点记录打卡】
-                const currentTask = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId);
-                if (currentTask) {
-                    // 1. 计算当前时刻的真实倍率
-                    let multiplier = 1;
-                    const childBuffs = activeBuffs[activeChild] || {};
-                    // 判断是否有有效的投资卡（只要没过期，且倍率>1）
-                    // 注意：这里使用 getLocalDateKey(0) 确保跟今天的日期做比较
-                    const today = getLocalDateKey(0);
-                    // 只要当前日期在有效期内，就应用倍率。
-                    // 修复逻辑：不再依赖 editingEntry.date，而是依赖“操作发生时”的 buff 状态。
-                    // 但考虑到补签卡（item_fire），如果补签的是过去，应该享受“那一天的Buff”吗？
-                    // 通常逻辑是：只有Buff生效期间进行的操作才算。
-                    // 简单起见，只要现在Buff没过期，这笔打卡就享受加成。
-                    const investStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : today);
-                    if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && today <= childBuffs.investExpire && today >= investStart) {
-                        multiplier = childBuffs.investMultiplier;
-                    }
-
-                    // 2. 计算固化奖励金额
-                    const finalReward = currentTask.reward * multiplier;
-
-                    // 3. 写入历史账单 (实现快照)
-                    // Key 格式: Child-TASK-TaskId-Date
-                    const historyKey = `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
-                    setWheelHistory(prev => ({
-                        ...prev,
-                        [historyKey]: finalReward
-                    }));
-
-                    // 4. 埋点统计 (使用补签日期或今天的日期)
-                    const statDateKey = editingEntry.date || getLocalDateKey(0);
-                    updateStats(activeChild, 'checkin', 1, { taskName: currentTask.name, dateKey: statDateKey });
-                    
-                    if (multiplier > 1) {
-                        updateStats(activeChild, 'gold_earn', finalReward, { source: 'invest_bonus', dateKey: statDateKey });
-                    } else {
-                        updateStats(activeChild, 'gold_earn', finalReward, { source: 'task', dateKey: statDateKey });
-                    }
+                triggerSyncUpload(); // 自动云同步
+                // 1. 计算当前时刻的真实倍率
+                let multiplier = 1;
+                const childBuffs = activeBuffs[activeChild] || {};
+                const today = getLocalDateKey(0);
+                const investStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : today);
+                if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && today <= childBuffs.investExpire && today >= investStart) {
+                    multiplier = childBuffs.investMultiplier;
                 }
 
+                // 2. 金元宝计算
+                // 有单位标签时按累计单位数逐进计算（每个单位独立乘阶），无单位标签时按打卡次数
+                let finalReward;
+                if (isMulti && currentTask.multiUnitLabel) {
+                    const prevUnits = isEditMode ? todaySessions.slice(0, sessionIndex).reduce((s, e) => s + (e.u || 0), 0) : getCheckinUnits(taskData, editingEntry.date);
+                    const thisUnits = parseInt(units) || 1;
+                    let total = 0;
+                    for (let u = 1; u <= thisUnits; u++) {
+                        total += currentTask.reward * (prevUnits + u) * multiplier;
+                    }
+                    finalReward = total;
+                } else if (isMulti) {
+                    const sessionN = isEditMode ? (sessionIndex + 1) : (getCheckinSessionCount(taskData, editingEntry.date) + 1);
+                    finalReward = currentTask.reward * sessionN * multiplier;
+                } else {
+                    finalReward = currentTask.reward * multiplier;
+                }
+                // 3. 写入历史账单（实现快照）
+                // 编辑模式：使用原始时间戳构建 key，覆盖旧值；新增模式：使用新时间戳
+                const editTs = isEditMode ? (existingArr[sessionIndex].t || Date.now()) : 0;
+                const histTs = isEditMode ? editTs : sessionTimestamp;
+                const historyKey = isMulti
+                    ? `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}_${histTs}`
+                    : `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
+                setWheelHistory(prev => ({
+                    ...prev,
+                    [historyKey]: finalReward
+                }));
+
+                // 4. 埋点统计（编辑模式不重复统计 checkin 次数，只更新 gold_earn）
+                const statDateKey = editingEntry.date || getLocalDateKey(0);
+                if (!isEditMode) updateStats(activeChild, 'checkin', 1, { taskName: currentTask.name, dateKey: statDateKey });
+                if (multiplier > 1) {
+                    updateStats(activeChild, 'gold_earn', finalReward, { source: 'invest_bonus', dateKey: statDateKey });
+                } else {
+                    updateStats(activeChild, 'gold_earn', finalReward, { source: 'task', dateKey: statDateKey });
+                }
                 // --- 处理双倍经验Buff ---
-                const childBuffs = activeBuffs[activeChild] || {};
-                if (childBuffs.xpBoost > 0 && childBuffs.xpBoostCount > 0) {
-                    const extraXP = 10 * (childBuffs.xpBoost - 1); // 基础10XP，额外加成
+                const xpBuffs = activeBuffs[activeChild] || {};
+                if (xpBuffs.xpBoost > 0 && xpBuffs.xpBoostCount > 0) {
+                    const extraXP = 10 * (xpBuffs.xpBoost - 1); // 基础10XP，额外加成
                     const key = `${activeChild}-BUFF_XP-${Date.now()}`;
                     setXpHistory(prev => ({ ...prev, [key]: extraXP }));
                     
                     setActiveBuffs(prev => ({
                         ...prev,
                         [activeChild]: {
-                            ...childBuffs,
-                            xpBoostCount: childBuffs.xpBoostCount - 1,
-                            xpBoost: childBuffs.xpBoostCount - 1 <= 0 ? 0 : childBuffs.xpBoost
+                            ...xpBuffs,
+                            xpBoostCount: xpBuffs.xpBoostCount - 1,
+                            xpBoost: xpBuffs.xpBoostCount - 1 <= 0 ? 0 : xpBuffs.xpBoost
                         }
                     }));
                 }
 
                 // --- 发放星星奖励 ---
                 const STAR_PER_CHECKIN = 3;
-                const starKey = `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
+                const starKey = isMulti
+                    ? `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}_${sessionTimestamp}`
+                    : `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
                 if (!starHistory[starKey]) {
                     setStarHistory(prev => ({ ...prev, [starKey]: STAR_PER_CHECKIN }));
+                }
+
+                // --- 多次打卡奖励触发器 (Phase 5.5) ---
+                if (isMulti && editingEntry.isNew && currentTask.bonusThreshold > 0) {
+                    const taskRecord = checkins[activeChild]?.[currentTask.id] || {};
+                    const todaySessions = getCheckinEntries(taskRecord, today);
+                    const cumulative = currentTask.bonusThresholdType === 'units'
+                        ? todaySessions.reduce((s, e) => s + (e.u || 0), 0)
+                        : todaySessions.length + 1;
+                    if (cumulative % currentTask.bonusThreshold === 0) {
+                        if (currentTask.bonusType === 'wheel') {
+                            setTimeout(() => handleLaunchExtraWheel('gold'), 300);
+                            showToast('success', `🎡 累计完成 ${cumulative} 次！转盘启动！`);
+                        } else {
+                            // 金元宝翻倍 — 在基础之上再乘以 bonusMultiplier
+                            const bonusGold = finalReward * (currentTask.bonusMultiplier - 1);
+                            const bonusKey = `${activeChild}-BONUS_MULTI-${editingEntry.taskId}-${editingEntry.date}_${sessionTimestamp}`;
+                            setWheelHistory(prev => ({ ...prev, [bonusKey]: bonusGold }));
+                            updateStats(activeChild, 'gold_earn', bonusGold, { source: 'bonus_multi', dateKey: statDateKey });
+                            showToast('success', `🔥 连击奖励！金元宝 ×${currentTask.bonusMultiplier}！额外获得 ${bonusGold} ！`);
+                        }
+                    }
                 }
 
                 // --- 打卡联动：激活宠物心情 +5 ---
@@ -17269,7 +17658,7 @@ ${context}
                 const task = currentTasks.find(t => t.id === editingEntry.taskId);
                 if (!task) return; // 找不到任务就退出
 
-                const today = getLocalDateKey(0);
+                // today 已在上文 (L17430) 声明，此处复用
                 const now = new Date();
                 
                 // --- 新增变量：用于暂存计算出的连续天数，传给 checkAchievements ---
@@ -17377,7 +17766,7 @@ ${context}
                 checkAchievements('checkin', { isWheelTriggered, currentEarlyStreak, currentWeekendStreak, isDeadlineClose, checkinTime: new Date() }, { checkins: newCheckins });
                 
                 // 检测打卡里程碑
-                const totalCheckins = Object.values(newCheckins[activeChild] || {}).reduce((sum, taskRecord) => sum + Object.keys(taskRecord).length, 0);
+                const totalCheckins = Object.values(newCheckins[activeChild] || {}).reduce((sum, taskRecord) => sum + getTaskTotalSessions(taskRecord), 0);
                 const milestoneCheckins = [10, 50, 100, 200];
                 milestoneCheckins.forEach(count => {
                     const milestoneId = `milestone-checkin-${count}-${activeChild}`;
@@ -17747,32 +18136,83 @@ ${context}
                 }, 3000);
             };
 
-            const removeCheckin = () => {
+            const removeCheckin = (sessionIndex = null) => {
                 if (!editingEntry) return;
-				// 同步删除固化的金币账单
-                const historyKey = `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
-                if (wheelHistory[historyKey]) {
-                    setWheelHistory(prev => {
-                        const newHistory = { ...prev };
-                        delete newHistory[historyKey];
-                        return newHistory;
-                    });
-                }
-                // 同步删除星星记录
-                const starKey = `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
-                setStarHistory(prev => {
-                    if (!prev[starKey]) return prev;
+                const task = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId);
+                const isMulti = task?.multiCheckin && task?.frequencyType === 'daily_must';
+                const isSingleDelete = isMulti && sessionIndex !== null && sessionIndex >= 0;
+
+                // 删除 wheelHistory key(s)
+                const histPrefix = `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
+                setWheelHistory(prev => {
                     const next = { ...prev };
-                    delete next[starKey];
+                    if (isSingleDelete) {
+                        // 只删指定 sessionIndex 对应的 key
+                        const taskRecord = checkins[activeChild]?.[task.id];
+                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
+                        if (entries[sessionIndex]) {
+                            const ts = entries[sessionIndex].t;
+                            const key = ts ? `${histPrefix}_${ts}` : histPrefix;
+                            delete next[key];
+                        }
+                    } else if (isMulti) {
+                        Object.keys(next).forEach(k => { if (k === histPrefix || k.startsWith(histPrefix + '_')) delete next[k]; });
+                    } else { delete next[histPrefix]; }
+                    return next;
+                });
+                // 同步删除星星记录
+                const starPrefix = `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
+                setStarHistory(prev => {
+                    const next = { ...prev };
+                    if (isSingleDelete) {
+                        const taskRecord = checkins[activeChild]?.[task.id];
+                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
+                        if (entries[sessionIndex]) {
+                            const ts = entries[sessionIndex].t;
+                            const key = ts ? `${starPrefix}_${ts}` : starPrefix;
+                            delete next[key];
+                        }
+                    } else if (isMulti) {
+                        Object.keys(next).forEach(k => { if (k === starPrefix || k.startsWith(starPrefix + '_')) delete next[k]; });
+                    } else { delete next[starPrefix]; }
+                    return next;
+                });
+                // 同步删除 BONUS_MULTI 记录
+                setWheelHistory(prev => {
+                    const next = { ...prev };
+                    const bonusPrefix = `${activeChild}-BONUS_MULTI-${editingEntry.taskId}-${editingEntry.date}`;
+                    if (isSingleDelete) {
+                        const taskRecord = checkins[activeChild]?.[task.id];
+                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
+                        if (entries[sessionIndex]) {
+                            const ts = entries[sessionIndex].t;
+                            const key = `${bonusPrefix}_${ts}`;
+                            delete next[key];
+                            delete next[bonusPrefix]; // 兼容无后缀 key
+                        }
+                    } else {
+                        Object.keys(next).forEach(k => { if (k.startsWith(bonusPrefix)) delete next[k]; });
+                    }
                     return next;
                 });
 
+                // 删除 checkins 数据
                 setCheckins(prev => {
                     const childData = prev[activeChild] || {};
-                    const taskData = childData[editingEntry.taskId] || {};
-                    const newTaskData = { ...taskData };
-                    delete newTaskData[editingEntry.date];
-                    return { ...prev, [activeChild]: { ...childData, [editingEntry.taskId]: newTaskData } };
+                    const taskData = { ...(childData[editingEntry.taskId] || {}) };
+                    if (isSingleDelete) {
+                        const val = taskData[editingEntry.date];
+                        const arr = typeof val === 'number' ? [{ m: val, u: 0, t: 0 }] : (Array.isArray(val) ? [...val] : []);
+                        arr.splice(sessionIndex, 1);
+                        if (arr.length === 0) {
+                            delete taskData[editingEntry.date];
+                        } else {
+                            taskData[editingEntry.date] = arr;
+                        }
+                    } else {
+                        delete taskData[editingEntry.date];
+                    }
+                    return { ...prev, [activeChild]: { ...childData, [editingEntry.taskId]: taskData } };
                 });
                 setEditingEntry(null);
             };
@@ -17799,7 +18239,14 @@ ${context}
                     // 每日必做相关：默认周完成度 80% 视为达标
                     dailyCompletionThresholdPercent: 80,
                     // 打卡即时奖励：默认无
-                    onCheckinReward: ''
+                    onCheckinReward: '',
+                    // 多次打卡相关（仅 daily_must 生效）
+                    multiCheckin: false,
+                    multiUnitLabel: '',
+                    bonusThreshold: 0,
+                    bonusThresholdType: 'count',
+                    bonusType: 'wheel',
+                    bonusMultiplier: 2
                 };
                 setTasks(prev => ({ ...prev, [activeChild]: [...(prev[activeChild]||[]), newTask] }));
             };
@@ -18199,7 +18646,7 @@ ${context}
                                             if (profile.id === 'TESTER') profileXP = 40000;
                                             else {
                                                 const childCheckins = checkins[profile.name] || {};
-                                                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => sum + Object.keys(taskRecord).length, 0);
+                                                const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => sum + getTaskTotalSessions(taskRecord), 0);
                                                 profileXP += totalCheckinsCount * 10;
                                             }
                                          }
@@ -18669,8 +19116,11 @@ ${context}
                                   const todayOrderedTasks = [...dailyMust, ...weeklyOptional, ...countType];
                                   return todayOrderedTasks.map(task => {
                                       const today = getLocalDateKey(0);
-                                      const record = checkins[activeChild]?.[task.id]?.[today];
-                                      const isChecked = record !== undefined;
+                                      const rawRecord = checkins[activeChild]?.[task.id]?.[today];
+                                      // 多次打卡支持：数组时需要提取分钟总数用于显示
+                                      const displayMinutes = typeof rawRecord === 'number' ? rawRecord : (Array.isArray(rawRecord) ? rawRecord.reduce((s, e) => s + (e.m || 0), 0) : rawRecord);
+                                      const isChecked = rawRecord !== undefined;
+                                      const record = displayMinutes; // 兼容后续代码
                                       const isBeforeStart = task.startDate && today < task.startDate;
                                       const isAfterEnd = task.deadline && today > task.deadline;
                                       if (isBeforeStart || isAfterEnd) return null;
@@ -19011,7 +19461,7 @@ ${context}
 					  onSelect={handleSelectWheel} 
 				  />
 
-                  <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} />
+                  <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} />
 
                   {/* 断签豁免弹窗 */}
                   {exemptionModal && (() => {
