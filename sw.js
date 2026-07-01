@@ -31,8 +31,8 @@ self.addEventListener('push', (event) => {
     event.waitUntil(
         self.registration.showNotification(data.title, {
             body: data.body,
-            icon: data.icon || 'https://daka-tool.vip/img/icon-192.png',
-            badge: 'https://daka-tool.vip/img/badge-72.png',
+            icon: data.icon || '/img/icon.svg',
+            badge: '/img/icon.svg',
             tag: data.tag || 'daily-reminder',
             renotify: true,
             data: { url: data.url || 'https://daka-tool.vip/' },
