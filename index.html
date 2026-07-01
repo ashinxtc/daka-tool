@@ -16045,10 +16045,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         return;
                     }
 
-                    // 时间戳比较：仅在云端数据更新时才覆盖（修复 Bug1）
+                    // 时间戳比较：云端更新时间戳严格大于本地才合并（相等时以本地为准，避免未上传的新数据被旧云端覆盖）
                     const cloudTs = cloudData._syncTs || 0;
                     const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
-                    if (cloudTs < localTs) {
+                    if (cloudTs <= localTs) {
                         // 云端数据更旧，跳过覆盖，直接上传更新云端（不释放锁）
                         const data = collectSyncData();
                         try {
@@ -16103,7 +16103,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const triggerSyncUpload = React.useCallback(() => {
                 if (!syncCode || syncLockRef.current) return;
                 if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
-                syncDebounceRef.current = setTimeout(() => syncToCloud(), 10000);
+                syncDebounceRef.current = setTimeout(() => syncToCloud(), 2000);
             }, [syncCode]);
 
             // 页面加载时自动同步 + 定期检查
