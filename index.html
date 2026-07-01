@@ -12594,6 +12594,19 @@ function getCheckinEntries(taskRecord, dateKey) {
                     }, 400);
                     return () => { clearTimeout(timerRef.current); delete window._pendingWrites[key]; };
                 }, [key, value]);
+                // 监听云端同步合并事件，从 localStorage 刷新 state 而无需 reload
+                useEffect(() => {
+                    const handler = () => {
+                        try {
+                            const fresh = localStorage.getItem(key);
+                            if (fresh !== null) {
+                                setValue(JSON.parse(fresh));
+                            }
+                        } catch (e) {}
+                    };
+                    window.addEventListener('_syncDataMerged', handler);
+                    return () => window.removeEventListener('_syncDataMerged', handler);
+                }, [key]);
                 return [value, setValue];
             };
 		
@@ -16086,9 +16099,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     setTimeout(() => setSyncStatus(''), 3000);
 
                     if (merged > 0) {
-                        // 设置标志防止 useStickyState 在重载前覆盖（修复 Bug2）
+                        // 派发事件让所有 useStickyState 从 localStorage 刷新（替代 reload）
                         window._syncReloading = true;
-                        setTimeout(() => window.location.reload(), 1000);
+                        window.dispatchEvent(new CustomEvent('_syncDataMerged'));
+                        setTimeout(() => { window._syncReloading = false; }, 1000);
                     }
                 } catch (e) {
                     console.error('Sync download failed:', e);
