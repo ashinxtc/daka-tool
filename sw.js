@@ -16,6 +16,18 @@ self.addEventListener('push', (event) => {
         if (event.data) data = event.data.json();
     } catch (e) {}
 
+    // 静默同步触发：不发通知，直接通知前端页面拉取数据
+    if (data.triggerSync) {
+        event.waitUntil(
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+                clientList.forEach(client => {
+                    client.postMessage({ type: 'triggerSync', syncCode: data.syncCode });
+                });
+            })
+        );
+        return;
+    }
+
     event.waitUntil(
         self.registration.showNotification(data.title, {
             body: data.body,

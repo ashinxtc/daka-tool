@@ -15994,6 +15994,18 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const acquireSyncLock = () => { if (syncLockRef.current) return false; syncLockRef.current = true; return true; };
             const releaseSyncLock = () => { syncLockRef.current = false; };
 
+            // 通知其他设备有新数据（通过 push worker 触发静默同步）
+            const notifyOtherDevices = () => {
+                if (!syncCode || !activeChild) return;
+                try {
+                    fetch(`${PUSH_WORKER_URL}/api/notify-sync`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ syncCode, excludeChild: activeChild })
+                    }).catch(() => {}); // 静默失败，不影响主流程
+                } catch (e) {}
+            };
+
             const syncToCloud = async () => {
                 if (!syncCode) return;
                 if (!acquireSyncLock()) return; // 并发保护
@@ -16011,6 +16023,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     localStorage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
+                    // 通知其他设备有新数据，触发它们拉取同步
+                    notifyOtherDevices();
                     setTimeout(() => setSyncStatus(''), 3000);
                 } catch (e) {
                     console.error('Sync upload failed:', e);
@@ -16141,7 +16155,15 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }).then(sub => {
                     setPushSubscribed(!!sub);
                 }).catch(() => {});
-            }, []);
+                // 监听 Service Worker 发来的同步触发消息
+                const swMessageHandler = (event) => {
+                    if (event.data?.type === 'triggerSync' && event.data?.syncCode === syncCode) {
+                        syncFromCloud();
+                    }
+                };
+                navigator.serviceWorker.addEventListener('message', swMessageHandler);
+                return () => navigator.serviceWorker.removeEventListener('message', swMessageHandler);
+            }, [syncCode]);
 
             // 请求通知权限并订阅
             const enablePushNotifications = async () => {
