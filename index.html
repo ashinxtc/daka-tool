@@ -10940,14 +10940,22 @@
                                     {!hasRepairCard && <p className="mt-2 text-xs text-gray-500">你可以去市集购买【普罗米修斯之火】来补签，或请家长在表头确认豁免。</p>}
                                 </div>
                                 {hasRepairCard && (
-                                    <>
+                                    <div className="space-y-3">
                                         <label className="text-xs text-gray-500 block mb-1 text-center">补签当日完成的分钟数</label>
                                         <div className="mb-3 relative">
-                                            <input type="number" min="1" max="999" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); useRepairCard(editingEntry, val); } }} className={`w-full text-center text-3xl font-bold border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 rounded-lg bg-amber-50/50 border border-amber-100`} placeholder="30" />
+                                            <input type="number" min="1" max="999" value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (isMulti && task.multiUnitLabel && unitsInputRef.current) { unitsInputRef.current.focus(); } else { useRepairCard(editingEntry, val, units); } } }} className={`w-full text-center text-3xl font-bold border-b-2 ${theme.primary} border-gray-200 focus:border-current focus:outline-none pb-2 rounded-lg bg-amber-50/50 border border-amber-100`} placeholder="30" />
                                             <span className="absolute right-4 bottom-3 text-gray-400 text-sm font-medium">分钟</span>
                                         </div>
-                                        <button onClick={() => useRepairCard(editingEntry, val)} className="w-full py-2.5 bg-amber-100 text-amber-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-amber-200"><span className="text-lg">🔥</span> 使用普罗米修斯之火补签（{val || 0} 分钟）</button>
-                                    </>
+                                        {isMulti && task.multiUnitLabel && (
+                                            <div className="mb-3 relative">
+                                                <input type="number" ref={unitsInputRef} min="1" max="999" value={unitsStr} onChange={(e) => { setUnitsStr(e.target.value); const n = parseInt(e.target.value); if (!isNaN(n) && n >= 0) setUnits(n); else if (e.target.value === '') setUnits(0); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); useRepairCard(editingEntry, val, units || 1); } }} className="w-full text-center text-2xl font-bold border-b-2 border-amber-200 focus:border-amber-400 focus:outline-none pb-2 bg-amber-50/50 rounded-lg border border-amber-100" placeholder="1" />
+                                                <span className="absolute right-3 bottom-2 text-amber-500 text-xs font-medium">本次完成{task.multiUnitLabel}</span>
+                                            </div>
+                                        )}
+                                        <button onClick={() => useRepairCard(editingEntry, val, units)} className="w-full py-2.5 bg-amber-100 text-amber-700 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-amber-200">
+                                            <span className="text-lg">🔥</span> 使用普罗米修斯之火补签（{val || 0} 分钟{task.multiUnitLabel ? ` · ${units || 1}${task.multiUnitLabel}` : ''}）
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         ) : (
@@ -15939,9 +15947,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             // 使用补签卡：支持传入完成分钟数，写入打卡记录并参与金元宝计算；并标记该打卡点为补签（显示火焰角标）
-            const useRepairCard = (entry, durationMinutes) => {
+            const useRepairCard = (entry, durationMinutes, units = 0) => {
                 if ((inventory[activeChild]?.['item_fire'] || 0) > 0) {
                     const minutes = Math.max(1, Math.min(999, parseInt(durationMinutes, 10) || 30));
+                    const task = (tasks[activeChild] || []).find(t => t.id === entry.taskId);
+                    const isMulti = task?.multiCheckin && task?.frequencyType === 'daily_must';
+                    const finalUnits = isMulti && task?.multiUnitLabel
+                        ? Math.max(1, parseInt(units, 10) || 1)
+                        : 0;
                     setInventory(prev => {
                         const childInv = prev[activeChild] || {};
                         const newCount = (childInv['item_fire'] || 0) - 1;
@@ -15949,7 +15962,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         if (newCount <= 0) delete newInv['item_fire'];
                         return { ...prev, [activeChild]: newInv };
                     });
-                    saveCheckin(minutes);
+                    saveCheckin(minutes, finalUnits);
                     setRepairedCheckins(prev => ({
                         ...prev,
                         [activeChild]: {
