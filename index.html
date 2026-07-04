@@ -7791,7 +7791,7 @@
                                 {status.gateStatus !== 'blocked' && (
                                     <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 text-[11px]">
                                         {status.bondItemBonus > 0 && <div className="flex justify-between"><span className="text-gray-400">亲密度加成 ({status.bondLevelName})</span><span className="text-emerald-600 font-bold">+{Math.round(status.bondItemBonus * 100)}%</span></div>}
-                                        {status.elementBonus > 0 && <div className="flex justify-between"><span className="text-gray-400">元素克制 ({elemIcons[status.petElement]}克{elemIcons[status.realmElement]})</span><span className="text-emerald-600 font-bold">+20%</span></div>}
+                                        {status.elementBonus > 0 && <div className="flex justify-between"><span className="text-gray-400">元素克制 ({elemIcons[status.petElement]}克{elemIcons[status.realmElement]})</span><span className="text-emerald-600 font-bold">+{Math.round(status.elementBonus * 100)}%</span></div>}
                                         {status.streakBonus.gold > 0 && <div className="flex justify-between"><span className="text-gray-400">打卡连击 ({status.streakDays}天)</span><span className="text-emerald-600 font-bold">+{Math.round(status.streakBonus.gold * 100)}%</span></div>}
                                         {status.skillBonus.goldBoost > 0 && <div className="flex justify-between"><span className="text-gray-400">宠物技能 ({status.skillBonus.skillName})</span><span className="text-emerald-600 font-bold">+{Math.round(status.skillBonus.goldBoost * 100)}%</span></div>}
                                         {status.skillBonus.xpBoost > 0 && <div className="flex justify-between"><span className="text-gray-400">宠物技能 ({status.skillBonus.skillName})</span><span className="text-blue-600 font-bold">经验+{Math.round(status.skillBonus.xpBoost * 100)}%</span></div>}
@@ -14515,7 +14515,7 @@
                     todayCount,
                     maxPerDay: cfg.maxPerDay,
                 };
-            }, [deferredActiveChild, activePet, petData, petAdventureStats, checkins, wheelHistory, tasks, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms]);
+            }, [deferredActiveChild, activePet, petData, petAdventureStats, checkins, wheelHistory, tasks, currentXP, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms]);
 
             // 开始探险
             // 探险出发防重复点击
@@ -14833,7 +14833,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         }
                     });
                 }
-            }, [petAdventures, petData, checkins, wheelHistory, tasks, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms, setWheelHistory, setXpHistory, setStarHistory, setPetData, setPetAdventureLog, setPetAdventureStats, setPetAdventures, checkAchievements, aiEnabled, deepseekApiKey, callDeepSeekAPI]);
+            }, [petAdventures, petData, checkins, wheelHistory, tasks, currentXP, petCatalog, petElements, adventureHelpers, adventureConfig, adventureRealms, setWheelHistory, setXpHistory, setStarHistory, setPetData, setPetAdventureLog, setPetAdventureStats, setPetAdventures, checkAchievements, aiEnabled, deepseekApiKey, callDeepSeekAPI]);
 
             // 自动检测探险完成（遍历所有 active 探险）
             const completingAdvRef = React.useRef(new Set());
