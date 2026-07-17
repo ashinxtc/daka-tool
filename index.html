@@ -12641,6 +12641,17 @@
                 });
             }
 
+            // === 逐 key 版本表：记录每个 app_* key 最后一次本地修改的时间戳 ===
+            // 同步合并时按 key 比版本（而非整包比时间戳），避免"改了 A 的设备覆盖了别人改的 B"
+            const markKeyVersion = (key) => {
+                try {
+                    const versions = JSON.parse(localStorage.getItem('_key_versions') || '{}');
+                    versions[key] = Date.now();
+                    localStorage.setItem('_key_versions', JSON.stringify(versions));
+                } catch (e) {}
+            };
+            window._markKeyVersion = markKeyVersion; // 供 useStickyState 之外的直写点调用
+
             const useStickyState = (defaultValue, key) => {
                 const [value, setValue] = useState(() => {
                     try {
@@ -12660,6 +12671,7 @@
                     timerRef.current = setTimeout(() => {
                         try {
                             window.localStorage.setItem(key, JSON.stringify(value));
+                            markKeyVersion(key); // 记录本地修改版本（同步合并用）
                             delete window._pendingWrites[key]; // 写入完成，清除 pending
                         } catch (error) {
                             console.warn(`Error setting localStorage key "${key}":`, error);
@@ -16132,31 +16144,229 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return { merged, localChanged, cloudChanged };
             };
 
+            // === 层3：数组与对象的语义合并 ===
+
+            // 条目指纹：优先 id，缺 id 时用内容 JSON 兜底（旧数据兼容）
+            const entryFingerprint = (e) => (e && typeof e === 'object' && e.id !== undefined) ? String(e.id) : JSON.stringify(e);
+
+            // 数组按条目指纹并集合并（大事纪、兑换券等追加型数组）
+            // sortFn 可选；cap 可选（保留最新 N 条，配合 sortFn 使用）
+            const mergeEntryArray = (localArr, cloudArr, sortFn, cap) => {
+                const seen = new Map();
+                cloudArr.forEach(e => seen.set(entryFingerprint(e), e));
+                let cloudChanged = false;
+                localArr.forEach(e => {
+                    const fp = entryFingerprint(e);
+                    if (!seen.has(fp)) { seen.set(fp, e); cloudChanged = true; }
+                    else seen.set(fp, e); // 同 id 双方都有：保留本地（本地是最新操作方）
+                });
+                let merged = [...seen.values()];
+                if (sortFn) merged.sort(sortFn);
+                if (cap && merged.length > cap) merged = merged.slice(0, cap);
+                const localChanged = merged.length !== localArr.length
+                    || JSON.stringify(merged) !== JSON.stringify(localArr);
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 顶层数组 key（如大事纪 [ {id,...} ]）
+            const mergeTopLevelArray = (localObj, cloudObj, sortFn, cap) => {
+                if (!Array.isArray(localObj) || !Array.isArray(cloudObj)) return null;
+                return mergeEntryArray(localObj, cloudObj, sortFn, cap);
+            };
+
+            // { child: [entries] } 两层结构（兑换券、探险记录、探险日志）
+            const mergeChildArrays = (localObj, cloudObj, sortFn, cap, entryMergeFn) => {
+                const merged = {};
+                const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+                children.forEach(child => {
+                    const l = Array.isArray(localObj[child]) ? localObj[child] : [];
+                    const c = Array.isArray(cloudObj[child]) ? cloudObj[child] : [];
+                    const r = (entryMergeFn || mergeEntryArray)(l, c, sortFn, cap);
+                    merged[child] = r.merged;
+                    if (r.localChanged) localChanged = true;
+                    if (r.cloudChanged) cloudChanged = true;
+                });
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 探险记录合并：同 id 时 completed/cancelled 状态优先于 active（完成是终态，不能被回退）
+            const mergeAdventureArray = (localArr, cloudArr) => {
+                const seen = new Map();
+                const isFinal = (a) => a && a.status && a.status !== 'active';
+                cloudArr.forEach(e => seen.set(entryFingerprint(e), e));
+                let cloudChanged = false;
+                localArr.forEach(e => {
+                    const fp = entryFingerprint(e);
+                    const existing = seen.get(fp);
+                    if (!existing) { seen.set(fp, e); cloudChanged = true; }
+                    else if (isFinal(e) && !isFinal(existing)) { seen.set(fp, e); cloudChanged = true; }
+                    else if (!isFinal(e) && isFinal(existing)) { /* 云端已终态，保云端 */ }
+                    else seen.set(fp, e); // 同状态：保本地
+                });
+                const merged = [...seen.values()].sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+                const localChanged = JSON.stringify(merged) !== JSON.stringify(localArr);
+                if (!cloudChanged) cloudChanged = JSON.stringify(merged) !== JSON.stringify(cloudArr);
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 宠物数据合并：{ child: { petId: {...} } }，按宠物粒度 LWW（lastInteraction 新者胜）
+            const mergePetData = (localObj, cloudObj) => {
+                const merged = {};
+                const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+                children.forEach(child => {
+                    const l = localObj[child] || {}, c = cloudObj[child] || {};
+                    merged[child] = {};
+                    const petIds = new Set([...Object.keys(l), ...Object.keys(c)]);
+                    petIds.forEach(pid => {
+                        const lp = l[pid], cp = c[pid];
+                        if (!lp) { merged[child][pid] = cp; localChanged = true; return; }
+                        if (!cp) { merged[child][pid] = lp; cloudChanged = true; return; }
+                        const lt = Date.parse(lp.lastInteraction || 0) || 0;
+                        const ct = Date.parse(cp.lastInteraction || 0) || 0;
+                        if (ct > lt) { merged[child][pid] = cp; localChanged = true; }
+                        else {
+                            merged[child][pid] = lp;
+                            if (JSON.stringify(lp) !== JSON.stringify(cp)) cloudChanged = true;
+                        }
+                    });
+                });
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 语义合并注册表：key → 处理函数(localObj, cloudObj) → { merged, localChanged, cloudChanged }
+            const SEMANTIC_MERGERS = {
+                // 大事纪：顶层数组，按 id 并集，时间倒序
+                'app_milestones_v1': (l, c) => mergeTopLevelArray(l, c, (a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
+                // 兑换券：{ child: [记录] }，按 id/指纹并集
+                'app_coupons_v1': (l, c) => mergeChildArrays(l, c),
+                // 探险记录：{ child: [adventure] }，终态优先
+                'app_pet_adventures_v1': (l, c) => mergeChildArrays(l, c, null, null, mergeAdventureArray),
+                // 探险日志：{ child: [log] }，按 id 并集，endTime 倒序，保留 50 条
+                'app_pet_adventure_log_v1': (l, c) => mergeChildArrays(l, c, (a, b) => (b.endTime || 0) - (a.endTime || 0), 50),
+                // 宠物运行时数据：按宠物粒度 LWW
+                'app_pet_data_v1': mergePetData,
+                // 已拥有宠物：{ child: [petId] }，字符串数组并集
+                'app_owned_pets_v1': (l, c) => mergeChildArrays(l, c),
+            };
+
             // 对单个 localStorage key 尝试合并。返回 { value: 合并后的 JSON 字符串, localChanged, cloudChanged }；不可合并时返回 null
             const tryMergeSyncKey = (key, localStr, cloudStr) => {
-                if (!MERGEABLE_DICT_KEYS.has(key) && !MERGEABLE_NESTED_KEYS.has(key) && !MERGEABLE_TWO_LEVEL_KEYS.has(key)) return null;
+                const semantic = SEMANTIC_MERGERS[key];
+                if (!semantic && !MERGEABLE_DICT_KEYS.has(key) && !MERGEABLE_NESTED_KEYS.has(key) && !MERGEABLE_TWO_LEVEL_KEYS.has(key)) return null;
                 if (!localStr || !cloudStr) return null;
                 try {
                     const localObj = JSON.parse(localStr);
                     const cloudObj = JSON.parse(cloudStr);
-                    if (typeof localObj !== 'object' || typeof cloudObj !== 'object' || !localObj || !cloudObj
-                        || Array.isArray(localObj) || Array.isArray(cloudObj)) return null;
-                    const result = MERGEABLE_NESTED_KEYS.has(key)
-                        ? mergeCheckins(localObj, cloudObj)
-                        : MERGEABLE_TWO_LEVEL_KEYS.has(key)
-                        ? mergeTwoLevelDict(localObj, cloudObj)
-                        : mergeFlatDict(localObj, cloudObj);
+                    if (typeof localObj !== 'object' || typeof cloudObj !== 'object' || !localObj || !cloudObj) return null;
+                    let result;
+                    if (semantic) {
+                        result = semantic(localObj, cloudObj);
+                        if (!result) return null; // 结构不符（如期望数组但拿到对象）→ 走版本比较
+                    } else {
+                        if (Array.isArray(localObj) || Array.isArray(cloudObj)) return null;
+                        result = MERGEABLE_NESTED_KEYS.has(key)
+                            ? mergeCheckins(localObj, cloudObj)
+                            : MERGEABLE_TWO_LEVEL_KEYS.has(key)
+                            ? mergeTwoLevelDict(localObj, cloudObj)
+                            : mergeFlatDict(localObj, cloudObj);
+                    }
                     return { value: JSON.stringify(result.merged), localChanged: result.localChanged, cloudChanged: result.cloudChanged };
                 } catch (e) { return null; }
             };
             // 暴露到 window 供单元测试调用
             window._tryMergeSyncKey = tryMergeSyncKey;
 
+            // === 逐 key 合并决策（纯函数，不触碰 localStorage，便于测试）===
+            // cloudData: 云端包（含 _syncTs / _keyVersions）
+            // localSnapshot: { key: string|null } 本地对应 key 的当前值
+            // localVersions: 本地版本表 { key: ts }
+            // localTs: 本地上次同步的整包时间戳
+            // 返回 { writes: {key: 新值}, adoptVersions: {key: ts}, needUpload: bool }
+            const resolveSyncMerge = (cloudData, localSnapshot, localVersions, localTs) => {
+                const cloudTs = cloudData._syncTs || 0;
+                const cloudVersions = cloudData._keyVersions || {};
+                const defaultTakeCloud = cloudTs > localTs; // 双方都无版本信息时退回整包行为
+                const writes = {};
+                const adoptVersions = {};
+                let needUpload = false;
+
+                Object.entries(cloudData).forEach(([key, cloudVal]) => {
+                    if (key === '_syncTs' || key === '_keyVersions') return;
+                    const localVal = (key in localSnapshot) ? localSnapshot[key] : null;
+
+                    // 1. 追加型字典：语义并集合并，双向无损
+                    const mergeResult = tryMergeSyncKey(key, localVal, cloudVal);
+                    if (mergeResult) {
+                        if (mergeResult.localChanged) writes[key] = mergeResult.value;
+                        if (mergeResult.cloudChanged) needUpload = true;
+                        return;
+                    }
+                    // 2. 本地没有此 key：直接取云端
+                    if (localVal === null) {
+                        writes[key] = cloudVal;
+                        if (cloudVersions[key]) adoptVersions[key] = cloudVersions[key];
+                        return;
+                    }
+                    // 3. 内容相同：跳过
+                    if (localVal === cloudVal) return;
+                    // 4. 内容不同：逐 key 比版本，修改时间新者胜
+                    //    （版本缺失视为 0 = "该设备未改过这个 key"）
+                    //    首次同步（localTs === 0）的设备一律取云端，防止新设备的本地测试数据覆盖家庭真实数据
+                    const lv = localVersions[key] || 0;
+                    const cv = cloudVersions[key] || 0;
+                    let takeCloud;
+                    if (localTs === 0) takeCloud = true;
+                    else if (lv === 0 && cv === 0) takeCloud = defaultTakeCloud;
+                    else takeCloud = cv > lv;
+                    if (takeCloud) {
+                        writes[key] = cloudVal;
+                        if (cv) adoptVersions[key] = cv;
+                    } else {
+                        needUpload = true; // 本地保留的新值需要回传云端
+                    }
+                });
+                return { writes, adoptVersions, needUpload };
+            };
+            window._resolveSyncMerge = resolveSyncMerge;
+
+            // 把合并决策应用到 localStorage；返回实际写入数
+            const applySyncMerge = (result) => {
+                let written = 0;
+                Object.entries(result.writes).forEach(([k, v]) => {
+                    try { localStorage.setItem(k, v); written++; } catch (e) {}
+                });
+                if (Object.keys(result.adoptVersions).length > 0) {
+                    try {
+                        const versions = JSON.parse(localStorage.getItem('_key_versions') || '{}');
+                        Object.assign(versions, result.adoptVersions);
+                        localStorage.setItem('_key_versions', JSON.stringify(versions));
+                    } catch (e) {}
+                }
+                return written;
+            };
+
+            // 构建本地快照与版本表（只取云端包涉及的 key，避免全量遍历）
+            const buildLocalSnapshot = (cloudData) => {
+                const snapshot = {};
+                Object.keys(cloudData).forEach(key => {
+                    if (key === '_syncTs' || key === '_keyVersions') return;
+                    snapshot[key] = localStorage.getItem(key);
+                });
+                let versions = {};
+                try { versions = JSON.parse(localStorage.getItem('_key_versions') || '{}'); } catch (e) {}
+                return { snapshot, versions };
+            };
+
             const collectSyncData = () => {
                 // H3: 先刷新所有 pending 写入，确保读到最新数据
                 if (window._pendingWrites) {
                     Object.entries(window._pendingWrites).forEach(([k, v]) => {
-                        try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
+                        try {
+                            localStorage.setItem(k, JSON.stringify(v));
+                            markKeyVersion(k);
+                        } catch (e) {}
                     });
                 }
                 const data = {};
@@ -16167,6 +16377,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 }
                 data._syncTs = Date.now();
+                // 逐 key 版本表随包上传（仅保留本包内存在的 key，防表膨胀）
+                try {
+                    const versions = JSON.parse(localStorage.getItem('_key_versions') || '{}');
+                    const trimmed = {};
+                    Object.keys(data).forEach(k => { if (versions[k]) trimmed[k] = versions[k]; });
+                    data._keyVersions = trimmed;
+                } catch (e) {}
                 return data;
             };
 
@@ -16176,17 +16393,17 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const acquireSyncLock = () => { if (syncLockRef.current) return false; syncLockRef.current = true; return true; };
             const releaseSyncLock = () => { syncLockRef.current = false; };
 
-            // 通知其他设备有新数据（通过 push worker 触发静默同步）
-            const notifyOtherDevices = (excludeChild) => {
-                if (!syncCode) return;
-                try {
-                    fetch(`${PUSH_WORKER_URL}/api/notify-sync`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ syncCode, excludeChild })
-                    }).catch(() => {}); // 静默失败，不影响主流程
-                } catch (e) {}
-            };
+            // 记录最近一次用户操作时间（自适应轮询用：活跃期 15s，闲置期 60s）
+            const lastActivityRef = React.useRef(Date.now());
+            React.useEffect(() => {
+                const markActivity = () => { lastActivityRef.current = Date.now(); };
+                window.addEventListener('pointerdown', markActivity, { passive: true });
+                window.addEventListener('keydown', markActivity, { passive: true });
+                return () => {
+                    window.removeEventListener('pointerdown', markActivity);
+                    window.removeEventListener('keydown', markActivity);
+                };
+            }, []);
 
             const syncToCloud = async (force = false) => {
                 if (!syncCode) return;
@@ -16200,19 +16417,23 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 setSyncStatus('syncing');
                 try {
                     const data = collectSyncData();
-                    const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data)
-                    });
+                    // KV 同 key 限 1 写/秒：429/超限时退避重试（最多 3 次）
+                    let resp = null;
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(data)
+                        });
+                        if (resp.status !== 429) break;
+                        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+                    }
                     if (!resp.ok) throw new Error(`上传失败 (${resp.status})`);
                     const newHash = hashSyncPayload(data);
                     localStorage.setItem('_sync_last_hash', newHash);
                     localStorage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
-                    // 通知其他设备有新数据，触发它们拉取同步
-                    notifyOtherDevices(activeChild);
                     setTimeout(() => setSyncStatus(''), 3000);
                 } catch (e) {
                     console.error('Sync upload failed:', e);
@@ -16266,81 +16487,35 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         return;
                     }
 
-                    // 时间戳比较：
-                    // - 云端新于本地：以云端为主，但「追加型字典」逐 key 合并，保住本地未上传的记录
-                    // - 云端旧于本地且本地已同步过（localTs > 0）：以本地为主，同样先把云端独有记录合并进来再上传
-                    // - 本地未同步过（localTs === 0）：优先使用云端数据，绝不上传本地空数据
+                    // === 逐 key 合并（v2）===
+                    // 追加型字典 → 并集合并；其余 key → 逐 key 比修改版本，新者胜。
+                    // 不再整包"谁新用谁"：平板改打卡、手机改任务，两边修改都能保住。
+                    // 本地未同步过（localTs === 0）：所有本地版本视为可信但通常为空表 → 云端值全收
                     const cloudTs = cloudData._syncTs || 0;
                     const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
-                    if (localTs > 0 && cloudTs <= localTs) {
-                        // 云端更旧：先把云端独有的追加型记录合并到本地（防止覆盖掉另一设备已上传的打卡），再上传
-                        let mergedIntoLocal = 0;
-                        Object.entries(cloudData).forEach(([key, cloudVal]) => {
-                            if (key === '_syncTs') return;
-                            const localVal = localStorage.getItem(key);
-                            const mergeResult = tryMergeSyncKey(key, localVal, cloudVal);
-                            if (mergeResult && mergeResult.localChanged) {
-                                localStorage.setItem(key, mergeResult.value);
-                                mergedIntoLocal++;
-                            }
-                        });
-                        const data = collectSyncData();
-                        try {
-                            const resp2 = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(data)
-                            });
-                            if (resp2.ok) {
-                                const newHash = hashSyncPayload(data);
-                                localStorage.setItem('_sync_last_hash', newHash);
-                                localStorage.setItem('_sync_local_ts', String(data._syncTs));
-                            }
-                        } catch (e) { console.warn('Sync re-upload failed:', e); }
-                        setSyncStatus('success');
-                        setTimeout(() => setSyncStatus(''), 3000);
-                        if (mergedIntoLocal > 0) {
-                            window._syncReloading = true;
-                            window.dispatchEvent(new CustomEvent('_syncDataMerged'));
-                            setTimeout(() => { window._syncReloading = false; }, 1000);
-                        }
-                        return;
-                    }
 
-                    // 云端更新：写入本地。追加型字典先合并（保住本地未上传记录），其余 key 直接采用云端值
-                    let merged = 0;
-                    let localHadUniqueRecords = false;
-                    Object.entries(cloudData).forEach(([key, cloudVal]) => {
-                        if (key === '_syncTs') return;
-                        const localVal = localStorage.getItem(key);
-                        const mergeResult = tryMergeSyncKey(key, localVal, cloudVal);
-                        if (mergeResult) {
-                            if (mergeResult.localChanged || mergeResult.cloudChanged) {
-                                localStorage.setItem(key, mergeResult.value);
-                                merged++;
-                            }
-                            if (mergeResult.cloudChanged) localHadUniqueRecords = true;
-                        } else if (localVal === null || localVal !== cloudVal) {
-                            localStorage.setItem(key, cloudVal);
-                            merged++;
-                        }
-                    });
+                    const { snapshot, versions } = buildLocalSnapshot(cloudData);
+                    const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, localTs);
+                    const written = applySyncMerge(mergeResult);
 
-                    localStorage.setItem('_sync_last_hash', cloudHash);
-                    localStorage.setItem('_sync_local_ts', String(cloudTs));
+                    // 本地时间戳推进到云端（本地保留的新 key 会通过回传上传，届时再推进）
+                    localStorage.setItem('_sync_local_ts', String(Math.max(cloudTs, localTs)));
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
 
-                    if (merged > 0) {
+                    if (written > 0) {
                         // 派发事件让所有 useStickyState 从 localStorage 刷新（替代 reload）
                         window._syncReloading = true;
                         window.dispatchEvent(new CustomEvent('_syncDataMerged'));
                         setTimeout(() => { window._syncReloading = false; }, 1000);
                     }
-                    // 本地有云端缺失的记录：合并结果需要回传云端，否则下次拉取又会丢
-                    if (localHadUniqueRecords) {
+                    // 本地有云端没有的新内容（本地胜出的 key / 追加型独有记录）：回传云端
+                    if (mergeResult.needUpload) {
                         setTimeout(() => { try { syncToCloud(true); } catch (e) {} }, 1500);
+                    } else {
+                        // 无需回传时，哈希记为云端值，后续轮询可短路
+                        localStorage.setItem('_sync_last_hash', cloudHash);
                     }
                 } catch (e) {
                     console.error('Sync download failed:', e);
@@ -16364,11 +16539,41 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 syncDebounceRef.current = setTimeout(() => syncToCloud(), 2000);
             }, [syncCode]);
 
-            // 页面加载时自动同步 + 定期检查 + 回到前台兜底拉取
+            // 页面加载时自动同步 + 轻量时间戳轮询（自适应间隔）+ 回到前台兜底拉取
             React.useEffect(() => {
                 if (!syncCode) return;
                 const timer = setTimeout(() => syncFromCloud(), 1500);
-                const interval = setInterval(() => syncFromCloud(), 1800000);
+
+                // === 轻量 ts 轮询：GET /ts 只返回云端时间戳（几十字节），变化时才做完整拉取 ===
+                // 活跃期（2 分钟内有操作）每 15 秒查一次；闲置期每 60 秒；页面不可见时不查
+                let pollTimer = null;
+                let stopped = false;
+                const schedulePoll = () => {
+                    if (stopped) return;
+                    const active = Date.now() - lastActivityRef.current < 120000;
+                    const delay = active ? 15000 : 60000;
+                    pollTimer = setTimeout(async () => {
+                        if (stopped) return;
+                        if (document.visibilityState === 'visible' && !syncLockRef.current) {
+                            try {
+                                const resp = await fetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
+                                if (resp.ok) {
+                                    const { ts } = await resp.json();
+                                    const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
+                                    // 云端时间戳比本地新 → 有其他设备上传过 → 完整拉取合并
+                                    if (ts && ts > localTs) await syncFromCloud();
+                                }
+                            } catch (e) {} // 网络异常静默跳过，下轮再试
+                        }
+                        schedulePoll();
+                    }, delay);
+                };
+                schedulePoll();
+
+                // 兜底：每 10 分钟做一次完整拉取（防 ts 接口异常时长期不同步）
+                const fullInterval = setInterval(() => {
+                    if (document.visibilityState === 'visible') syncFromCloud();
+                }, 600000);
 
                 // 回到前台时拉取云端最新数据（5 秒节流）
                 let lastVisibilityPull = 0;
@@ -16382,8 +16587,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 document.addEventListener('visibilitychange', visibilityHandler);
 
                 return () => {
+                    stopped = true;
                     clearTimeout(timer);
-                    clearInterval(interval);
+                    if (pollTimer) clearTimeout(pollTimer);
+                    clearInterval(fullInterval);
                     document.removeEventListener('visibilitychange', visibilityHandler);
                     if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
                 };
