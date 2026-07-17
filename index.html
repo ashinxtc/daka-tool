@@ -41,10 +41,10 @@
     <!-- 引入 Canvas Confetti 用于庆祝特效 -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-	<!-- 引入 用于火树银花特效 -->
-	<script src='https://s3-us-west-2.amazonaws.com/s.cdpn.io/329180/fscreen%401.0.1.js'></script>
-    <script src='https://s3-us-west-2.amazonaws.com/s.cdpn.io/329180/Stage%400.1.4.js'></script>
-    <script src='https://s3-us-west-2.amazonaws.com/s.cdpn.io/329180/MyMath.js'></script>
+	<!-- 引入 用于火树银花特效（已本地化，原 codepen S3 个人 CDN 不稳定） -->
+	<script src='vendor/fscreen.js'></script>
+    <script src='vendor/stage.js'></script>
+    <script src='vendor/mymath.js'></script>
 	
 	<!-- 引入 OGL 渲染库 -->
     <script src="https://unpkg.com/ogl/dist/ogl.umd.js"></script>
@@ -8429,7 +8429,7 @@
                             setBaseRate(d.rate);
                         }
                         // 更新真实汇率记录（用于放大倍数计算）
-                        const todayStr = new Date().toISOString().slice(0, 10);
+                        const todayStr = getLocalDateKey(0);
                         const realRate = d.rate.rates?.USD || 0.14;
                         setVolatility(prev => {
                             const updated = { ...prev };
@@ -10129,15 +10129,34 @@
                                     <p>• 点击"重新查询"会覆盖手动修改</p>
                                 </div>
 
-                                {/* 兑换限制设置 */}
+                                {/* 兑换限制设置（保存到服务端，客户端无法绕过） */}
                                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                                     <h4 className="text-xs font-bold text-gray-700 mb-3">📊 兑换限制</h4>
+                                    {(() => {
+                                        // 统一保存：本地缓存（供 UI 显示）+ 服务端强制执行
+                                        const saveLimitsToServer = () => {
+                                            const effectiveCode = syncCode || 'local_' + activeChild;
+                                            const limits = {
+                                                minGold: (() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })(),
+                                                maxSingle: (() => { try { return parseInt(localStorage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })(),
+                                                maxWeekly: (() => { try { return parseInt(localStorage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })(),
+                                            };
+                                            fetch(`${EXCHANGE_WORKER_URL}/api/limits`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ syncCode: effectiveCode, limits })
+                                            }).then(r => r.json()).then(d => {
+                                                if (d.ok) showToast('success', '兑换限额已同步到服务端');
+                                                else showToast('error', d.error || '限额同步失败');
+                                            }).catch(() => showToast('error', '网络错误，限额未同步到服务端'));
+                                        };
+                                        return (
                                     <div className="space-y-3">
                                         <div>
                                             <label className="text-xs text-gray-500 block mb-1">最低兑换金额（金元宝）</label>
                                             <input type="number" min="1" max="10000" step="100"
                                                 defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()}
-                                                onBlur={e => { localStorage.setItem('app_exchange_min_gold', String(Math.max(1, parseInt(e.target.value) || 500))); }}
+                                                onBlur={e => { localStorage.setItem('app_exchange_min_gold', String(Math.max(1, parseInt(e.target.value) || 500))); saveLimitsToServer(); }}
                                                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold"
                                             />
                                         </div>
@@ -10145,7 +10164,7 @@
                                             <label className="text-xs text-gray-500 block mb-1">单次兑换上限（金元宝）</label>
                                             <input type="number" min="0" max="100000" step="100"
                                                 defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })()}
-                                                onBlur={e => { localStorage.setItem('app_exchange_max_single', String(Math.max(0, parseInt(e.target.value) || 0))); }}
+                                                onBlur={e => { localStorage.setItem('app_exchange_max_single', String(Math.max(0, parseInt(e.target.value) || 0))); saveLimitsToServer(); }}
                                                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold"
                                             />
                                             <p className="text-[10px] text-gray-400 mt-1">0 = 不限制</p>
@@ -10154,12 +10173,15 @@
                                             <label className="text-xs text-gray-500 block mb-1">每周兑换总上限（金元宝）</label>
                                             <input type="number" min="0" max="100000" step="100"
                                                 defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })()}
-                                                onBlur={e => { localStorage.setItem('app_exchange_max_weekly', String(Math.max(0, parseInt(e.target.value) || 0))); }}
+                                                onBlur={e => { localStorage.setItem('app_exchange_max_weekly', String(Math.max(0, parseInt(e.target.value) || 0))); saveLimitsToServer(); }}
                                                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold"
                                             />
-                                            <p className="text-[10px] text-gray-400 mt-1">0 = 不限制。统计自然周（周一到周日）内的已核销兑换总额。</p>
+                                            <p className="text-[10px] text-gray-400 mt-1">0 = 不限制。统计自然周（周一到周日）内的兑换总额（含待核销）。</p>
                                         </div>
+                                        <p className="text-[10px] text-emerald-600">✅ 限额保存在服务端，孩子无法通过修改浏览器数据绕过。</p>
                                     </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                        </section>
@@ -11203,7 +11225,7 @@
         const HomeworkRecordForm = ({ subjects, itemsBySubject, gradingMode, onSave, gradeOptions }) => {
             const [subjectId, setSubjectId] = React.useState(subjects[0]?.id || '');
             const [homeworkId, setHomeworkId] = React.useState('');
-            const [date, setDate] = React.useState(new Date().toISOString().slice(0, 10));
+            const [date, setDate] = React.useState(getLocalDateKey(0));
             const [scoreOrGrade, setScoreOrGrade] = React.useState('');
             const items = (itemsBySubject && itemsBySubject[subjectId]) || [];
             React.useEffect(() => { setHomeworkId((itemsBySubject && itemsBySubject[subjectId] && itemsBySubject[subjectId][0]?.id) || ''); }, [subjectId, itemsBySubject]);
@@ -11470,7 +11492,7 @@
         const ExamRecordForm = ({ subjects, examTypes, onSave }) => {
             const [subjectId, setSubjectId] = React.useState(subjects[0]?.id || '');
             const [examTypeId, setExamTypeId] = React.useState(examTypes[0]?.id || '');
-            const [date, setDate] = React.useState(new Date().toISOString().slice(0, 10));
+            const [date, setDate] = React.useState(getLocalDateKey(0));
             const [scoreOrGrade, setScoreOrGrade] = React.useState('');
             const handleSubmit = (e) => {
                 e.preventDefault();
@@ -11699,7 +11721,7 @@
                 function getNextDay(d) {
                     const next = new Date(d + 'T12:00:00');
                     next.setDate(next.getDate() + 1);
-                    return next.toISOString().slice(0, 10);
+                    return dateObjToLocalKey(next);
                 }
                 return { totalMinutes, totalDays, daysInMonth, avgPerDay, bySubject, byTask, maxDayMinutes, maxDayDate, longestStreak, start, end };
             }, [selectedMonthKey, checkins, activeChild, tasks]);
@@ -12219,6 +12241,12 @@
 			d.setDate(d.getDate() - days);
 			return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 		};
+		// Date 对象 → 本地时区 YYYY-MM-DD（替代 toISOString().split('T')[0]，后者按 UTC 会把北京时间早上 8 点前的记录归到前一天）
+		const dateObjToLocalKey = (d) => {
+			return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+		};
+		// 毫秒时间戳（数字或字符串）→ 本地时区 YYYY-MM-DD
+		const tsToLocalDateKey = (ts) => dateObjToLocalKey(new Date(typeof ts === 'string' ? parseInt(ts, 10) : ts));
 		
 		// --- [2026-2028版] 智能节日与全栏配色逻辑 ---
         const getHolidayInfo = (dateObj) => {
@@ -14070,34 +14098,34 @@
                         list.push({ id: key, date, name: `打卡：${taskName}`, amount, type: 'income' });
                     } else if (key.includes('-STAR_PET_BUY-')) {
                         const ts = key.match(/-(\d{13})$/)?.[1];
-                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const date = ts ? tsToLocalDateKey(parseInt(ts)) : '';
                         const petId = key.match(/-STAR_PET_BUY-([^-]+)-/)?.[1] || '';
                         const catalog = petCatalog.find(c => c.id === petId);
                         const petName = catalog ? catalog.name : '宠物';
                         list.push({ id: key, date, name: `领养：${petName}`, amount, type: amount > 0 ? 'income' : 'expense' });
                     } else if (key.includes('-STAR_PET_')) {
                         const ts = key.match(/-(\d{13})$/)?.[1];
-                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const date = ts ? tsToLocalDateKey(parseInt(ts)) : '';
                         const actionKey = key.match(/-STAR_PET_([^-]+)-/)?.[1] || '';
                         const actionName = petActionNames[actionKey] || actionKey;
                         list.push({ id: key, date, name: `宠物互动：${actionName}`, amount, type: amount > 0 ? 'income' : 'expense' });
                     } else if (key.includes('-STAR_ADVENTURE_START-')) {
                         const ts = key.match(/-(\d{13})$/)?.[1];
-                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const date = ts ? tsToLocalDateKey(parseInt(ts)) : '';
                         const realmId = key.match(/-STAR_ADVENTURE_START-([^-]+)-/)?.[1] || '';
                         const realm = adventureRealms.find(r => r.id === realmId);
                         const realmName = realm ? realm.name : '探险';
                         list.push({ id: key, date, name: `探险出发：${realmName}`, amount, type: 'expense' });
                     } else if (key.includes('-STAR_ADVENTURE_REWARD-')) {
                         const ts = key.match(/-(\d{13})$/)?.[1];
-                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const date = ts ? tsToLocalDateKey(parseInt(ts)) : '';
                         const realmId = key.match(/-STAR_ADVENTURE_REWARD-([^-]+)-/)?.[1] || '';
                         const realm = adventureRealms.find(r => r.id === realmId);
                         const realmName = realm ? realm.name : '探险';
                         list.push({ id: key, date, name: `探险归来：${realmName}`, amount, type: 'income' });
                     } else if (key.includes('-STAR_BUY-')) {
                         const ts = key.match(/-(\d{13})$/)?.[1];
-                        const date = ts ? new Date(parseInt(ts)).toISOString().split('T')[0] : '';
+                        const date = ts ? tsToLocalDateKey(parseInt(ts)) : '';
                         const itemId = key.match(/-STAR_BUY-([^-]+)-/)?.[1] || '';
                         const item = SHOP_ITEMS.find(i => i.id === itemId);
                         const itemName = item ? item.name : '星星兑换';
@@ -14922,13 +14950,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     let date, name, type;
                     if (key.includes('EVIL')) {
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = '邪恶大转盘';
                         type = 'expense';
                     } else if (key.includes('EVENT')) {
                         // 随机事件/历史事件的交易记录解析（历史事件显示完整标题）
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         const eventId = key.match(/-([^-]+)-\d{13}$/)?.[1] || '';
                         const histEvents = (typeof HISTORICAL_EVENTS !== 'undefined') ? HISTORICAL_EVENTS : [];
                         const histEvent = histEvents.find(e => e.id === eventId);
@@ -14940,31 +14968,31 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 					} else if (key.includes('EXTRA')) { 
 						// 处理额外奖励的显示
 						const ts = extractTimestamp(key);
-						date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
 						name = '额外惊喜大转盘奖励'; // 这里定义明细中显示的名字
 						type = 'income';
                     } else if (key.includes('SHOP')) {
                          const itemId = key.match(/-([^-]+)-\d{13}$/)?.[1] || '';
                          const ts = extractTimestamp(key);
-                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                          const item = SHOP_ITEMS.find(i => i.id === itemId);
                          name = item ? `购买：${item.name}` : '集市消费';
                          type = 'expense';
                     } else if (key.includes('BOX_GOLD')) {
                          const ts = extractTimestamp(key);
-                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                          name = '盲盒大奖';
                          type = 'income';
                     } else if (key.includes('SKIP')) {
                          const taskId = key.match(/^[^-]+-[^-]+-([^-\d]+)/)?.[1] || '';
                          const ts = extractTimestamp(key);
-                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                          const task = (tasks[deferredActiveChild]||[]).find(t => t.id === taskId);
                          name = task ? `免做金牌：${task.name}` : '免做金牌奖励';
                          type = 'income';
                     } else if (key.includes('GIFT')) {
                          const ts = extractTimestamp(key);
-                         date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                          name = '收到友好邻邦红包';
                          type = 'income';
 					// ==================== 【新增这两段进贡解析】 ====================
@@ -14972,26 +15000,26 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 						const parts = key.split('-');
 						const fromName = parts[2]; // 提取是从谁那里收到的
 						const ts = extractTimestamp(key);
-						date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
 						name = `收到 ${fromName} 进贡`;
 						type = 'income';
 					} else if (key.includes('TRIBUTE_OUT')) {
 						const parts = key.split('-');
 						const targetName = parts[2]; // 提取是进贡给谁的
 						const ts = extractTimestamp(key);
-						date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
 						name = `向 ${targetName} 进贡`;
 						type = 'expense';	 
 					} else if (key.includes('WEEKEND')) {
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = '周末冲刺奖励';
                         type = 'income';
                     } else if (key.includes('WEEKLY_PAY')) {
                         // 周学习工资记录：Child-WEEKLY_PAY-YYYY-MM-DD_YYYY-MM-DD-timestamp
                         const weekMatch = key.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         if (weekMatch) {
                             const startStr = weekMatch[1];
                             const endStr = weekMatch[2];
@@ -15041,11 +15069,11 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             const parts = key.split('__');
                             const head = parts[0] || '';
                             const ts = extractTimestamp(head);
-                            date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                            date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                             name = parts.length >= 3 ? `作业奖励：${parts[1]} · ${parts[2]}` : '作业奖励';
                         } else {
                             const ts = extractTimestamp(key);
-                            date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                            date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                             name = '作业奖励';
                         }
                         type = 'income';
@@ -15054,28 +15082,28 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             const parts = key.split('__');
                             const head = parts[0] || '';
                             const ts = extractTimestamp(head);
-                            date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                            date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                             name = parts.length >= 3 ? `考试奖励：${parts[1]} · ${parts[2]}` : '考试奖励';
                         } else {
                             const ts = extractTimestamp(key);
-                            date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                            date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                             name = '考试奖励';
                         }
                         type = 'income';
                     } else if (key.includes('HOMEWORK-REVOKE') || key.includes('EXAM-REVOKE')) {
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = key.includes('EXAM') ? '收回-考试奖励' : '收回-作业奖励';
                         type = 'expense';
                     } else if (key.includes('REFUND')) {
                         // 退款类型处理
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = '退款';
                         type = value >= 0 ? 'income' : 'expense';
                     } else if (key.includes('ADVENTURE_GOLD')) {
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         const realmId = key.match(/-ADVENTURE_GOLD-([^-]+)-/)?.[1] || '';
                         const realm = adventureRealms.find(r => r.id === realmId);
                         name = `探险归来：${realm ? realm.name : '探险'}`;
@@ -15086,14 +15114,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         const taskId = parts[1] ? parts[1].replace(/-\d+$/, '') : '';
                         const earlyTask = childTasks.find(t => t.id === taskId);
                         const ts = extractTimestamp(key);
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = earlyTask ? `完赛奖励：${earlyTask.name}` : '完赛奖励';
                         type = 'income';
                     } else if (key.includes('EXCHANGE')) {
                         // key 格式: child-EXCHANGE-ex_timestamp_random
                         const tsMatch = key.match(/ex_(\d{13})/);
                         const ts = tsMatch ? parseInt(tsMatch[1], 10) : NaN;
-                        date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                        date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = '兑换零花钱';
                         type = 'expense';
                     } else {
@@ -15103,7 +15131,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             date = dateMatch[1];
                         } else {
                             const ts = extractTimestamp(key);
-                            date = isNaN(ts) ? '' : new Date(ts).toISOString().split('T')[0];
+                            date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         }
                         name = '惊喜大转盘';
                         type = value >= 0 ? 'income' : 'expense';
@@ -15208,7 +15236,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     let name = '额外经验';
                     const parts = key.split('-');
                     const ts = parseInt(parts[parts.length-1]);
-                    const date = new Date(ts).toISOString().split('T')[0];
+                    const date = tsToLocalDateKey(ts);
                     if (key.includes('EVENT')) {
                          const eventId = parts[2];
                          const histEvents = (typeof HISTORICAL_EVENTS !== 'undefined') ? HISTORICAL_EVENTS : [];
@@ -15439,9 +15467,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             const taskIndex = newTasks.findIndex(t => t.name.includes(taskName));
                             if (taskIndex !== -1) {
                                 const task = newTasks[taskIndex];
-                                const currentDeadline = new Date(task.deadline || globalDates.end);
+                                const currentDeadline = new Date((task.deadline || globalDates.end) + 'T12:00:00');
                                 currentDeadline.setDate(currentDeadline.getDate() + 1);
-                                newTasks[taskIndex] = { ...task, deadline: currentDeadline.toISOString().split('T')[0] };
+                                newTasks[taskIndex] = { ...task, deadline: dateObjToLocalKey(currentDeadline) };
                                 showToast('success', `截止日期已延长至 ${newTasks[taskIndex].deadline}`);
                                 return { ...prev, [activeChild]: newTasks };
                             } else {
@@ -16024,6 +16052,106 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return String(h);
             };
 
+            // === 逐 key 合并（防止两台设备在同步间隔内互相覆盖记录）===
+            // 这些 localStorage key 是「追加型字典」：{ 唯一key: 数值/记录 }，两端合并取并集即可，几乎不会真正冲突
+            const MERGEABLE_DICT_KEYS = new Set([
+                'app_wheel_history',      // 金元宝账单（child-TYPE-...: 数值）
+                'app_xp_history',         // 经验账单
+                'app_star_history_v1',    // 星星账单
+                'app_wecom_push_log',     // 企微推送去重日志
+                'app_ai_reminder_log_v1', // AI 提醒去重日志
+                'app_exempted_days_v1',   // 豁免日（dateKey: true）
+                'app_random_event_history',
+                'app_evil_penalty_log_v1',
+            ]);
+            // 成就是 { child: { achId: date } } 两层结构，按 child 分别做扁平合并
+            const MERGEABLE_TWO_LEVEL_KEYS = new Set(['app_achievements_v1']);
+            // checkins 是三层嵌套 { child: { taskId: { date: value } } }，需要深合并
+            const MERGEABLE_NESTED_KEYS = new Set(['app_checkins_v2']);
+
+            // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方）
+            const mergeFlatDict = (localObj, cloudObj) => {
+                const merged = { ...cloudObj };
+                let changed = false;
+                Object.keys(localObj).forEach(k => {
+                    if (!(k in merged)) { merged[k] = localObj[k]; changed = true; }
+                    else if (merged[k] !== localObj[k]) { merged[k] = localObj[k]; changed = true; }
+                });
+                // 检测云端独有 key（本地缺失即视为有变化，需要写回本地）
+                const cloudOnly = Object.keys(cloudObj).some(k => !(k in localObj));
+                return { merged, localChanged: cloudOnly, cloudChanged: changed };
+            };
+
+            // checkins 深合并：child → taskId → dateKey 三层，叶子（数字或数组）双方都有时保留条目更多的一方
+            const mergeCheckins = (localObj, cloudObj) => {
+                const merged = {};
+                const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+                children.forEach(child => {
+                    const lChild = localObj[child] || {}, cChild = cloudObj[child] || {};
+                    merged[child] = {};
+                    const taskIds = new Set([...Object.keys(lChild), ...Object.keys(cChild)]);
+                    taskIds.forEach(tid => {
+                        const lTask = lChild[tid] || {}, cTask = cChild[tid] || {};
+                        merged[child][tid] = {};
+                        const dates = new Set([...Object.keys(lTask), ...Object.keys(cTask)]);
+                        dates.forEach(d => {
+                            const lv = lTask[d], cv = cTask[d];
+                            if (lv === undefined) { merged[child][tid][d] = cv; localChanged = true; }
+                            else if (cv === undefined) { merged[child][tid][d] = lv; cloudChanged = true; }
+                            else if (Array.isArray(lv) && Array.isArray(cv)) {
+                                // 多次打卡数组：按时间戳 t 去重合并
+                                const seen = new Map();
+                                [...cv, ...lv].forEach(e => { seen.set(e.t || JSON.stringify(e), e); });
+                                const arr = [...seen.values()].sort((a, b) => (a.t || 0) - (b.t || 0));
+                                merged[child][tid][d] = arr;
+                                if (arr.length !== lv.length) localChanged = true;
+                                if (arr.length !== cv.length) cloudChanged = true;
+                            } else {
+                                merged[child][tid][d] = lv; // 双方都有：保留本地
+                                if (JSON.stringify(lv) !== JSON.stringify(cv)) cloudChanged = true;
+                            }
+                        });
+                    });
+                });
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 两层字典合并（如成就 { child: { achId: date } }）：按 child 分别做扁平并集
+            const mergeTwoLevelDict = (localObj, cloudObj) => {
+                const merged = {};
+                const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+                children.forEach(child => {
+                    const l = localObj[child] || {}, c = cloudObj[child] || {};
+                    const r = mergeFlatDict(l, c);
+                    merged[child] = r.merged;
+                    if (r.localChanged) localChanged = true;
+                    if (r.cloudChanged) cloudChanged = true;
+                });
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 对单个 localStorage key 尝试合并。返回 { value: 合并后的 JSON 字符串, localChanged, cloudChanged }；不可合并时返回 null
+            const tryMergeSyncKey = (key, localStr, cloudStr) => {
+                if (!MERGEABLE_DICT_KEYS.has(key) && !MERGEABLE_NESTED_KEYS.has(key) && !MERGEABLE_TWO_LEVEL_KEYS.has(key)) return null;
+                if (!localStr || !cloudStr) return null;
+                try {
+                    const localObj = JSON.parse(localStr);
+                    const cloudObj = JSON.parse(cloudStr);
+                    if (typeof localObj !== 'object' || typeof cloudObj !== 'object' || !localObj || !cloudObj
+                        || Array.isArray(localObj) || Array.isArray(cloudObj)) return null;
+                    const result = MERGEABLE_NESTED_KEYS.has(key)
+                        ? mergeCheckins(localObj, cloudObj)
+                        : MERGEABLE_TWO_LEVEL_KEYS.has(key)
+                        ? mergeTwoLevelDict(localObj, cloudObj)
+                        : mergeFlatDict(localObj, cloudObj);
+                    return { value: JSON.stringify(result.merged), localChanged: result.localChanged, cloudChanged: result.cloudChanged };
+                } catch (e) { return null; }
+            };
+            // 暴露到 window 供单元测试调用
+            window._tryMergeSyncKey = tryMergeSyncKey;
+
             const collectSyncData = () => {
                 // H3: 先刷新所有 pending 写入，确保读到最新数据
                 if (window._pendingWrites) {
@@ -16139,13 +16267,23 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
 
                     // 时间戳比较：
-                    // - 云端新于本地：合并云端数据到本地
-                    // - 云端旧于本地且本地已同步过（localTs > 0）：上传本地覆盖云端
+                    // - 云端新于本地：以云端为主，但「追加型字典」逐 key 合并，保住本地未上传的记录
+                    // - 云端旧于本地且本地已同步过（localTs > 0）：以本地为主，同样先把云端独有记录合并进来再上传
                     // - 本地未同步过（localTs === 0）：优先使用云端数据，绝不上传本地空数据
                     const cloudTs = cloudData._syncTs || 0;
                     const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
                     if (localTs > 0 && cloudTs <= localTs) {
-                        // 云端数据更旧，跳过覆盖，直接上传更新云端（不释放锁）
+                        // 云端更旧：先把云端独有的追加型记录合并到本地（防止覆盖掉另一设备已上传的打卡），再上传
+                        let mergedIntoLocal = 0;
+                        Object.entries(cloudData).forEach(([key, cloudVal]) => {
+                            if (key === '_syncTs') return;
+                            const localVal = localStorage.getItem(key);
+                            const mergeResult = tryMergeSyncKey(key, localVal, cloudVal);
+                            if (mergeResult && mergeResult.localChanged) {
+                                localStorage.setItem(key, mergeResult.value);
+                                mergedIntoLocal++;
+                            }
+                        });
                         const data = collectSyncData();
                         try {
                             const resp2 = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
@@ -16161,15 +16299,28 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         } catch (e) { console.warn('Sync re-upload failed:', e); }
                         setSyncStatus('success');
                         setTimeout(() => setSyncStatus(''), 3000);
+                        if (mergedIntoLocal > 0) {
+                            window._syncReloading = true;
+                            window.dispatchEvent(new CustomEvent('_syncDataMerged'));
+                            setTimeout(() => { window._syncReloading = false; }, 1000);
+                        }
                         return;
                     }
 
-                    // 合并云端数据到本地（仅云端更新时执行）
+                    // 云端更新：写入本地。追加型字典先合并（保住本地未上传记录），其余 key 直接采用云端值
                     let merged = 0;
+                    let localHadUniqueRecords = false;
                     Object.entries(cloudData).forEach(([key, cloudVal]) => {
                         if (key === '_syncTs') return;
                         const localVal = localStorage.getItem(key);
-                        if (localVal === null || localVal !== cloudVal) {
+                        const mergeResult = tryMergeSyncKey(key, localVal, cloudVal);
+                        if (mergeResult) {
+                            if (mergeResult.localChanged || mergeResult.cloudChanged) {
+                                localStorage.setItem(key, mergeResult.value);
+                                merged++;
+                            }
+                            if (mergeResult.cloudChanged) localHadUniqueRecords = true;
+                        } else if (localVal === null || localVal !== cloudVal) {
                             localStorage.setItem(key, cloudVal);
                             merged++;
                         }
@@ -16186,6 +16337,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         window._syncReloading = true;
                         window.dispatchEvent(new CustomEvent('_syncDataMerged'));
                         setTimeout(() => { window._syncReloading = false; }, 1000);
+                    }
+                    // 本地有云端缺失的记录：合并结果需要回传云端，否则下次拉取又会丢
+                    if (localHadUniqueRecords) {
+                        setTimeout(() => { try { syncToCloud(true); } catch (e) {} }, 1500);
                     }
                 } catch (e) {
                     console.error('Sync download failed:', e);
@@ -16241,10 +16396,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // iOS / PWA 检测辅助函数（已在全局定义）
 
-            // 注册 Service Worker + 检查订阅状态
+            // 注册 Service Worker（离线缓存对所有浏览器生效）+ 检查推送订阅状态
             React.useEffect(() => {
-                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                if (!('serviceWorker' in navigator)) return;
                 navigator.serviceWorker.register('/sw.js').then(reg => {
+                    // 推送订阅仅在支持 PushManager 的浏览器检查
+                    if (!('PushManager' in window)) return null;
                     return reg.pushManager.getSubscription();
                 }).then(sub => {
                     setPushSubscribed(!!sub);
@@ -16777,7 +16934,7 @@ ${context}
 						const id = parts[2];
 						const timestamp = parseInt(parts[parts.length - 1]);
 						const member = parts[0];
-						const date = new Date(timestamp).toISOString().split('T')[0];
+						const date = tsToLocalDateKey(timestamp);
 
 						if (type === 'EVENT') {
 							const milestoneId = `event-${id}-${timestamp}`;
@@ -16829,7 +16986,7 @@ ${context}
 							newMilestones.push({
 								id: milestoneId,
 								type: 'event',
-								date: new Date(timestamp).toISOString().split('T')[0],
+								date: tsToLocalDateKey(timestamp),
 								timestamp: timestamp,
 								member: parts[0],
 								title: `奇遇：${event ? event.title : '未知事件'}`,
@@ -16994,7 +17151,7 @@ ${context}
                         const parts = key.split('-');
                         const ts = parseInt(parts[parts.length - 1]);
                         if (isNaN(ts) || ts < 1000000000000) return;
-                        const date = new Date(ts).toISOString().split('T')[0];
+                        const date = tsToLocalDateKey(ts);
                         const amount = typeof value === 'number' ? value : 0;
                         if (amount > 0) addXP(date, amount);
                     });
@@ -17005,7 +17162,7 @@ ${context}
                         const parts = key.split('-');
                         const ts = parseInt(parts[parts.length - 1]);
                         if (!isNaN(ts) && ts > 1000000000000) {
-                            const date = new Date(ts).toISOString().split('T')[0];
+                            const date = tsToLocalDateKey(ts);
                             addXP(date, typeof value === 'number' ? value : 0);
                         }
                     });
@@ -18378,7 +18535,7 @@ ${context}
             const handleAddTask = () => {
                 const todayStr = getLocalDateKey(0);
                 const d3m = new Date(); d3m.setMonth(d3m.getMonth() + 3);
-                const deadline3m = d3m.toISOString().split('T')[0];
+                const deadline3m = dateObjToLocalKey(d3m);
                 const newTask = {
                     id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                     name: '新任务',
@@ -20144,8 +20301,72 @@ ${context}
             return <PerformanceContext.Provider value={{ isLowPerf, setIsLowPerf }}>{children}</PerformanceContext.Provider>;
         };
 
+        // ===== 顶层错误边界：任何组件抛错时显示恢复页而非白屏 =====
+        // 注意：打卡数据都在 localStorage，刷新页面即可恢复，不会丢数据
+        class AppErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { error };
+            }
+            componentDidCatch(error, info) {
+                try {
+                    console.error('AppErrorBoundary caught:', error, info?.componentStack);
+                    // 保留最近 5 条错误日志到 localStorage，便于家长反馈问题
+                    const logs = JSON.parse(localStorage.getItem('_error_log') || '[]');
+                    logs.unshift({
+                        time: new Date().toISOString(),
+                        message: String(error?.message || error).slice(0, 300),
+                        stack: String(error?.stack || '').slice(0, 800),
+                        component: String(info?.componentStack || '').slice(0, 500),
+                    });
+                    localStorage.setItem('_error_log', JSON.stringify(logs.slice(0, 5)));
+                } catch (e) {}
+            }
+            render() {
+                if (this.state.error) {
+                    return (
+                        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#fef3c7', fontFamily: 'sans-serif' }}>
+                            <div style={{ fontSize: 64, marginBottom: 16 }}>😵</div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: '#92400e', marginBottom: 8 }}>哎呀，页面出了点小问题</div>
+                            <div style={{ fontSize: 13, color: '#a16207', marginBottom: 24, textAlign: 'center' }}>别担心，你的打卡数据都安全地保存着。<br />点击下面的按钮重新加载就好啦！</div>
+                            <button onClick={() => window.location.reload()}
+                                style={{ padding: '12px 32px', borderRadius: 14, border: 'none', background: '#f59e0b', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(245,158,11,0.4)' }}>
+                                🔄 重新加载
+                            </button>
+                            <details style={{ marginTop: 24, maxWidth: 480, width: '100%' }}>
+                                <summary style={{ fontSize: 11, color: '#a16207', cursor: 'pointer' }}>错误详情（供家长反馈用）</summary>
+                                <pre style={{ fontSize: 10, color: '#78716c', whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: '#fffbeb', padding: 8, borderRadius: 8, marginTop: 4 }}>{String(this.state.error?.message || this.state.error)}{'\n'}{String(this.state.error?.stack || '').slice(0, 600)}</pre>
+                            </details>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // 全局错误监听：捕获 React 之外的异常（事件回调、Promise、加载失败），记日志 + 轻提示，不打断使用
+        (() => {
+            const logGlobalError = (message, stack) => {
+                try {
+                    const logs = JSON.parse(localStorage.getItem('_error_log') || '[]');
+                    logs.unshift({ time: new Date().toISOString(), message: String(message).slice(0, 300), stack: String(stack || '').slice(0, 800), source: 'global' });
+                    localStorage.setItem('_error_log', JSON.stringify(logs.slice(0, 5)));
+                } catch (e) {}
+            };
+            window.addEventListener('error', (event) => {
+                // 资源加载失败（脚本/图片）没有 error 对象，只记日志
+                logGlobalError(event.message || (event.target && (event.target.src || event.target.href)) || 'unknown error', event.error?.stack);
+            }, true);
+            window.addEventListener('unhandledrejection', (event) => {
+                logGlobalError('Unhandled Promise rejection: ' + String(event.reason?.message || event.reason), event.reason?.stack);
+            });
+        })();
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<PerformanceProvider><App /><ToastContainer /></PerformanceProvider>);
+        root.render(<AppErrorBoundary><PerformanceProvider><App /><ToastContainer /></PerformanceProvider></AppErrorBoundary>);
     </script>
 </body>
 </html>
