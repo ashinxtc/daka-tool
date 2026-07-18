@@ -9463,6 +9463,12 @@
         const SettingsModal = ({ showSettings, setShowSettings, theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState('parent');
+            // 任务分页：手风琴展开 + 搜索筛选 + 新增弹窗
+            const [expandedTaskId, setExpandedTaskId] = React.useState(null);
+            const [taskSearch, setTaskSearch] = React.useState('');
+            const [taskTypeFilter, setTaskTypeFilter] = React.useState('');   // '' | 'core' | 'daily'
+            const [taskFreqFilter, setTaskFreqFilter] = React.useState('');   // '' | 'count' | 'daily_must' | 'weekly_optional'
+            const [showAddTaskModal, setShowAddTaskModal] = React.useState(false);
             const SETTINGS_TABS = [
                 { id: 'parent', label: '家长控制', icon: '🛡️' },
                 { id: 'members', label: '成员', icon: '👥' },
@@ -10407,10 +10413,53 @@
 								}
 							});
 
-							// 统一的卡片渲染函数
+							// --- 搜索 + 筛选（任务多时快速定位）---
+							const matchesFilter = (task) => {
+								if (taskSearch) {
+									const q = taskSearch.toLowerCase();
+									if (!(task.name || '').toLowerCase().includes(q) && !(task.targetGoal || '').toLowerCase().includes(q)) return false;
+								}
+								if (taskTypeFilter && (task.type === 'core' ? 'core' : 'daily') !== taskTypeFilter) return false;
+								if (taskFreqFilter && (task.frequencyType || 'count') !== taskFreqFilter) return false;
+								return true;
+							};
+							const filteredOngoing = ongoingTasksForSetting.filter(matchesFilter);
+							const filteredCompleted = completedTasksForSetting.filter(matchesFilter);
+							// 核心任务排前
+							filteredOngoing.sort((a, b) => (b.type === 'core' ? 1 : 0) - (a.type === 'core' ? 1 : 0));
+							const filterActive = !!(taskSearch || taskTypeFilter || taskFreqFilter);
+
+							// 频次徽标
+							const freqLabel = (t) => {
+								const f = t.frequencyType || 'count';
+								if (f === 'daily_must') return { text: '每日必做', cls: 'bg-red-50 text-red-500 border-red-200' };
+								if (f === 'weekly_optional') return { text: `每周${t.weeklyTargetCount ?? 3}次`, cls: 'bg-sky-50 text-sky-500 border-sky-200' };
+								const done = Object.keys(checkins[activeChild]?.[t.id] || {}).length;
+								return { text: `${done}/${t.targetCount || 0}次`, cls: 'bg-indigo-50 text-indigo-500 border-indigo-200' };
+							};
+
+							// 紧凑行：默认收起，点击展开为完整编辑卡（同时只展开一张）
+							const renderTaskRow = (task, isCompleted) => {
+								const fl = freqLabel(task);
+								return (
+									<button key={task.id} onClick={() => setExpandedTaskId(task.id)}
+										className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-colors hover:shadow-sm ${isCompleted ? 'bg-yellow-50/40 border-yellow-200 hover:bg-yellow-50' : 'bg-white border-gray-200 hover:bg-indigo-50/40 hover:border-indigo-200'}`}>
+										<span className="shrink-0 text-sm">{task.type === 'core' ? '⭐' : '🍃'}</span>
+										<span className="font-bold text-sm text-gray-700 truncate flex-1 min-w-0">{task.name}{task.isNew && <span className="blink-reminder text-[9px] text-amber-500 ml-1">新</span>}</span>
+										<span className={`shrink-0 px-1.5 py-0.5 rounded border text-[10px] font-bold ${fl.cls}`}>{fl.text}</span>
+										<span className="shrink-0 text-[11px] text-amber-600 font-bold w-10 text-right">💰{task.reward}</span>
+										<span className="shrink-0 text-gray-300 text-xs">✏️</span>
+									</button>
+								);
+							};
+
+							// 统一的卡片渲染函数（展开态；头部加收起按钮）
 							const renderTaskSettingCard = (task, isCompleted) => (
 								<div key={task.id} className={`border p-4 rounded-xl flex flex-col gap-3 relative group hover:shadow-md transition-colors transition-transform hover:bg-white ${isCompleted ? 'bg-yellow-50/30 border-yellow-200' : 'bg-gray-50 border-gray-100'}`}>
-									<button onClick={() => handleDeleteTask(task.id)} className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
+									<div className="absolute top-3 right-3 flex items-center gap-1">
+									<button onClick={() => setExpandedTaskId(null)} className="px-2 py-1 text-[10px] font-bold text-indigo-500 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors">▲ 收起</button>
+									<button onClick={() => handleDeleteTask(task.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
+								</div>
 									
 									<div className="flex gap-2 mb-1 items-center">
 										<button onClick={() => updateTaskSetting(task.id, 'type', task.type === 'core' ? 'daily' : 'core')} className={`px-2 py-0.5 text-[10px] rounded border font-bold ${task.type === 'core' ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-emerald-100 text-emerald-600 border-emerald-200'}`} >
@@ -10722,12 +10771,32 @@
 
 							return (
 								<>
-									{/* 1. 进行中的任务区 */}
+									{/* 1. 进行中的任务区（紧凑列表 + 手风琴展开）*/}
 									<section>
-										<h3 className={`font-bold ${theme.primary} mb-4 flex items-center gap-2`}><Target className="w-5 h-5" /> 正在进行的项目 ({activeChild})</h3>
-										<div className="space-y-4">
-											{ongoingTasksForSetting.map(t => renderTaskSettingCard(t, false))}
-											<button onClick={handleAddTask} className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 transition flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> 添加新任务</button>
+										<div className="flex items-center justify-between mb-3">
+											<h3 className={`font-bold ${theme.primary} flex items-center gap-2`}><Target className="w-5 h-5" /> 正在进行的项目 ({activeChild})<span className="text-xs font-normal text-gray-400 ml-1">共 {ongoingTasksForSetting.length} 项</span></h3>
+											<button onClick={() => setShowAddTaskModal(true)} className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1 shrink-0"><Plus className="w-3.5 h-3.5" /> 添加任务</button>
+										</div>
+										{/* 搜索 + 筛选栏（任务多于 5 项或已有筛选时显示）*/}
+										{(childTasks.length > 5 || filterActive) && (
+										<div className="mb-3 space-y-2">
+											<input type="text" value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="🔍 搜索任务名称或目标…"
+												className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
+											<div className="flex flex-wrap gap-1.5 text-[10px] font-bold items-center">
+												{[['', '全部'], ['core', '⭐ 核心'], ['daily', '🍃 日常']].map(([v, label]) => (
+													<button key={'t' + v} onClick={() => setTaskTypeFilter(v)} className={`px-2.5 py-1 rounded-full border transition-colors ${taskTypeFilter === v ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>{label}</button>
+												))}
+												<span className="w-px h-4 bg-gray-200 mx-1"></span>
+												{[['', '全部频次'], ['daily_must', '每日必做'], ['weekly_optional', '每周选做'], ['count', '按次数']].map(([v, label]) => (
+													<button key={'f' + v} onClick={() => setTaskFreqFilter(v)} className={`px-2.5 py-1 rounded-full border transition-colors ${taskFreqFilter === v ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-gray-500 border-gray-200 hover:border-sky-300'}`}>{label}</button>
+												))}
+												{filterActive && <button onClick={() => { setTaskSearch(''); setTaskTypeFilter(''); setTaskFreqFilter(''); }} className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors">✕ 清除</button>}
+											</div>
+										</div>
+										)}
+										<div className="space-y-2">
+											{filteredOngoing.length === 0 && <div className="text-center text-xs text-gray-400 py-6">{filterActive ? '没有匹配的任务' : '还没有任务，点击右上角「添加任务」创建'}</div>}
+											{filteredOngoing.map(t => expandedTaskId === t.id ? renderTaskSettingCard(t, false) : renderTaskRow(t, false))}
 										</div>
 									</section>
 
@@ -10740,7 +10809,7 @@
 											>
 												<div className="flex items-center gap-2">
 													<Trophy className="w-5 h-5 text-amber-500" />
-													<span className="font-bold text-amber-700">已达成目标的项目 ({completedTasksForSetting.length})</span>
+													<span className="font-bold text-amber-700">已达成目标的项目 ({filterActive ? `${filteredCompleted.length}/${completedTasksForSetting.length}` : completedTasksForSetting.length})</span>
 												</div>
 												<div className="text-amber-500 font-bold text-xs flex items-center gap-1">
 													<span className={`transform transition-transform inline-block duration-300 ${showCompletedSettings ? 'rotate-180' : ''}`}>
@@ -10751,11 +10820,90 @@
 											</button>
 											{showCompletedSettings && (
 												<div className="p-4 space-y-4 border-t border-yellow-200/50 bg-slate-50/50">
-													{completedTasksForSetting.map(t => renderTaskSettingCard(t, true))}
+													{filteredCompleted.length === 0 && <div className="text-center text-xs text-gray-400 py-4">没有匹配的已完成任务</div>}
+													{filteredCompleted.map(t => expandedTaskId === t.id ? renderTaskSettingCard(t, true) : renderTaskRow(t, true))}
 												</div>
 											)}
 										</section>
 									)}
+
+									{/* 3. 新增任务弹窗：只填必填项，高级配置创建后自动展开编辑卡设置 */}
+									{showAddTaskModal && (() => {
+										const submitNewTask = (e) => {
+											e.preventDefault();
+											const fd = new FormData(e.target);
+											const name = String(fd.get('taskName') || '').trim();
+											if (!name) return;
+											const freq = String(fd.get('taskFreq') || 'count');
+											const overrides = {
+												name,
+												type: String(fd.get('taskType') || 'daily'),
+												frequencyType: freq,
+												reward: Math.max(0, parseInt(fd.get('taskReward')) || 1),
+												startDate: String(fd.get('taskStart') || getLocalDateKey(0)),
+												deadline: String(fd.get('taskDeadline') || ''),
+											};
+											if (freq === 'count') overrides.targetCount = Math.max(1, parseInt(fd.get('taskTarget')) || 10);
+											const newId = handleAddTask(overrides);
+											setShowAddTaskModal(false);
+											setTaskSearch(''); setTaskTypeFilter(''); setTaskFreqFilter('');
+											setExpandedTaskId(newId);
+										};
+										const addDefaultDeadline = (() => { const d = new Date(); d.setMonth(d.getMonth() + 3); return dateObjToLocalKey(d); })();
+										return (
+											<div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddTaskModal(false)}>
+												<form onSubmit={submitNewTask} onClick={e => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-3.5 max-h-[85vh] overflow-y-auto">
+													<div className="flex items-center justify-between">
+														<h3 className="font-bold text-gray-800 flex items-center gap-2"><Plus className="w-5 h-5 text-indigo-500" /> 添加新任务</h3>
+														<button type="button" onClick={() => setShowAddTaskModal(false)} className="p-1 text-gray-400 hover:text-gray-600"><XIcon className="w-5 h-5" /></button>
+													</div>
+													<div>
+														<label className="text-xs text-gray-500 font-bold block mb-1">任务名称 *</label>
+														<input name="taskName" type="text" required autoFocus placeholder="例如：奥数每日一练" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
+													</div>
+													<div className="grid grid-cols-2 gap-3">
+														<div>
+															<label className="text-xs text-gray-500 font-bold block mb-1">类型</label>
+															<select name="taskType" defaultValue="daily" className="w-full px-2 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
+																<option value="daily">🍃 日常任务</option>
+																<option value="core">⭐ 核心任务</option>
+															</select>
+														</div>
+														<div>
+															<label className="text-xs text-gray-500 font-bold block mb-1">频次</label>
+															<select name="taskFreq" defaultValue="count" className="w-full px-2 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
+																<option value="count">按总次数</option>
+																<option value="daily_must">每日必做</option>
+																<option value="weekly_optional">每周选做</option>
+															</select>
+														</div>
+													</div>
+													<div className="grid grid-cols-2 gap-3">
+														<div>
+															<label className="text-xs text-gray-500 font-bold block mb-1">单次奖励（金元宝）</label>
+															<input name="taskReward" type="number" min="0" defaultValue="1" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
+														</div>
+														<div>
+															<label className="text-xs text-gray-500 font-bold block mb-1">目标次数 <span className="text-[9px] text-gray-400">仅按次数生效</span></label>
+															<input name="taskTarget" type="number" min="1" defaultValue="10" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
+														</div>
+													</div>
+													<div className="grid grid-cols-2 gap-3">
+														<div>
+															<label className="text-xs text-blue-500 font-bold block mb-1">开始日期</label>
+															<input name="taskStart" type="date" defaultValue={getLocalDateKey(0)} className="w-full px-2 py-2 bg-blue-50/50 border border-blue-100 rounded-xl text-sm text-blue-600 outline-none focus:border-blue-400" />
+														</div>
+														<div>
+															<label className="text-xs text-red-500 font-bold block mb-1">截止日期</label>
+															<input name="taskDeadline" type="date" defaultValue={addDefaultDeadline} className="w-full px-2 py-2 bg-red-50/50 border border-red-100 rounded-xl text-sm text-red-600 outline-none focus:border-red-400" />
+														</div>
+													</div>
+													<p className="text-[10px] text-gray-400">💡 多次打卡、转盘触发、学业关联等高级配置，创建后会自动打开编辑卡供设置。</p>
+													<button type="submit" className="w-full py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl shadow-md transition active:scale-95">创建任务</button>
+												</form>
+											</div>
+										);
+									})()}
 								</>
 							);
 						})()}
@@ -18739,10 +18887,12 @@ ${context}
                 setEditingEntry(null);
             };
 
-            const handleAddTask = () => {
+            // overrides: 新增弹窗表单传入的字段（name/type/frequencyType/reward 等）；返回新任务 id 供自动展开编辑
+            const handleAddTask = (overrides) => {
                 const todayStr = getLocalDateKey(0);
                 const d3m = new Date(); d3m.setMonth(d3m.getMonth() + 3);
                 const deadline3m = dateObjToLocalKey(d3m);
+                const safeOverrides = (overrides && typeof overrides === 'object' && !overrides.nativeEvent) ? overrides : {};
                 const newTask = {
                     id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
                     name: '新任务',
@@ -18768,10 +18918,12 @@ ${context}
                     bonusThreshold: 0,
                     bonusThresholdType: 'count',
                     bonusType: 'wheel',
-                    bonusMultiplier: 2
+                    bonusMultiplier: 2,
+                    ...safeOverrides,
                 };
                 setTasks(prev => ({ ...prev, [activeChild]: [...(prev[activeChild]||[]), newTask] }));
                 triggerSyncUpload();
+                return newTask.id;
             };
 
             const clearNewTaskFlags = () => {
