@@ -9469,6 +9469,7 @@
             const [taskTypeFilter, setTaskTypeFilter] = React.useState('');   // '' | 'core' | 'daily'
             const [taskFreqFilter, setTaskFreqFilter] = React.useState('');   // '' | 'count' | 'daily_must' | 'weekly_optional'
             const [showAddTaskModal, setShowAddTaskModal] = React.useState(false);
+            const [advOpen, setAdvOpen] = React.useState({}); // 编辑卡高级设置折叠状态
             const SETTINGS_TABS = [
                 { id: 'parent', label: '家长控制', icon: '🛡️' },
                 { id: 'members', label: '成员', icon: '👥' },
@@ -10442,7 +10443,7 @@
 							const renderTaskRow = (task, isCompleted) => {
 								const fl = freqLabel(task);
 								return (
-									<button key={task.id} onClick={() => setExpandedTaskId(task.id)}
+									<button key={task.id} onClick={() => { setExpandedTaskId(task.id); setAdvOpen({}); }}
 										className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-colors hover:shadow-sm ${isCompleted ? 'bg-yellow-50/40 border-yellow-200 hover:bg-yellow-50' : 'bg-white border-gray-200 hover:bg-indigo-50/40 hover:border-indigo-200'}`}>
 										<span className="shrink-0 text-sm">{task.type === 'core' ? '⭐' : '🍃'}</span>
 										<span className="font-bold text-sm text-gray-700 truncate flex-1 min-w-0">{task.name}{task.isNew && <span className="blink-reminder text-[9px] text-amber-500 ml-1">新</span>}</span>
@@ -10453,321 +10454,264 @@
 								);
 							};
 
-							// 统一的卡片渲染函数（展开态；头部加收起按钮）
-							const renderTaskSettingCard = (task, isCompleted) => (
-								<div key={task.id} className={`border p-4 rounded-xl flex flex-col gap-3 relative group hover:shadow-md transition-colors transition-transform hover:bg-white ${isCompleted ? 'bg-yellow-50/30 border-yellow-200' : 'bg-gray-50 border-gray-100'}`}>
-									<div className="absolute top-3 right-3 flex items-center gap-1">
-									<button onClick={() => setExpandedTaskId(null)} className="px-2 py-1 text-[10px] font-bold text-indigo-500 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors">▲ 收起</button>
-									<button onClick={() => handleDeleteTask(task.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
-								</div>
-									
-									<div className="flex gap-2 mb-1 items-center">
-										<button onClick={() => updateTaskSetting(task.id, 'type', task.type === 'core' ? 'daily' : 'core')} className={`px-2 py-0.5 text-[10px] rounded border font-bold ${task.type === 'core' ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-emerald-100 text-emerald-600 border-emerald-200'}`} >
-											{task.type === 'core' ? '⭐ 核心任务' : '🍃 日常任务'}
+							// 统一的卡片渲染函数（展开态：三段式布局 — 名称区 / 基础区 / 高级折叠区）
+							const renderTaskSettingCard = (task, isCompleted) => {
+								const freq = task.frequencyType || 'count';
+								const inputCls = "w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 outline-none focus:border-indigo-400 transition-colors";
+								const labelCls = "text-[11px] font-bold text-gray-400 block mb-1";
+								// 分段选择按钮（iOS 风格）
+								const seg = (active) => `flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-colors ${active ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`;
+								// 高级设置折叠面板
+								const advSec = (key, title, configured, content) => (
+									<div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
+										<button type="button" onClick={() => setAdvOpen(p => ({ ...p, [key]: !p[key] }))}
+											className="w-full flex items-center justify-between px-3 py-2 bg-gray-50/70 hover:bg-gray-100 transition-colors">
+											<span className="text-xs font-bold text-gray-600 flex items-center gap-1.5">{title}{configured && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}</span>
+											<span className={`text-gray-400 text-[10px] transform transition-transform inline-block ${advOpen[key] ? 'rotate-180' : ''}`}>▼</span>
 										</button>
-										{isCompleted && (
-											<span className="px-2 py-0.5 text-[10px] rounded border font-bold bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-600 border-yellow-200 shadow-sm flex items-center gap-1">
-												🎯 已达成目标
-											</span>
-										)}
+										{advOpen[key] && <div className="p-3 border-t border-gray-100 space-y-2">{content}</div>}
 									</div>
-
-									<div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+								);
+								return (
+									<div key={task.id} className="border border-indigo-200 bg-white p-4 rounded-2xl flex flex-col gap-3.5 relative shadow-md ring-1 ring-indigo-100/60">
+										{/* 顶栏：状态徽标 + 收起/删除 */}
 										<div className="flex items-center justify-between">
-											<div className="flex items-center gap-2">
-												<span className="text-xs font-bold text-indigo-500">🎓 学业目标关联:</span>
-												<select value={task.linkedSubject || ''} onChange={(e) => updateTaskSetting(task.id, 'linkedSubject', e.target.value)} className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600 outline-none focus:border-indigo-400" >
-													<option value="">无关联</option>
-													<option value="math_olympiad">奥数思维天梯</option>
-													<option value="school_math">校内数学天梯</option>
-													<option value="school_chinese">校内语文天梯</option>
-													<option value="school_science">校内科学天梯</option>
-													<option value="school_english">校内英语天梯</option>
-												</select>
+											<div className="flex items-center gap-1.5 min-h-[22px]">
+												{isCompleted && <span className="px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-50 text-amber-600 border border-amber-200">🎯 已达成目标</span>}
+												{task.isNew && <span className="blink-reminder px-2 py-0.5 text-[10px] rounded-full font-bold bg-amber-50 text-amber-500 border border-amber-200">新任务 · 请完善配置</span>}
 											</div>
-											{task.linkedSubject && CURRICULUM_CONFIG[task.linkedSubject] && (
-												<div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
-													{(() => {
-														const subjectConfig = CURRICULUM_CONFIG[task.linkedSubject];
-														const currentIdx = curriculumProgress[activeChild]?.[task.linkedSubject] !== undefined ? curriculumProgress[activeChild][task.linkedSubject] : -1;
-														const nextIdx = currentIdx + 1;
-														const isMax = nextIdx >= subjectConfig.totalSemesters;
-														
-														return (
-															<>
-																<div className="text-xs text-indigo-800">
-																	当前: <span className="font-bold">{currentIdx === -1 ? '未开始' : subjectConfig.getSemesterName(currentIdx)}</span>
-																</div>
-																{!isMax && (
-																	<button onClick={() => {
-																		if(confirm(`⚠️ 家长确认\n\n确认 ${activeChild} 已经完成了【${subjectConfig.getSemesterName(nextIdx)}】的全部学习内容吗？\n\n确认后将解锁对应成就！`)) {
-																			handleVerifyCurriculum(activeChild, task.linkedSubject, nextIdx);
-																		}
-																	}} className="px-2 py-0.5 bg-indigo-500 text-white text-[10px] font-bold rounded hover:bg-indigo-600 transition-colors shadow-sm flex items-center gap-1" >
-																		<CheckCircle2 className="w-3 h-3" /> 核销: {subjectConfig.getSemesterName(nextIdx)}
-																	</button>
-																)}
-																{isMax && <span className="text-[10px] text-green-600 font-bold">🎉 全阶通关</span>}
-															</>
-														);
-													})()}
-												</div>
-											)}
+											<div className="flex items-center gap-1">
+												<button onClick={() => setExpandedTaskId(null)} className="px-2.5 py-1 text-[10px] font-bold text-indigo-500 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors">▲ 收起</button>
+												<button onClick={() => handleDeleteTask(task.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
+											</div>
 										</div>
-									</div>
 
-									{/* 打卡即时奖励配置 */}
-									<div className="flex items-center gap-2 flex-wrap">
-										<span className="text-xs font-bold text-pink-500">🎁 打卡奖励:</span>
-										<button
-											type="button"
-											onClick={() => updateTaskSetting(task.id, 'onCheckinReward', '')}
-											className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${
-												!task.onCheckinReward
-													? 'bg-gray-100 text-gray-600 border-gray-300 shadow-sm'
-													: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-											}`}
-										>
-											无
-										</button>
-										<button
-											type="button"
-											onClick={() => updateTaskSetting(task.id, 'onCheckinReward', 'wheel_gold')}
-											className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${
-												task.onCheckinReward === 'wheel_gold'
-													? 'bg-amber-50 text-amber-600 border-amber-200 shadow-sm'
-													: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-											}`}
-										>
-											💰 幸运大转盘（金元宝）
-										</button>
-										<button
-											type="button"
-											onClick={() => updateTaskSetting(task.id, 'onCheckinReward', 'wheel_xp')}
-											className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${
-												task.onCheckinReward === 'wheel_xp'
-													? 'bg-blue-50 text-blue-600 border-blue-200 shadow-sm'
-													: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-											}`}
-										>
-											✨ 幸运大转盘（经验）
-										</button>
-									</div>
-
-									<div className="pr-8">
-										<input type="text" value={task.name} onChange={(e) => updateTaskSetting(task.id, 'name', e.target.value)} className="font-bold text-lg bg-transparent border-b border-dashed border-gray-300 focus:border-indigo-500 focus:outline-none w-full mb-2" />
-										<input type="text" value={task.targetGoal || ''} onChange={(e) => updateTaskSetting(task.id, 'targetGoal', e.target.value)} placeholder="输入具体目标内容..." className="text-sm bg-transparent border-b border-dashed border-gray-200 w-full text-gray-500 focus:outline-none" />
-									</div>
-									
-									{/* --- 【修改点】补全完成奖励字段 + 新增任务频次配置 --- */}
-									<div className="grid grid-cols-3 gap-2 text-sm mb-2">
+										{/* 一、名称与目标 */}
 										<div>
-											<label className="text-xs text-gray-400">单次奖励</label>
-											<input 
-												type="number" 
-												value={task.reward} 
-												onChange={(e) => updateTaskSetting(task.id, 'reward', parseInt(e.target.value)||0)} 
-												className="w-full bg-white border border-gray-200 outline-none focus:border-indigo-400 rounded p-1 text-gray-700 font-medium" 
-											/>
-										</div>
-										<div>
-											<label className="text-xs text-amber-500 font-bold">完成奖励</label>
-											<input 
-												type="number" 
-												value={task.completedReward || 0} 
-												onChange={(e) => updateTaskSetting(task.id, 'completedReward', parseInt(e.target.value)||0)} 
-												className="w-full bg-amber-50 border border-amber-200 outline-none focus:border-amber-400 rounded p-1 text-amber-600 font-bold" 
-											/>
-										</div>
-										<div>
-											<label className="text-xs text-gray-400">目标次数</label>
-											<input 
-												type="number" 
-												value={task.targetCount} 
-												onChange={(e) => updateTaskSetting(task.id, 'targetCount', parseInt(e.target.value)||0)} 
-												disabled={task.frequencyType === 'daily_must' || task.frequencyType === 'weekly_optional'}
-												className={`w-full border rounded p-1 text-gray-700 font-medium outline-none ${task.frequencyType === 'daily_must' || task.frequencyType === 'weekly_optional' ? 'bg-gray-100 border-dashed border-gray-300 text-gray-400 cursor-not-allowed' : 'bg-white border-gray-200 focus:border-indigo-400'}`} 
-											/>
-										</div>
-									</div>
-
-									{/* 任务频次：按总次数 / 每日必做 / 每周选做 */}
-									<div className="grid grid-cols-3 gap-2 text-[11px] mb-2">
-										<div className="col-span-3 flex flex-wrap gap-2 items-center">
-											<span className="text-[11px] text-gray-400 font-bold">任务频次</span>
-											<button
-												type="button"
-												onClick={() => updateTaskSetting(task.id, 'frequencyType', 'count')}
-												className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors transition-transform ${
-													!task.frequencyType || task.frequencyType === 'count'
-														? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-sm'
-														: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-												}`}
-											>
-												按总次数
-											</button>
-											<button
-												type="button"
-												onClick={() => updateTaskSetting(task.id, 'frequencyType', 'daily_must')}
-												className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors transition-transform ${
-													task.frequencyType === 'daily_must'
-														? 'bg-red-50 text-red-600 border-red-200 shadow-sm'
-														: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-												}`}
-											>
-												每日必做
-											</button>
-											<button
-												type="button"
-												onClick={() => updateTaskSetting(task.id, 'frequencyType', 'weekly_optional')}
-												className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors transition-transform ${
-													task.frequencyType === 'weekly_optional'
-														? 'bg-sky-50 text-sky-600 border-sky-200 shadow-sm'
-														: 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-												}`}
-											>
-												每周选做
-											</button>
+											<input type="text" value={task.name} onChange={(e) => updateTaskSetting(task.id, 'name', e.target.value)}
+												className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-base text-gray-800 outline-none focus:border-indigo-400 focus:bg-white transition-colors" />
+											<input type="text" value={task.targetGoal || ''} onChange={(e) => updateTaskSetting(task.id, 'targetGoal', e.target.value)}
+												placeholder="补充目标描述（可选）…"
+												className="mt-1.5 w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500 outline-none focus:border-indigo-400 focus:bg-white transition-colors" />
 										</div>
 
-										{/* 每日必做：周完成度阈值 & 多次打卡 */}
-										{task.frequencyType === 'daily_must' && (
-											<div className="col-span-3 space-y-2">
-												<div className="grid grid-cols-3 gap-2 items-end">
-													<div className="col-span-2">
-														<label className="text-xs text-red-500 font-bold">达标完成度阈值</label>
-														<div className="flex items-center gap-2">
-															<input
-																type="number"
-																min="0"
-																max="100"
-																value={task.dailyCompletionThresholdPercent ?? 80}
-																onChange={(e) => updateTaskSetting(task.id, 'dailyCompletionThresholdPercent', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-																className="w-20 bg-white border border-red-200 outline-none focus:border-red-400 rounded p-1 text-red-600 font-bold text-center"
-															/>
-															<span className="text-[11px] text-gray-500">每周完成比例 &ge; 阈值 时，按完成比例 &times; 完成奖励发放。</span>
-														</div>
-													</div>
-												</div>
-
-												<div className="mt-2 pt-2 border-t border-purple-200">
-													<div className="flex items-center justify-between mb-2">
-														<span className="text-xs font-bold text-purple-700">📚 多次打卡</span>
-														<button
-															onClick={() => updateTaskSetting(task.id, 'multiCheckin', !task.multiCheckin)}
-															className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${task.multiCheckin ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-purple-100'}`}
-														>{task.multiCheckin ? '已开启 ✓' : '允许当天多次打卡'}</button>
-													</div>
-													{task.multiCheckin && (
-													<div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
-														<div>
-															<label className="text-[11px] text-purple-700 font-bold">计量单位</label>
-															<div className="flex gap-1 flex-wrap">
-																{['', '课时', '单元', '知识点', '道题', '页'].map(opt => (
-																	<button key={opt}
-																		onClick={() => updateTaskSetting(task.id, 'multiUnitLabel', opt)}
-																		className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${(task.multiUnitLabel || '') === opt ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-100'}`}
-																	>{opt || '无(仅计分钟)'}</button>
-																))}
-															</div>
-														</div>
-														<div className="bg-white rounded border border-purple-200 p-2">
-															<div className="flex items-center justify-between mb-1">
-																<span className="text-[11px] font-bold text-purple-800">🎁 奖励触发器</span>
-																<label className="text-[10px] text-gray-500">0=不触发</label>
-															</div>
-															<div className="grid grid-cols-2 gap-2 items-center">
-																<input type="number" min="0" max="99"
-																	value={task.bonusThreshold ?? 0}
-																	onChange={(e) => updateTaskSetting(task.id, 'bonusThreshold', Math.max(0, parseInt(e.target.value) || 0))}
-																	className="w-16 bg-white border border-purple-200 rounded p-1 text-purple-700 font-bold text-center text-xs"
-																/>
-																<span className="text-[10px] text-gray-600">每完成</span>
-																<select
-																	value={task.bonusThresholdType ?? 'count'}
-																	onChange={(e) => updateTaskSetting(task.id, 'bonusThresholdType', e.target.value)}
-																	className="bg-white border border-purple-200 rounded p-1 text-[11px] text-purple-700"
-																>
-																	<option value="count">打卡次数</option>
-																	{task.multiUnitLabel && <option value="units">累计{task.multiUnitLabel}</option>}
-																</select>
-																<span className="text-[10px] text-gray-600">次后</span>
-															</div>
-															<div className="flex items-center gap-2 mt-2">
-																<button
-																	onClick={() => updateTaskSetting(task.id, 'bonusType', 'wheel')}
-																	className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${(task.bonusType ?? 'wheel') === 'wheel' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-amber-100'}`}
-																>🎡 触发转盘</button>
-																<button
-																	onClick={() => updateTaskSetting(task.id, 'bonusType', 'multiply')}
-																	className={`px-2 py-1 rounded text-[10px] font-bold transition-colors ${task.bonusType === 'multiply' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-green-100'}`}
-																>🔥 金元宝翻倍</button>
-																{task.bonusType === 'multiply' && (
-																	<input type="number" min="2" max="10"
-																		value={task.bonusMultiplier ?? 2}
-																		onChange={(e) => updateTaskSetting(task.id, 'bonusMultiplier', Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
-																		className="w-12 bg-white border border-green-300 rounded p-1 text-green-700 font-bold text-center text-xs"
-																	/>)}
-																{(task.bonusType === 'multiply' && task.bonusMultiplier > 2) && <span className="text-[10px] text-green-700 font-bold">倍</span>}
-															</div>
-															{task.bonusThreshold > 0 && (
-																<div className="mt-2 text-[10px] text-purple-600 bg-purple-100 rounded p-1.5">
-																	💡
-																	{(task.bonusThresholdType ?? 'count') === 'count'
-																		? (task.bonusType === 'wheel'
-																			? `每完成 ${task.bonusThreshold} 次打卡 &rarr; 触发幸运大转盘`
-																			: `每完成 ${task.bonusThreshold} 次打卡 &rarr; 本次金元宝 &times;${task.bonusMultiplier || 2}`)
-																		: (task.bonusType === 'wheel'
-																			? `每累计 ${task.bonusThreshold} ${task.multiUnitLabel} &rarr; 触发幸运大转盘`
-																			: `每累计 ${task.bonusThreshold} ${task.multiUnitLabel} &rarr; 本次金元宝 &times;${task.bonusMultiplier || 2}`)
-																	}
-																	&nbsp;（每天独立计数，跨天清零）
-																</div>
-															)}
-														</div>
-													</div>
-													)}
+										{/* 二、基础配置 */}
+										<div className="grid grid-cols-2 gap-2">
+											<div>
+												<label className={labelCls}>类型</label>
+												<div className="flex bg-gray-100 rounded-xl p-0.5 gap-0.5">
+													<button type="button" onClick={() => updateTaskSetting(task.id, 'type', 'core')} className={seg(task.type === 'core')}>⭐ 核心</button>
+													<button type="button" onClick={() => updateTaskSetting(task.id, 'type', 'daily')} className={seg(task.type !== 'core')}>🍃 日常</button>
 												</div>
 											</div>
-											)}
-										{/* 每周选做：每周目标次数 + 超额奖励比例 */}
-										{task.frequencyType === 'weekly_optional' && (
-											<div className="col-span-3 grid grid-cols-3 gap-2 items-end">
-												<div>
-													<label className="text-xs text-sky-600 font-bold">每周目标次数</label>
-													<input
-														type="number"
-														min="1"
-														max="7"
+											<div>
+												<label className={labelCls}>频次</label>
+												<div className="flex bg-gray-100 rounded-xl p-0.5 gap-0.5">
+													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'count')} className={seg(freq === 'count')}>按次数</button>
+													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'daily_must')} className={seg(freq === 'daily_must')}>每日</button>
+													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'weekly_optional')} className={seg(freq === 'weekly_optional')}>每周</button>
+												</div>
+											</div>
+										</div>
+
+										{/* 频次附属配置 */}
+										{freq === 'daily_must' && (
+											<div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+												<span className="text-[11px] font-bold text-gray-500 shrink-0">达标完成度阈值</span>
+												<input type="number" min="0" max="100"
+													value={task.dailyCompletionThresholdPercent ?? 80}
+													onChange={(e) => updateTaskSetting(task.id, 'dailyCompletionThresholdPercent', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+													className="w-16 px-2 py-1 bg-white border border-gray-200 rounded-lg text-sm text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" />
+												<span className="text-[10px] text-gray-400">% · 每周完成比例 ≥ 阈值时按比例发放完成奖励</span>
+											</div>
+										)}
+										{freq === 'weekly_optional' && (
+											<div className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 flex-wrap">
+												<div className="flex items-center gap-1.5">
+													<span className="text-[11px] font-bold text-gray-500">每周目标</span>
+													<input type="number" min="1" max="7"
 														value={task.weeklyTargetCount ?? 3}
 														onChange={(e) => updateTaskSetting(task.id, 'weeklyTargetCount', Math.max(1, Math.min(7, parseInt(e.target.value) || 1)))}
-														className="w-full bg-white border border-sky-200 outline-none focus:border-sky-400 rounded p-1 text-sky-700 font-bold text-center"
-													/>
+														className="w-14 px-2 py-1 bg-white border border-gray-200 rounded-lg text-sm text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" />
+													<span className="text-[10px] text-gray-400">次</span>
 												</div>
-												<div className="col-span-2">
-													<label className="text-xs text-sky-600 font-bold">超额奖励（每多 1 次）</label>
-													<div className="flex items-center gap-1">
-														<input
-															type="number"
-															min="0"
-															max="100"
-															value={task.weeklyExtraPercentPerExtra ?? 10}
-															onChange={(e) => updateTaskSetting(task.id, 'weeklyExtraPercentPerExtra', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-															className="w-16 bg-white border border-sky-200 outline-none focus:border-sky-400 rounded p-1 text-sky-700 font-bold text-center"
-														/>
-														<span className="text-[11px] text-gray-500">每超 1 次，额外 +X% 完成奖励。</span>
-													</div>
+												<div className="flex items-center gap-1.5">
+													<span className="text-[11px] font-bold text-gray-500">超额奖励</span>
+													<input type="number" min="0" max="100"
+														value={task.weeklyExtraPercentPerExtra ?? 10}
+														onChange={(e) => updateTaskSetting(task.id, 'weeklyExtraPercentPerExtra', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+														className="w-14 px-2 py-1 bg-white border border-gray-200 rounded-lg text-sm text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" />
+													<span className="text-[10px] text-gray-400">% / 每多 1 次</span>
 												</div>
 											</div>
 										)}
-									</div>
 
-									<div className="grid grid-cols-2 gap-2 text-sm">
-										<div className="col-span-1"><label className="text-xs text-gray-400 text-blue-500 font-bold">开始日期</label><input type="date" value={task.startDate || globalDates.start} onChange={(e) => updateTaskSetting(task.id, 'startDate', e.target.value)} className="w-full bg-blue-50/50 border border-blue-100 rounded p-1 text-blue-600 outline-none focus:border-blue-400" /></div>
-										<div className="col-span-1"><label className="text-xs text-gray-400 text-red-500 font-bold">截止日期{task.isNew && <span className="blink-reminder text-[10px] text-amber-500 font-bold ml-1">请按实际情况修改</span>}</label><input type="date" value={task.deadline || globalDates.end} onChange={(e) => updateTaskSetting(task.id, 'deadline', e.target.value)} className="w-full bg-red-50/50 border border-red-100 rounded p-1 text-red-600 outline-none focus:border-red-400" /></div>
+										{/* 奖励与目标 */}
+										<div className="grid grid-cols-3 gap-2">
+											<div>
+												<label className={labelCls}>单次奖励 💰</label>
+												<input type="number" value={task.reward} onChange={(e) => updateTaskSetting(task.id, 'reward', parseInt(e.target.value)||0)} className={inputCls + ' font-bold'} />
+											</div>
+											<div>
+												<label className={labelCls}>完成奖励 🏆</label>
+												<input type="number" value={task.completedReward || 0} onChange={(e) => updateTaskSetting(task.id, 'completedReward', parseInt(e.target.value)||0)} className={inputCls + ' font-bold'} />
+											</div>
+											<div>
+												<label className={labelCls}>目标次数{freq !== 'count' && <span className="text-[9px] font-normal"> (仅按次数)</span>}</label>
+												<input type="number" value={task.targetCount} onChange={(e) => updateTaskSetting(task.id, 'targetCount', parseInt(e.target.value)||0)}
+													disabled={freq === 'daily_must' || freq === 'weekly_optional'}
+													className={freq === 'daily_must' || freq === 'weekly_optional' ? 'w-full px-2.5 py-1.5 bg-gray-100 border border-dashed border-gray-200 rounded-lg text-sm text-gray-400 cursor-not-allowed' : inputCls + ' font-bold'} />
+											</div>
+										</div>
+
+										{/* 日期（截止日期保留红色警示语义）*/}
+										<div className="grid grid-cols-2 gap-2">
+											<div>
+												<label className={labelCls}>开始日期</label>
+												<input type="date" value={task.startDate || globalDates.start} onChange={(e) => updateTaskSetting(task.id, 'startDate', e.target.value)} className={inputCls} />
+											</div>
+											<div>
+												<label className="text-[11px] font-bold text-red-400 block mb-1">截止日期{task.isNew && <span className="blink-reminder text-[10px] text-amber-500 ml-1">请按实际情况修改</span>}</label>
+												<input type="date" value={task.deadline || globalDates.end} onChange={(e) => updateTaskSetting(task.id, 'deadline', e.target.value)} className="w-full px-2.5 py-1.5 bg-red-50/40 border border-red-200 rounded-lg text-sm text-red-500 outline-none focus:border-red-400 transition-colors" />
+											</div>
+										</div>
+
+										{/* 三、高级设置（默认折叠，已配置的显示圆点）*/}
+										<div className="space-y-2 pt-1 border-t border-dashed border-gray-150 border-gray-200">
+											<div className="text-[11px] font-bold text-gray-400 pt-1.5">⚙️ 高级设置</div>
+
+											{advSec('reward', '🎁 打卡即时奖励', !!task.onCheckinReward, (
+												<>
+													<div className="flex flex-wrap gap-1.5">
+														<button type="button" onClick={() => updateTaskSetting(task.id, 'onCheckinReward', '')}
+															className={`px-2.5 py-1 rounded-full border text-[10px] font-bold transition-colors ${!task.onCheckinReward ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>无</button>
+														<button type="button" onClick={() => updateTaskSetting(task.id, 'onCheckinReward', 'wheel_gold')}
+															className={`px-2.5 py-1 rounded-full border text-[10px] font-bold transition-colors ${task.onCheckinReward === 'wheel_gold' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>💰 幸运大转盘（金元宝）</button>
+														<button type="button" onClick={() => updateTaskSetting(task.id, 'onCheckinReward', 'wheel_xp')}
+															className={`px-2.5 py-1 rounded-full border text-[10px] font-bold transition-colors ${task.onCheckinReward === 'wheel_xp' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>✨ 幸运大转盘（经验）</button>
+													</div>
+													<p className="text-[10px] text-gray-400">每次打卡后立即触发一次对应转盘。</p>
+												</>
+											))}
+
+											{freq === 'daily_must' && advSec('multi', '📚 多次打卡与奖励触发', !!task.multiCheckin, (
+												<>
+													<div className="flex items-center justify-between">
+														<span className="text-[11px] text-gray-500">允许当天多次打卡</span>
+														<button type="button" onClick={() => updateTaskSetting(task.id, 'multiCheckin', !task.multiCheckin)}
+															className={`px-3 py-1 rounded-full text-[10px] font-bold transition-colors ${task.multiCheckin ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-indigo-50'}`}>{task.multiCheckin ? '已开启 ✓' : '开启'}</button>
+													</div>
+													{task.multiCheckin && (
+														<div className="space-y-2 pt-1">
+															<div>
+																<label className={labelCls}>计量单位</label>
+																<div className="flex gap-1 flex-wrap">
+																	{['', '课时', '单元', '知识点', '道题', '页'].map(opt => (
+																		<button key={opt} type="button"
+																			onClick={() => updateTaskSetting(task.id, 'multiUnitLabel', opt)}
+																			className={`px-2 py-0.5 rounded-full border text-[10px] font-bold transition-colors ${(task.multiUnitLabel || '') === opt ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white border-gray-200 text-gray-500 hover:border-indigo-300'}`}
+																		>{opt || '无(仅计分钟)'}</button>
+																	))}
+																</div>
+															</div>
+															<div className="bg-gray-50 rounded-lg border border-gray-100 p-2.5 space-y-2">
+																<div className="flex items-center justify-between">
+																	<span className="text-[11px] font-bold text-gray-600">🎁 奖励触发器</span>
+																	<span className="text-[9px] text-gray-400">0 = 不触发</span>
+																</div>
+																<div className="flex items-center gap-1.5 flex-wrap">
+																	<span className="text-[10px] text-gray-500">每完成</span>
+																	<input type="number" min="0" max="99"
+																		value={task.bonusThreshold ?? 0}
+																		onChange={(e) => updateTaskSetting(task.id, 'bonusThreshold', Math.max(0, parseInt(e.target.value) || 0))}
+																		className="w-14 px-2 py-1 bg-white border border-gray-200 rounded-lg text-[11px] text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" />
+																	<select
+																		value={task.bonusThresholdType ?? 'count'}
+																		onChange={(e) => updateTaskSetting(task.id, 'bonusThresholdType', e.target.value)}
+																		className="px-2 py-1 bg-white border border-gray-200 rounded-lg text-[10px] text-gray-600 outline-none focus:border-indigo-400">
+																		<option value="count">打卡次数</option>
+																		{task.multiUnitLabel && <option value="units">累计{task.multiUnitLabel}</option>}
+																	</select>
+																	<span className="text-[10px] text-gray-500">次后</span>
+																</div>
+																<div className="flex items-center gap-1.5 flex-wrap">
+																	<button type="button" onClick={() => updateTaskSetting(task.id, 'bonusType', 'wheel')}
+																		className={`px-2.5 py-1 rounded-full border text-[10px] font-bold transition-colors ${(task.bonusType ?? 'wheel') === 'wheel' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>🎡 触发转盘</button>
+																	<button type="button" onClick={() => updateTaskSetting(task.id, 'bonusType', 'multiply')}
+																		className={`px-2.5 py-1 rounded-full border text-[10px] font-bold transition-colors ${task.bonusType === 'multiply' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>🔥 金元宝翻倍</button>
+																	{task.bonusType === 'multiply' && (
+																		<>
+																			<input type="number" min="2" max="10"
+																				value={task.bonusMultiplier ?? 2}
+																				onChange={(e) => updateTaskSetting(task.id, 'bonusMultiplier', Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
+																				className="w-12 px-2 py-1 bg-white border border-gray-200 rounded-lg text-[11px] text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" />
+																			<span className="text-[10px] text-gray-500">倍</span>
+																		</>
+																	)}
+																</div>
+																{task.bonusThreshold > 0 && (
+																	<div className="text-[10px] text-indigo-500 bg-indigo-50/70 rounded-lg p-1.5">
+																		💡
+																		{(task.bonusThresholdType ?? 'count') === 'count'
+																			? (task.bonusType === 'wheel'
+																				? `每完成 ${task.bonusThreshold} 次打卡 → 触发幸运大转盘`
+																				: `每完成 ${task.bonusThreshold} 次打卡 → 本次金元宝 ×${task.bonusMultiplier || 2}`)
+																			: (task.bonusType === 'wheel'
+																				? `每累计 ${task.bonusThreshold} ${task.multiUnitLabel} → 触发幸运大转盘`
+																				: `每累计 ${task.bonusThreshold} ${task.multiUnitLabel} → 本次金元宝 ×${task.bonusMultiplier || 2}`)
+																		}
+																		（每天独立计数，跨天清零）
+																	</div>
+																)}
+															</div>
+														</div>
+													)}
+												</>
+											))}
+
+											{advSec('curriculum', '🎓 学业目标关联', !!task.linkedSubject, (
+												<>
+													<div className="flex items-center gap-2 flex-wrap">
+														<select value={task.linkedSubject || ''} onChange={(e) => updateTaskSetting(task.id, 'linkedSubject', e.target.value)}
+															className="px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-600 outline-none focus:border-indigo-400">
+															<option value="">无关联</option>
+															<option value="math_olympiad">奥数思维天梯</option>
+															<option value="school_math">校内数学天梯</option>
+															<option value="school_chinese">校内语文天梯</option>
+															<option value="school_science">校内科学天梯</option>
+															<option value="school_english">校内英语天梯</option>
+														</select>
+														{task.linkedSubject && CURRICULUM_CONFIG[task.linkedSubject] && (() => {
+															const subjectConfig = CURRICULUM_CONFIG[task.linkedSubject];
+															const currentIdx = curriculumProgress[activeChild]?.[task.linkedSubject] !== undefined ? curriculumProgress[activeChild][task.linkedSubject] : -1;
+															const nextIdx = currentIdx + 1;
+															const isMax = nextIdx >= subjectConfig.totalSemesters;
+															return (
+																<div className="flex items-center gap-2 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+																	<div className="text-xs text-indigo-800">
+																		当前: <span className="font-bold">{currentIdx === -1 ? '未开始' : subjectConfig.getSemesterName(currentIdx)}</span>
+																	</div>
+																	{!isMax && (
+																		<button type="button" onClick={() => {
+																			if(confirm(`⚠️ 家长确认\n\n确认 ${activeChild} 已经完成了【${subjectConfig.getSemesterName(nextIdx)}】的全部学习内容吗？\n\n确认后将解锁对应成就！`)) {
+																				handleVerifyCurriculum(activeChild, task.linkedSubject, nextIdx);
+																			}
+																		}} className="px-2 py-0.5 bg-indigo-500 text-white text-[10px] font-bold rounded hover:bg-indigo-600 transition-colors shadow-sm flex items-center gap-1">
+																			<CheckCircle2 className="w-3 h-3" /> 核销: {subjectConfig.getSemesterName(nextIdx)}
+																		</button>
+																	)}
+																	{isMax && <span className="text-[10px] text-green-600 font-bold">🎉 全阶通关</span>}
+																</div>
+															);
+														})()}
+													</div>
+													<p className="text-[10px] text-gray-400">关联后可在此核销学期进度、解锁学业成就。</p>
+												</>
+											))}
+										</div>
 									</div>
-								</div>
-							);
+								);
+							};
 
 							return (
 								<>
