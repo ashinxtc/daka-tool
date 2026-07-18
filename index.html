@@ -11319,19 +11319,19 @@
 		// --- 新增组件：轻量级 SVG 折线图 ---
         const SimpleLineChart = ({ data, color, height = 250 }) => {
             if (!data || data.length === 0) return <div className={`h-[${height}px] flex items-center justify-center text-gray-300`}>暂无数据</div>;
-            
+
             // 使用更宽的坐标系 (1000x300) 来避免宽屏下的拉伸变形
             const VIEW_W = 1000;
             const VIEW_H = 300;
-            
-            const maxVal = Math.max(...data.map(d => d.value), 1); // 防止除以0
-            
-            const pts = data.map((d, i) => {
-                const x = (i / (data.length - 1)) * VIEW_W;
-                // 预留底部 padding 防止点被切掉
-                const y = VIEW_H - (d.value / maxVal) * (VIEW_H * 0.8) - 20; 
-                return `${x},${y}`;
-            }).join(' ');
+
+            // 清洗：确保 value 都是有限数值，避免坐标出现 NaN
+            const safeVal = (v) => Number.isFinite(v) ? v : 0;
+            const maxVal = Math.max(...data.map(d => safeVal(d.value)), 1); // 防止除以0
+            // 单点时分母为 0，用位置函数统一处理
+            const xAt = (i) => data.length > 1 ? (i / (data.length - 1)) * VIEW_W : VIEW_W / 2;
+            const yAt = (v) => VIEW_H - (safeVal(v) / maxVal) * (VIEW_H * 0.8) - 20;
+
+            const pts = data.map((d, i) => `${xAt(i)},${yAt(d.value)}`).join(' ');
 
             return (
                 <div className="w-full relative" style={{ height: `${height}px` }}>
@@ -11356,8 +11356,8 @@
                         
                         {/* 数据点 */}
                         {data.map((d, i) => {
-                            const x = (i / (data.length - 1)) * VIEW_W;
-                            const y = VIEW_H - (d.value / maxVal) * (VIEW_H * 0.8) - 20;
+                            const x = xAt(i);
+                            const y = yAt(d.value);
                             return (
                                 <g key={i} className="group">
                                     {/* 隐形点击区域，方便手指触摸 */}
@@ -11862,7 +11862,8 @@
                     let taskDays = 0;
                     Object.entries(record).forEach(([date, val]) => {
                         if (date >= start && date <= end) {
-                            const mins = typeof val === 'number' ? val : (val === '免' ? 0 : parseInt(String(val), 10) || 0);
+                            // 多次打卡记录是数组，用 getCheckinMinutes 安全取分钟数（避免 parseInt 数组得 NaN）
+                            const mins = Array.isArray(val) ? getCheckinMinutes(record, date) : (typeof val === 'number' ? val : (val === '免' ? 0 : parseInt(String(val), 10) || 0));
                             taskMinutes += mins;
                             taskDays++;
                             totalMinutes += mins;
@@ -11885,7 +11886,7 @@
                 for (let d = 1; d <= lastDay; d++) {
                     const date = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     let dayM = 0;
-                    Object.values(childCheckins).forEach(dates => { dayM += (typeof dates[date] === 'number' ? dates[date] : 0) || 0; });
+                    Object.values(childCheckins).forEach(dates => { dayM += getCheckinMinutes(dates, date); });
                     if (dayM > maxDayMinutes) { maxDayMinutes = dayM; maxDayDate = date; }
                 }
                 let longestStreak = 0;
@@ -11908,13 +11909,14 @@
                 const today = getLocalDateKey(0); // 使用本地时间
                 
                 // 1. 计算今日用时 (【修复】：根据是否选择任务来动态计算)
+                // 用 getCheckinMinutes 安全取分钟数：多次打卡记录是数组，直接相加会得到 NaN
                 let todayTotal = 0;
                 if (selectedTask === 'all') {
                     Object.values(childCheckins).forEach(taskRecord => {
-                        todayTotal += (taskRecord[today] || 0);
+                        todayTotal += getCheckinMinutes(taskRecord, today);
                     });
                 } else {
-                    todayTotal = (childCheckins[selectedTask]?.[today] || 0);
+                    todayTotal = getCheckinMinutes(childCheckins[selectedTask], today);
                 }
 
                 // 2. 准备日期范围
@@ -11932,14 +11934,14 @@
                     let val = 0;
                     if (selectedTask === 'all') {
                         Object.values(childCheckins).forEach(taskRecord => {
-                            val += (taskRecord[date] || 0);
+                            val += getCheckinMinutes(taskRecord, date);
                         });
                     } else {
-                        val = (childCheckins[selectedTask]?.[date] || 0);
+                        val = getCheckinMinutes(childCheckins[selectedTask], date);
                     }
-                    const dateObj = new Date(date);
+                    const dateObj = new Date(date + 'T12:00:00');
                     const label = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
-                    return { label, value: val };
+                    return { label, value: Number.isFinite(val) ? val : 0 };
                 });
 
                 // 4. 计算日均

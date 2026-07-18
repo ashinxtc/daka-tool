@@ -3,7 +3,7 @@
 
 // ===== 离线缓存配置 =====
 // 版本号变更会触发旧缓存清理；每次改动 index.html/静态资源后应递增
-const CACHE_VERSION = 'daka-cache-v6';
+const CACHE_VERSION = 'daka-cache-v7';
 
 // 预缓存：应用核心资源（本地静态文件）
 const PRECACHE_URLS = [
