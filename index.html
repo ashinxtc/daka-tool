@@ -1212,6 +1212,30 @@
             animation: blinkReminder 1.2s ease-in-out infinite;
         }
 
+        /* ===== 任务设置：展开/收起过渡 ===== */
+        @keyframes taskCardIn {
+            from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .task-card-enter { animation: taskCardIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top center; }
+        @keyframes taskRowIn {
+            from { opacity: 0; transform: translateY(3px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .task-row-enter { animation: taskRowIn 0.18s ease-out; }
+        /* 新增任务弹窗：窄屏从底部滑出（bottom sheet），宽屏用卡片淡入 */
+        @keyframes sheetSlideIn {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+        }
+        .task-sheet { animation: sheetSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+        @media (min-width: 640px) {
+            .task-sheet { animation: taskCardIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+        }
+        .low-perf-mode .task-card-enter,
+        .low-perf-mode .task-row-enter,
+        .low-perf-mode .task-sheet { animation: none !important; }
+
         /* ===== 低性能模式样式 ===== */
         /* 低性能模式：为模态框/弹出层提供不透明背景替代 */
         .low-perf-mode .backdrop-blur-fallback {
@@ -10431,24 +10455,83 @@
 							const filterActive = !!(taskSearch || taskTypeFilter || taskFreqFilter);
 
 							// 频次徽标
-							const freqLabel = (t) => {
-								const f = t.frequencyType || 'count';
+							const freqLabel = (task) => {
+								const f = task.frequencyType || 'count';
 								if (f === 'daily_must') return { text: '每日必做', cls: 'bg-red-50 text-red-500 border-red-200' };
-								if (f === 'weekly_optional') return { text: `每周${t.weeklyTargetCount ?? 3}次`, cls: 'bg-sky-50 text-sky-500 border-sky-200' };
-								const done = Object.keys(checkins[activeChild]?.[t.id] || {}).length;
-								return { text: `${done}/${t.targetCount || 0}次`, cls: 'bg-indigo-50 text-indigo-500 border-indigo-200' };
+								if (f === 'weekly_optional') return { text: `每周${task.weeklyTargetCount ?? 3}次`, cls: 'bg-sky-50 text-sky-600 border-sky-200' };
+								return { text: '按次数', cls: 'bg-indigo-50 text-indigo-500 border-indigo-200' };
 							};
 
-							// 紧凑行：默认收起，点击展开为完整编辑卡（同时只展开一张）
+							// 行状态辅助
+							const taskRecOf = (task) => checkins[activeChild]?.[task.id] || {};
+							// 该任务连续打卡天数（今天未打卡时宽限，从昨天算起）
+							const calcRowStreak = (task) => {
+								const rec = taskRecOf(task);
+								let streak = 0;
+								for (let d = 0; d < 400; d++) {
+									const key = getLocalDateKey(-d);
+									if (rec[key]) streak++;
+									else if (d === 0) continue;
+									else break;
+								}
+								return streak;
+							};
+							// 本周（周一至今）完成天数
+							const calcRowWeekDone = (task) => {
+								const rec = taskRecOf(task);
+								const dow = new Date().getDay() || 7;
+								let c = 0;
+								for (let i = 0; i < dow; i++) { if (rec[getLocalDateKey(-i)]) c++; }
+								return c;
+							};
+							const fmtRowDeadline = (d) => { if (!d) return ''; const p = d.split('-'); return `${parseInt(p[1])}月${parseInt(p[2])}日`; };
+
+							// 紧凑行：两行布局，默认收起，点击展开为完整编辑卡（同时只展开一张）
 							const renderTaskRow = (task, isCompleted) => {
 								const fl = freqLabel(task);
+								const freq = task.frequencyType || 'count';
+								const rec = taskRecOf(task);
+								const doneCount = Object.keys(rec).length;
+								const target = task.targetCount || 0;
+								const todayKey = getLocalDateKey(0);
+								const dLeft = task.deadline ? Math.ceil((new Date(task.deadline + 'T23:59:59') - new Date(todayKey + 'T00:00:00')) / 86400000) : null;
+								const soon = dLeft !== null && dLeft >= 0 && dLeft <= 7;
+								const overdue = dLeft !== null && dLeft < 0;
+								// 第二行状态
+								let statusNode = null;
+								if (freq === 'count') {
+									const pct = target > 0 ? Math.min(100, Math.round(doneCount / target * 100)) : 0;
+									statusNode = (
+										<span className="flex items-center gap-1.5 shrink-0">
+											<span className="w-14 h-1.5 bg-gray-100 rounded-full overflow-hidden"><span className="block h-full bg-indigo-400 rounded-full" style={{ width: pct + '%' }}></span></span>
+											<span className="tabular-nums">{doneCount}/{target}</span>
+										</span>
+									);
+								} else if (freq === 'daily_must') {
+									const s = calcRowStreak(task);
+									statusNode = <span className="shrink-0">{s > 0 ? `🔥 连续 ${s} 天` : '今日待打卡'}</span>;
+								} else {
+									const wd = calcRowWeekDone(task);
+									const wt = task.weeklyTargetCount ?? 3;
+									statusNode = <span className={`shrink-0 ${wd >= wt ? 'text-emerald-500 font-bold' : ''}`}>本周 {wd}/{wt}{wd >= wt ? ' ✓' : ''}</span>;
+								}
 								return (
 									<button key={task.id} onClick={() => { setExpandedTaskId(task.id); setAdvOpen({}); }}
-										className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-colors hover:shadow-sm ${isCompleted ? 'bg-yellow-50/40 border-yellow-200 hover:bg-yellow-50' : 'bg-white border-gray-200 hover:bg-indigo-50/40 hover:border-indigo-200'}`}>
-										<span className="shrink-0 text-sm">{task.type === 'core' ? '⭐' : '🍃'}</span>
-										<span className="font-bold text-sm text-gray-700 truncate flex-1 min-w-0">{task.name}{task.isNew && <span className="blink-reminder text-[9px] text-amber-500 ml-1">新</span>}</span>
-										<span className={`shrink-0 px-1.5 py-0.5 rounded border text-[10px] font-bold ${fl.cls}`}>{fl.text}</span>
-										<span className="shrink-0 text-[11px] text-amber-600 font-bold w-10 text-right">💰{task.reward}</span>
+										className={`task-row-enter w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border text-left transition-colors hover:shadow-sm ${isCompleted ? 'bg-yellow-50/40 border-yellow-200 hover:bg-yellow-50' : 'bg-white border-gray-200 hover:bg-indigo-50/40 hover:border-indigo-200'}`}>
+										<span className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-base ${task.type === 'core' ? 'bg-amber-100' : 'bg-emerald-50'}`}>{task.type === 'core' ? '⭐' : '🍃'}</span>
+										<div className="flex-1 min-w-0">
+											<div className="flex items-center gap-1.5">
+												<span className="font-bold text-sm text-gray-700 truncate min-w-0">{task.name}</span>
+												{soon && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-orange-400" title="即将截止"></span>}
+												{task.isNew && <span className="blink-reminder shrink-0 text-[9px] text-amber-500 font-bold">新</span>}
+												<span className={`shrink-0 ml-auto px-1.5 py-0.5 rounded-full border text-[10px] font-bold ${fl.cls}`}>{fl.text}</span>
+											</div>
+											<div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400">
+												{statusNode}
+												<span className="shrink-0 text-amber-600 font-bold">💰{task.reward}</span>
+												{task.deadline && <span className={`shrink-0 ${overdue ? 'text-red-400 font-bold' : soon ? 'text-orange-500 font-bold' : ''}`}>{overdue ? '已逾期' : `截止 ${fmtRowDeadline(task.deadline)}`}</span>}
+											</div>
+										</div>
 										<span className="shrink-0 text-gray-300 text-xs">✏️</span>
 									</button>
 								);
@@ -10473,7 +10556,7 @@
 									</div>
 								);
 								return (
-									<div key={task.id} className="border border-indigo-200 bg-white p-4 rounded-2xl flex flex-col gap-3.5 relative shadow-md ring-1 ring-indigo-100/60">
+									<div key={task.id} className="task-card-enter border border-indigo-200 bg-white p-4 rounded-2xl flex flex-col gap-3.5 relative shadow-md ring-1 ring-indigo-100/60">
 										{/* 顶栏：状态徽标 + 收起/删除 */}
 										<div className="flex items-center justify-between">
 											<div className="flex items-center gap-1.5 min-h-[22px]">
@@ -10795,8 +10878,9 @@
 										};
 										const addDefaultDeadline = (() => { const d = new Date(); d.setMonth(d.getMonth() + 3); return dateObjToLocalKey(d); })();
 										return (
-											<div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddTaskModal(false)}>
-												<form onSubmit={submitNewTask} onClick={e => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-3.5 max-h-[85vh] overflow-y-auto">
+											<div className="fixed inset-0 z-[95] flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddTaskModal(false)}>
+												<form onSubmit={submitNewTask} onClick={e => e.stopPropagation()} className="task-sheet bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm shadow-2xl px-5 pt-3 sm:p-5 space-y-3.5 max-h-[90vh] sm:max-h-[85vh] overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+													<div className="sm:hidden w-10 h-1 bg-gray-300 rounded-full mx-auto mb-1"></div>
 													<div className="flex items-center justify-between">
 														<h3 className="font-bold text-gray-800 flex items-center gap-2"><Plus className="w-5 h-5 text-indigo-500" /> 添加新任务</h3>
 														<button type="button" onClick={() => setShowAddTaskModal(false)} className="p-1 text-gray-400 hover:text-gray-600"><XIcon className="w-5 h-5" /></button>
@@ -10805,7 +10889,7 @@
 														<label className="text-xs text-gray-500 font-bold block mb-1">任务名称 *</label>
 														<input name="taskName" type="text" required autoFocus placeholder="例如：奥数每日一练" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
 													</div>
-													<div className="grid grid-cols-2 gap-3">
+													<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 														<div>
 															<label className="text-xs text-gray-500 font-bold block mb-1">类型</label>
 															<select name="taskType" defaultValue="daily" className="w-full px-2 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400">
@@ -10822,7 +10906,7 @@
 															</select>
 														</div>
 													</div>
-													<div className="grid grid-cols-2 gap-3">
+													<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 														<div>
 															<label className="text-xs text-gray-500 font-bold block mb-1">单次奖励（金元宝）</label>
 															<input name="taskReward" type="number" min="0" defaultValue="1" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
@@ -10832,7 +10916,7 @@
 															<input name="taskTarget" type="number" min="1" defaultValue="10" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
 														</div>
 													</div>
-													<div className="grid grid-cols-2 gap-3">
+													<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 														<div>
 															<label className="text-xs text-blue-500 font-bold block mb-1">开始日期</label>
 															<input name="taskStart" type="date" defaultValue={getLocalDateKey(0)} className="w-full px-2 py-2 bg-blue-50/50 border border-blue-100 rounded-xl text-sm text-blue-600 outline-none focus:border-blue-400" />
