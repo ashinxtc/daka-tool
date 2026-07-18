@@ -3,7 +3,7 @@
 
 // ===== 离线缓存配置 =====
 // 版本号变更会触发旧缓存清理；每次改动 index.html/静态资源后应递增
-const CACHE_VERSION = 'daka-cache-v7';
+const CACHE_VERSION = 'daka-cache-v8';
 
 // 预缓存：应用核心资源（本地静态文件）
 const PRECACHE_URLS = [
@@ -32,8 +32,14 @@ const RUNTIME_CACHE_HOSTS = [
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_VERSION)
-            .then(cache => cache.addAll(PRECACHE_URLS))
-            .catch(err => console.warn('SW precache failed (non-fatal):', err))
+            // 逐个缓存：addAll 是"全有或全无"，单个 404 会拖垮整批；改为容错，缺失的资源静默跳过
+            .then(cache => Promise.allSettled(
+                PRECACHE_URLS.map(url =>
+                    cache.add(url).catch(err => {
+                        console.warn('SW precache skip:', url, err && err.message);
+                    })
+                )
+            ))
             .then(() => self.skipWaiting())
     );
 });
