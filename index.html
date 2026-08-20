@@ -7648,17 +7648,15 @@
             const catalog = petCatalog?.find(c => c.id === pet.id);
             const petName = pet.nickname || catalog?.name || '宠物';
 
-            const needFull = realm.id === 'rift' || realm.id === 'cosmos';
-            const cleanThreshold = realm.id === 'rift' ? 50 : realm.id === 'cosmos' ? 80 : 0;
+            // 出发门槛用领域配置（与 handleStartAdventure 同一套判定，消除"能点却被拦"的割裂）
+            const minFullness = (typeof realm.minFullness === 'number') ? realm.minFullness : 1;
+            const cleanThreshold = (typeof realm.minCleanliness === 'number') ? realm.minCleanliness : 0;
 
-            const hungerOk = needFull ? fullness >= 100 : fullness >= effectiveCost;
+            const hungerOk = fullness >= minFullness;
             const cleanOk = cleanliness >= cleanThreshold;
             const canGo = hungerOk && cleanOk;
 
-            const hungerMsg = !hungerOk
-                ? (needFull ? `🍖 长途探险需要 100% 饱食度（当前 ${fullness}%）`
-                           : `🍖 饱食度不足（当前 ${fullness}%，需要 ${Math.ceil(effectiveCost)}%）`)
-                : '';
+            const hungerMsg = !hungerOk ? `🍖 饱食度不足（当前 ${fullness}%，需要 ${minFullness}%）` : '';
             const cleanMsg = !cleanOk ? `🛁 清洁度不足（当前 ${cleanliness}%，需要 ${cleanThreshold}%）` : '';
 
             return (
@@ -14785,22 +14783,20 @@
                     return showToast(dialog);
                 }
 
-                // 宠物状态检查（使用共享公式）
-                const { hours, effectiveCost } = calcAdventureHungerCost(realm.duration, cfg.hungerPerHour, cfg.foodHungerReduction || 5, bringFood);
+                // 宠物状态检查
+                // effectiveCost 仅用于结算扣减/弹窗预览，不再作为出发门槛（长途消耗会超过饱食度上限 100）
+                // 出发门槛用领域配置的 minFullness / minCleanliness（达标即可派遣，符合派遣类游戏惯例）
+                const { hours } = calcAdventureHungerCost(realm.duration, cfg.hungerPerHour, cfg.foodHungerReduction || 5, bringFood);
                 const fullness = pet.stats?.fullness || 0;
                 const cleanliness = pet.stats?.cleanliness || 0;
+                const minFullness = (typeof realm.minFullness === 'number') ? realm.minFullness : 1;
+                const minCleanliness = (typeof realm.minCleanliness === 'number') ? realm.minCleanliness : 0;
 
-                if (fullness < effectiveCost) {
-                    return showToast(`🍖 宠物饿了！饱食度 ${fullness}%，需要 ${Math.ceil(effectiveCost)}%`);
+                if (fullness < minFullness) {
+                    return showToast(`🍖 宠物饿了！饱食度 ${fullness}%，需要 ${minFullness}% 才能前往「${realm.name}」`);
                 }
-                if ((realm.id === 'rift' || realm.id === 'cosmos') && fullness < 100) {
-                    return showToast(`🍖 长途探险需要让宠物吃饱出发！当前 ${fullness}%，需要 100%`);
-                }
-                if (realm.id === 'rift' && cleanliness < 50) {
-                    return showToast(`🛁 宠物需要先洗个澡！清洁度 ${cleanliness}%，需要 50%`);
-                }
-                if (realm.id === 'cosmos' && cleanliness < 80) {
-                    return showToast(`🛁 宠物需要先洗个澡！清洁度 ${cleanliness}%，需要 80%`);
+                if (cleanliness < minCleanliness) {
+                    return showToast(`🛁 宠物需要先洗个澡！清洁度 ${cleanliness}%，需要 ${minCleanliness}%`);
                 }
 
                 // 星星检查（S2: 在食物扣减之前）
