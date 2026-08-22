@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="时空市集">
+  <rect width="512" height="512" rx="112" fill="#211a12"/>
+  <!-- 甲骨文「日」：竖椭外廓（上下留刻契缺口）+ 中间一短横。纯刻线，无渐变无装饰 -->
+  <g fill="none" stroke="#d7a445" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M262 148 C 330 190, 330 322, 262 364"/>
+    <path d="M250 148 C 182 190, 182 322, 250 364"/>
+    <path d="M212 256 L300 256"/>
+  </g>
+</svg>
