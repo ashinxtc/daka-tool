@@ -14277,7 +14277,8 @@
                     if (!key.startsWith(deferredActiveChild + '-STAR_')) return;
                     const amount = history[key];
                     if (key.includes('-STAR_CHECKIN-')) {
-                        const match = key.match(/-STAR_CHECKIN-(.+)-(\d{4}-\d{2}-\d{2})$/);
+                        // 兼容两种 key 结尾：普通任务 `-日期`，多次打卡 `-日期_时间戳`（否则多次打卡的星星在明细里不显示）
+                        const match = key.match(/-STAR_CHECKIN-(.+)-(\d{4}-\d{2}-\d{2})(?:_\d+)?$/);
                         if (!match) return;
                         const taskId = match[1];
                         const date = match[2];
@@ -18217,12 +18218,22 @@ ${context}
                     showToast('warning', `请填写本次完成的${currentTask.multiUnitLabel}数量（至少为 1）`);
                     return;
                 }
-                // 编辑模式：使用原有时间戳，保持 wheelHistory key 不变
-                const sessionTimestamp = isMulti && isEditMode ? 0 : (isMulti ? Date.now() : 0);
-
                 const newCheckins = { ...checkins };
                 const childData = newCheckins[activeChild] || {};
                 const taskData = childData[editingEntry.taskId] || {};
+
+                // 统一的 session 时间戳：让「条目 t / 金元宝 key / 星星 key」三者共用同一值，
+                // 避免各自调用 Date.now() 导致对不上（否则删除星星删不掉、编辑重复发星）
+                // 编辑模式复用该 session 原始时间戳；新增用新时间戳；普通任务不需要，为 0
+                let sessionTimestamp = 0;
+                if (isMulti) {
+                    if (isEditMode) {
+                        const existingEntries = getCheckinEntries(taskData, editingEntry.date);
+                        sessionTimestamp = existingEntries[sessionIndex]?.t || Date.now();
+                    } else {
+                        sessionTimestamp = Date.now();
+                    }
+                }
 
                 // 多次打卡：数组存储；普通打卡：数字存储
                 if (isMulti) {
@@ -18230,11 +18241,11 @@ ${context}
                     const existingArr = typeof existingVal === 'number' ? [{ m: existingVal, u: 0, t: Date.now() - 1 }]
                         : (Array.isArray(existingVal) ? [...existingVal] : []);
                     if (isEditMode) {
-                        // 编辑：覆盖指定索引的条目，保留原始时间戳
-                        existingArr[sessionIndex] = { m: parseInt(duration), u: parseInt(units) || 0, t: existingArr[sessionIndex].t || Date.now() };
+                        // 编辑：覆盖指定索引的条目，保留原始时间戳（与 key 后缀一致）
+                        existingArr[sessionIndex] = { m: parseInt(duration), u: parseInt(units) || 0, t: sessionTimestamp };
                     } else {
-                        // 新增：追加
-                        existingArr.push({ m: parseInt(duration), u: parseInt(units) || 0, t: Date.now() });
+                        // 新增：追加，条目 t 与后续 key 后缀共用 sessionTimestamp
+                        existingArr.push({ m: parseInt(duration), u: parseInt(units) || 0, t: sessionTimestamp });
                     }
                     newCheckins[activeChild] = { ...childData, [editingEntry.taskId]: { ...taskData, [editingEntry.date]: existingArr } };
                 } else {
@@ -18270,11 +18281,9 @@ ${context}
                     finalReward = currentTask.reward * multiplier;
                 }
                 // 3. 写入历史账单（实现快照）
-                // 编辑模式：使用原始时间戳构建 key，覆盖旧值；新增模式：使用新时间戳
-                const editTs = isEditMode ? (existingArr[sessionIndex].t || Date.now()) : 0;
-                const histTs = isEditMode ? editTs : sessionTimestamp;
+                // sessionTimestamp 已统一（编辑=原始 t，新增=新时间戳），金元宝/星星 key 共用它
                 const historyKey = isMulti
-                    ? `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}_${histTs}`
+                    ? `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}_${sessionTimestamp}`
                     : `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
                 setWheelHistory(prev => ({
                     ...prev,
@@ -18307,6 +18316,8 @@ ${context}
                 }
 
                 // --- 发放星星奖励 ---
+                // starKey 与条目 t / 金元宝 key 共用 sessionTimestamp：
+                // 编辑模式下 key 与原始一致（幂等，不会重复发星）；删除记录时也能按同一时间戳精确清理
                 const STAR_PER_CHECKIN = 3;
                 const starKey = isMulti
                     ? `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}_${sessionTimestamp}`
