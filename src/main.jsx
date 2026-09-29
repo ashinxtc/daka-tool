@@ -3353,6 +3353,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_exempted_days_v1',   // 豁免日（dateKey: true）
                 'app_random_event_history',
                 'app_evil_penalty_log_v1',
+                'app_daily_random_counts',
             ]);
             // 两层字典结构 { child: { key: value } }，按 child 分别做扁平合并
             const MERGEABLE_TWO_LEVEL_KEYS = new Set([
@@ -3361,7 +3362,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_weekly_payroll_v1',
             ]);
             // checkins 是三层嵌套 { child: { taskId: { date: value } } }，需要深合并
-            const MERGEABLE_NESTED_KEYS = new Set(['app_checkins_v2']);
+            const MERGEABLE_NESTED_KEYS = new Set([
+                'app_checkins_v2',
+                'app_repaired_checkins_v1',
+            ]);
 
             // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方）
             const mergeFlatDict = (localObj, cloudObj) => {
