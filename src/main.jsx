@@ -64,6 +64,7 @@ import { OracleCarveModal } from './components/oracle/OracleCarveModal';
 import { ReadingFloatingButton } from './components/reading/ReadingFloatingButton';
 import { ReadingCheckinModal } from './components/reading/ReadingCheckinModal';
 import { ReadingPavilionModal } from './components/reading/ReadingPavilionModal';
+import { ParentGiftModal } from './components/modals/ParentGiftModal';
 
         // ===== Toast 系统已迁移至 src/components/common/Toast.jsx =====
 
@@ -2196,6 +2197,30 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
 						name = `向 ${targetName} 进贡`;
 						type = 'expense';	 
+					} else if (key.includes('PARENT_REWARD')) {
+						// 家长爱心红包：Child-PARENT_REWARD-operator-timestamp 或 Child-PARENT_REWARD-operator__reason-timestamp
+						const ts = extractTimestamp(key);
+						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
+						if (key.includes('__')) {
+							const parts = key.split('__');
+							const headParts = parts[0].split('-PARENT_REWARD-');
+							const op = headParts[1] || '家长';
+							const tail = parts[1] || '';
+							const rawReason = tail.replace(/-\d{13}$/, '');
+							let cleanReason = '';
+							try {
+								cleanReason = decodeURIComponent(rawReason);
+							} catch (e) {
+								cleanReason = rawReason;
+							}
+							name = cleanReason ? `🧧 收到【${op}】红包：${cleanReason}` : `🧧 收到【${op}】红包`;
+						} else {
+							const parts = key.split('-PARENT_REWARD-');
+							const rest = parts[1] || '';
+							const op = rest.replace(/-\d{13}$/, '') || '家长';
+							name = `🧧 收到【${op}】红包`;
+						}
+						type = 'income';
 					} else if (key.includes('WEEKEND')) {
                         const ts = extractTimestamp(key);
                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
@@ -3779,13 +3804,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const timer = setTimeout(() => syncFromCloud(), 1500);
 
                 // === 轻量 ts 轮询：GET /ts 只返回云端时间戳（几十字节），变化时才做完整拉取 ===
-                // 活跃期（2 分钟内有操作）每 15 秒查一次；闲置期每 60 秒；页面不可见时不查
+                // 活跃期（2 分钟内有操作）每 3.5 秒查一次；闲置期每 8 秒；页面不可见时不查
                 let pollTimer = null;
                 let stopped = false;
                 const schedulePoll = () => {
                     if (stopped) return;
                     const active = Date.now() - lastActivityRef.current < 120000;
-                    const delay = active ? 15000 : 60000;
+                    const delay = active ? 3500 : 8000;
                     pollTimer = setTimeout(async () => {
                         if (stopped) return;
                         if (document.visibilityState === 'visible' && !syncLockRef.current) {
@@ -6003,7 +6028,27 @@ ${context}
             handleLaunchEvilWheelRef.current = handleLaunchEvilWheel;
 
             // --- 监听并执行来自家长手机端派发的互动指令 (发红包、额外转盘、邪恶转盘) ---
+            const [showParentGiftModal, setShowParentGiftModal] = useState(false);
             const processedParentActionsRef = React.useRef(new Set());
+            const notifiedParentActionIdsRef = React.useRef(new Set());
+
+            // 筛选当前孩子的未领取礼物（红包、额外转盘）
+            const unclaimedGifts = useMemo(() => {
+                if (!parentActions || !Array.isArray(parentActions)) return [];
+                const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
+                const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
+                return parentActions.filter(a =>
+                    a && a.status === 'pending' &&
+                    (!a.targetChild || a.targetChild === activeChild) &&
+                    (a.type === 'red_packet' || a.type === 'extra_wheel') &&
+                    (!hasRegisteredDevices || validDeviceIds.has(a.operatorDeviceId))
+                );
+            }, [parentActions, activeChild, authorizedParents]);
+
+            // 家长指令执行逻辑：
+            // 1. 戒律惩罚转盘 (evil_wheel)：当且仅当目标孩子回到自己账号时，强制唤醒触发惩罚！
+            // 2. 红包与额外转盘：保留 pending 状态，由左侧悬浮礼包按钮承接，孩子自主点击拆领！
+            // 3. 拦截未授权设备的恶意指令
             React.useEffect(() => {
                 if (!parentActions || !Array.isArray(parentActions) || parentActions.length === 0) return;
 
@@ -6013,63 +6058,30 @@ ${context}
                 if (pendingActions.length === 0) return;
 
                 const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
+                const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
                 let hasUpdates = false;
 
                 const updatedActions = parentActions.map(action => {
                     if (action.status !== 'pending' || (action.targetChild && action.targetChild !== activeChild)) {
                         return action;
                     }
-                    if (processedParentActionsRef.current.has(action.id)) {
-                        return action;
-                    }
-                    processedParentActionsRef.current.add(action.id);
 
                     // 鉴权校验：如果系统已有已登记授权设备列表，则严格核验 deviceId
-                    const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
                     const isAuthorized = !hasRegisteredDevices || validDeviceIds.has(action.operatorDeviceId);
-
                     if (!isAuthorized) {
+                        if (processedParentActionsRef.current.has(action.id)) return action;
+                        processedParentActionsRef.current.add(action.id);
                         console.warn('[ParentAction] 拦截未授权设备的操作指令:', action);
                         hasUpdates = true;
                         return { ...action, status: 'rejected_unauthorized', processedAt: Date.now() };
                     }
 
-                    hasUpdates = true;
-                    const operator = action.operatorRole || '家长';
-
-                    if (action.type === 'red_packet') {
-                        const amount = parseInt(action.amount, 10) || 0;
-                        if (amount > 0) {
-                            const historyKey = `${activeChild}-PARENT_REWARD-${operator}-${Date.now()}`;
-                            setWheelHistory(prev => ({
-                                ...prev,
-                                [historyKey]: amount
-                            }));
-                            const reasonText = action.reason ? `\n寄语：${action.reason}` : '';
-                            showToast('success', `🎉 收到来自【${operator}】的 ${amount} 金元宝红包！${reasonText}`, { duration: 6000 });
-                            if (window.confetti) {
-                                window.confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-                            }
-                        }
-                        return { ...action, status: 'claimed', processedAt: Date.now() };
-                    }
-
-                    if (action.type === 'extra_wheel') {
-                        const wheelType = action.wheelType === 'xp' ? 'xp' : 'gold';
-                        const count = parseInt(action.count, 10) || 1;
-                        const wheelName = wheelType === 'xp' ? '经验XP转盘' : '金元宝转盘';
-                        const reasonText = action.reason ? `（${action.reason}）` : '';
-                        showToast('success', `🎁【${operator}】奖励了你 ${count} 次【${wheelName}】！${reasonText}`, { duration: 6000 });
-                        if (window.confetti) {
-                            window.confetti({ particleCount: 80, spread: 60, origin: { y: 0.5 } });
-                        }
-                        setTimeout(() => {
-                            handleLaunchExtraWheel(wheelType, false);
-                        }, 800);
-                        return { ...action, status: 'claimed', processedAt: Date.now() };
-                    }
-
+                    // 1. 邪恶惩罚转盘：在该孩子处于自己账号时自动强制触发
                     if (action.type === 'evil_wheel') {
+                        if (processedParentActionsRef.current.has(action.id)) return action;
+                        processedParentActionsRef.current.add(action.id);
+                        hasUpdates = true;
+                        const operator = action.operatorRole || '家长';
                         const reasonText = action.reason ? `\n事由：${action.reason}` : '';
                         showToast('error', `🚨【${operator}】对你下达了戒律惩罚！${reasonText}`, { duration: 8000 });
                         setPendingEvilPenalty(true);
@@ -6077,6 +6089,16 @@ ${context}
                             handleLaunchEvilWheel();
                         }, 800);
                         return { ...action, status: 'claimed', processedAt: Date.now() };
+                    }
+
+                    // 2. 红包 / 额外转盘新到提示（温和 Toast 提醒，不自动消耗，待孩子点击悬浮按钮拆领）
+                    if ((action.type === 'red_packet' || action.type === 'extra_wheel') && !notifiedParentActionIdsRef.current.has(action.id)) {
+                        notifiedParentActionIdsRef.current.add(action.id);
+                        const operator = action.operatorRole || '家长';
+                        const tip = action.type === 'red_packet' 
+                            ? `🧧 收到来自【${operator}】的爱心红包，点击左侧礼物盒领取！`
+                            : `🎁 收到来自【${operator}】的转盘赏赐，点击左侧礼物盒领取！`;
+                        showToast('info', tip, { duration: 5000 });
                     }
 
                     return action;
@@ -6089,6 +6111,46 @@ ${context}
                     }
                 }
             }, [parentActions, activeChild, authorizedParents]);
+
+            // 孩子点击拆领红包
+            const handleClaimRedPacket = (gift) => {
+                if (!gift || !gift.id) return;
+                const operator = gift.operatorRole || '家长';
+                const amount = parseInt(gift.amount, 10) || 0;
+                if (amount > 0) {
+                    const reasonPart = gift.reason ? `__${encodeURIComponent(gift.reason)}` : '';
+                    const historyKey = `${activeChild}-PARENT_REWARD-${operator}${reasonPart}-${Date.now()}`;
+                    setWheelHistory(prev => ({
+                        ...prev,
+                        [historyKey]: amount
+                    }));
+                    updateStats(activeChild, 'gold_earn', amount, { source: 'parent_reward', dateKey: getLocalDateKey(0) });
+                }
+                const updatedActions = (parentActions || []).map(a =>
+                    a.id === gift.id ? { ...a, status: 'claimed', processedAt: Date.now() } : a
+                );
+                setParentActions(updatedActions);
+                if (typeof window.triggerSyncUpload === 'function') {
+                    window.triggerSyncUpload();
+                }
+            };
+
+            // 孩子点击开启转盘
+            const handleClaimWheel = (gift) => {
+                if (!gift || !gift.id) return;
+                const wheelType = gift.wheelType === 'xp' ? 'xp' : 'gold';
+                const updatedActions = (parentActions || []).map(a =>
+                    a.id === gift.id ? { ...a, status: 'claimed', processedAt: Date.now() } : a
+                );
+                setParentActions(updatedActions);
+                if (typeof window.triggerSyncUpload === 'function') {
+                    window.triggerSyncUpload();
+                }
+                setShowParentGiftModal(false);
+                setTimeout(() => {
+                    handleLaunchExtraWheel(wheelType, false);
+                }, 400);
+            };
 
             const spinEvilWheel = () => {
                 if (evilWheelSpinning) return;
@@ -7216,6 +7278,45 @@ ${context}
 					);
 				})()}
 
+						{/* 家长爱心礼物/红包悬浮按钮（位于伴读按钮上方 bottom-52，收到红包或转盘嘉奖时高亮浮现） */}
+						{unclaimedGifts.length > 0 && (() => {
+							const topGift = unclaimedGifts[0];
+							const isRp = topGift.type === 'red_packet';
+							const operator = topGift.operatorRole || '家长';
+							const giftDesc = isRp ? `【${operator}】发来爱心红包！` : `【${operator}】赐予仙缘转盘！`;
+							return (
+								<div className="fixed bottom-52 left-3 lg:left-4 z-[90] flex items-center group select-none">
+									{/* 悬浮提示气泡 (类似伴宠气泡) */}
+									<div className="absolute left-14 lg:left-16 bottom-0 whitespace-nowrap bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl rounded-bl-xs shadow-xl border border-amber-300 text-stone-800 pointer-events-none animate-in fade-in slide-in-from-left-2 duration-300 z-10">
+										<div className="flex items-center gap-1.5 text-xs font-black text-rose-600">
+											<span>{isRp ? '🧧' : '🎡'}</span>
+											<span>{giftDesc}</span>
+										</div>
+										<div className="text-[10px] text-stone-500 max-w-[190px] truncate mt-0.5">
+											{topGift.reason ? `“${topGift.reason}”` : '点击开盒领宝 ➔'}
+										</div>
+										{/* 气泡左小箭头 */}
+										<div className="absolute -left-1.5 bottom-3 w-0 h-0 border-t-[5px] border-t-transparent border-r-[6px] border-r-white border-b-[5px] border-b-transparent drop-shadow-xs" />
+									</div>
+
+									{/* 礼盒悬浮主按钮 */}
+									<button
+										type="button"
+										data-testid="parent-gift-floating-btn"
+										onClick={() => setShowParentGiftModal(true)}
+										className="relative w-11 h-11 lg:w-14 lg:h-14 rounded-full bg-gradient-to-tr from-red-600 via-rose-500 to-amber-400 border-2 border-amber-200 shadow-2xl flex items-center justify-center text-xl lg:text-2xl transform transition-transform hover:scale-110 active:scale-95 animate-bounce shadow-rose-900/40 cursor-pointer"
+										title="收到家长爱心赏赐，点击拆领！"
+									>
+										<span>{isRp ? '🧧' : '🎁'}</span>
+										{/* 数量角标 */}
+										<span className="absolute -top-1 -right-1 min-w-[18px] h-4.5 px-1 bg-amber-300 border-2 border-white rounded-full flex items-center justify-center text-[10px] font-black text-rose-950 shadow-md">
+											{unclaimedGifts.length}
+										</span>
+									</button>
+								</div>
+							);
+						})()}
+
 						{/* 天工书阁伴读悬浮按钮（位于宠物上方 bottom-36，支持环形进度条与智能双态切换） */}
 						<ReadingFloatingButton
 							readingTasks={activeReadingTasks}
@@ -7457,6 +7558,15 @@ ${context}
 					  onCarve={handleCarveOracleMessage} 
 					  activeChild={activeChild} 
 					  remainingCount={inventory[activeChild]?.['item_message'] || 0} 
+				  />
+
+				  <ParentGiftModal
+					  show={showParentGiftModal}
+					  onClose={() => setShowParentGiftModal(false)}
+					  gifts={unclaimedGifts}
+					  activeChild={activeChild}
+					  onClaimRedPacket={handleClaimRedPacket}
+					  onClaimWheel={handleClaimWheel}
 				  />
 
                   {editingEntry && <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} />}

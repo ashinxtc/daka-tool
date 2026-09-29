@@ -458,48 +458,116 @@ export const ParentApp = () => {
 
     const realmInfo = useMemo(() => computeRealmInfo(totalXp), [totalXp]);
 
-    // 计算今日打卡进度
+    // 计算周一到周日区间
+    const weekRange = useMemo(() => {
+        const now = new Date();
+        const day = now.getDay() || 7; // 周一为1，周日为7
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - day + 1);
+        const sunday = new Date(now);
+        sunday.setDate(now.getDate() - day + 7);
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return { start: fmt(monday), end: fmt(sunday) };
+    }, []);
+
+    // 计算今日打卡进度与任务列表
     const todayDateKey = getLocalDateKey(0);
-    const { todayCoreTasks, todayRoutineTasks, todayDoneCount, todayTotalCount } = useMemo(() => {
+    const { 
+        dailyMustTasks, 
+        weeklyOptionalTasks, 
+        countTasks, 
+        dailyMustDoneCount, 
+        dailyMustTotalCount, 
+        totalTodayDoneCount, 
+        totalTodayCount 
+    } = useMemo(() => {
         const childCheckins = (checkins && typeof checkins === 'object') ? (checkins[activeChild] || {}) : {};
         
-        // 关键兼容：主程序中 app_tasks_v2 是对象结构 { [childName]: [ task1, task2... ] }
-        let childTasks = [];
+        let allChildTasks = [];
         if (Array.isArray(tasks)) {
-            childTasks = tasks.filter(t => t && (!t.assignedTo || t.assignedTo === activeChild));
+            allChildTasks = tasks.filter(t => t && (!t.assignedTo || t.assignedTo === activeChild));
         } else if (tasks && typeof tasks === 'object') {
-            childTasks = Array.isArray(tasks[activeChild]) ? tasks[activeChild] : [];
+            allChildTasks = Array.isArray(tasks[activeChild]) ? tasks[activeChild] : [];
         }
 
-        const core = [];
-        const routine = [];
-        let done = 0;
-
-        childTasks.forEach(task => {
-            if (!task) return;
-            const taskCheckinRecord = childCheckins[task.id];
-            const checkinVal = taskCheckinRecord?.[todayDateKey];
-            const isCompleted = Array.isArray(checkinVal) ? checkinVal.length > 0 : !!checkinVal;
-            const item = { ...task, isCompleted, checkinVal };
-
-            const isCore = task.isCore || task.type === 'core' || task.frequencyType === 'daily_must';
-            if (isCore) {
-                core.push(item);
-            } else {
-                routine.push(item);
+        // 过滤正在进行中的任务（排除未开始任务、已提前达成任务、按次已达成归档任务）
+        const ongoing = allChildTasks.filter(task => {
+            if (!task) return false;
+            if (task.earlyCompleted) return false;
+            if (task.startDate && todayDateKey < task.startDate) return false;
+            const freq = task.frequencyType || 'count';
+            if (freq === 'count') {
+                const rec = childCheckins[task.id] || {};
+                const currentCount = Object.keys(rec).length;
+                if (currentCount >= (task.targetCount || 1)) return false; // 已达成目标归档
             }
-            if (isCompleted) done++;
+            return true;
         });
 
-        return {
-            todayCoreTasks: core,
-            todayRoutineTasks: routine,
-            todayDoneCount: done,
-            todayTotalCount: childTasks.length
-        };
-    }, [tasks, checkins, activeChild, todayDateKey]);
+        const dailyMust = [];
+        const weeklyOpt = [];
+        const countList = [];
 
-    const completionRate = todayTotalCount > 0 ? Math.round((todayDoneCount / todayTotalCount) * 100) : 0;
+        ongoing.forEach(task => {
+            const taskRecord = childCheckins[task.id] || {};
+            const checkinVal = taskRecord[todayDateKey];
+            const isCompletedToday = Array.isArray(checkinVal) ? checkinVal.length > 0 : !!checkinVal;
+            const freq = task.frequencyType || 'count';
+
+            if (freq === 'daily_must') {
+                dailyMust.push({
+                    ...task,
+                    displayName: task.name || task.title || '必做任务',
+                    isCompleted: isCompletedToday,
+                    checkinVal
+                });
+            } else if (freq === 'weekly_optional') {
+                const weekCheckins = Object.keys(taskRecord).filter(d => d >= weekRange.start && d <= weekRange.end).length;
+                const weeklyTarget = task.weeklyTargetCount ?? 3;
+                weeklyOpt.push({
+                    ...task,
+                    displayName: task.name || task.title || '选做任务',
+                    isCompleted: isCompletedToday,
+                    weekCheckins,
+                    weeklyTarget,
+                    isWeeklyReached: weekCheckins >= weeklyTarget,
+                    checkinVal
+                });
+            } else {
+                const totalCount = Object.keys(taskRecord).length;
+                const targetCount = task.targetCount || 1;
+                countList.push({
+                    ...task,
+                    displayName: task.name || task.title || '打卡任务',
+                    isCompleted: isCompletedToday,
+                    totalCount,
+                    targetCount,
+                    checkinVal
+                });
+            }
+        });
+
+        const dailyDone = dailyMust.filter(t => t.isCompleted).length;
+        const totalDone = ongoing.filter(t => {
+            const rec = childCheckins[t.id]?.[todayDateKey];
+            return Array.isArray(rec) ? rec.length > 0 : !!rec;
+        }).length;
+
+        return {
+            dailyMustTasks: dailyMust,
+            weeklyOptionalTasks: weeklyOpt,
+            countTasks: countList,
+            dailyMustDoneCount: dailyDone,
+            dailyMustTotalCount: dailyMust.length,
+            totalTodayDoneCount: totalDone,
+            totalTodayCount: ongoing.length
+        };
+    }, [tasks, checkins, activeChild, todayDateKey, weekRange]);
+
+    // 完成度优先以每日必做为准，若无必做则按进行中总任务计算
+    const completionRate = dailyMustTotalCount > 0 
+        ? Math.round((dailyMustDoneCount / dailyMustTotalCount) * 100) 
+        : (totalTodayCount > 0 ? Math.round((totalTodayDoneCount / totalTodayCount) * 100) : 100);
 
     // 解析甲骨传书列表
     const oracleMessages = useMemo(() => {
@@ -691,6 +759,18 @@ export const ParentApp = () => {
             }
         } finally {
             setIsSubmittingOracle(false);
+        }
+    };
+
+    // 操作 5：撤回寄语
+    const handleDeleteOracle = async (msgId) => {
+        const currentList = oracleMessages;
+        const updatedList = currentList.filter(m => m.id !== msgId);
+        const ok = await updateCloudKeys({
+            app_global_messages_v2: JSON.stringify(updatedList)
+        });
+        if (ok) {
+            showToast('success', '已撤回该条寄语！');
         }
     };
 
@@ -896,7 +976,13 @@ export const ParentApp = () => {
                                     </span>
                                 </div>
                                 <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
-                                    <span>今日完成度：<b className="text-amber-400">{todayDoneCount}</b> / {todayTotalCount} 项</span>
+                                    <span>
+                                        {dailyMustTotalCount > 0 ? (
+                                            <>今日必做：<b className="text-amber-400">{dailyMustDoneCount}</b> / {dailyMustTotalCount} 项</>
+                                        ) : (
+                                            <>今日打卡：<b className="text-amber-400">{totalTodayDoneCount}</b> / {totalTodayCount} 项</>
+                                        )}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -945,47 +1031,55 @@ export const ParentApp = () => {
 
                 {/* 分页内容渲染 */}
                 {activeTab === 'tasks' && (
-                    <section className="space-y-3">
+                    <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                                 <span>📅</span> 今日打卡清单 ({todayDateKey})
                             </h3>
                             <span className="text-[11px] text-slate-400">
-                                {todayDoneCount === todayTotalCount && todayTotalCount > 0 ? '🎉 今日大满贯已达成！' : `还剩 ${todayTotalCount - todayDoneCount} 项未打卡`}
+                                {dailyMustTotalCount > 0 ? (
+                                    dailyMustDoneCount === dailyMustTotalCount ? '🎉 必做任务已全勤达成！' : `必做还剩 ${dailyMustTotalCount - dailyMustDoneCount} 项`
+                                ) : (
+                                    `进行中任务 ${totalTodayCount} 项`
+                                )}
                             </span>
                         </div>
 
-                        {/* 宗门核心大关 */}
-                        {todayCoreTasks.length > 0 && (
+                        {/* 1. 每日必做任务 */}
+                        {dailyMustTasks.length > 0 && (
                             <div className="space-y-2">
-                                <div className="text-[11px] font-bold text-red-400 flex items-center gap-1">
-                                    <span>🔴</span> 宗门核心大关（必打卡）
+                                <div className="text-[11px] font-black text-red-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                                        每日必做任务 ({dailyMustDoneCount}/{dailyMustTasks.length})
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-normal">每天必须打卡</span>
                                 </div>
-                                {todayCoreTasks.map(t => (
+                                {dailyMustTasks.map(t => (
                                     <div
                                         key={t.id}
-                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/60 border-emerald-500/30' : 'bg-red-950/30 border-red-500/40 shadow-xs shadow-red-950/50'}`}
+                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/60 border-emerald-500/30' : 'bg-red-950/20 border-red-500/40 shadow-xs shadow-red-950/40'}`}
                                     >
-                                        <div className="flex items-center gap-2.5 min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0">
                                             <span className="text-xl shrink-0">{t.icon || '📌'}</span>
                                             <div className="min-w-0">
-                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-300 line-through opacity-75' : 'text-slate-100'}`}>
-                                                    {t.title}
+                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-300 line-through opacity-75' : 'text-white'}`}>
+                                                    {t.displayName}
                                                 </div>
                                                 <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
-                                                    <span>+{t.reward || 0}元宝</span>
-                                                    <span>+{t.xpReward || 0}XP</span>
+                                                    <span className="text-amber-400">+{t.reward || 0}元宝</span>
+                                                    <span className="text-indigo-300">+{t.xpReward || 0}XP</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="shrink-0">
                                             {t.isCompleted ? (
                                                 <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/40 flex items-center gap-1">
-                                                    <span>✅</span> 已完成
+                                                    <span>✅</span> 今日已完成
                                                 </span>
                                             ) : (
                                                 <span className="px-2.5 py-1 rounded-full bg-red-500/20 text-red-300 text-[10px] font-bold border border-red-500/40 animate-pulse">
-                                                    ⏳ 待督促
+                                                    ⏳ 今日待打卡
                                                 </span>
                                             )}
                                         </div>
@@ -994,33 +1088,38 @@ export const ParentApp = () => {
                             </div>
                         )}
 
-                        {/* 日常修行事务 */}
-                        {todayRoutineTasks.length > 0 && (
-                            <div className="space-y-2 pt-2">
-                                <div className="text-[11px] font-bold text-indigo-400 flex items-center gap-1">
-                                    <span>🔵</span> 日常修行仙务
+                        {/* 2. 每周选做任务 */}
+                        {weeklyOptionalTasks.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                                <div className="text-[11px] font-black text-sky-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                                        每周选做任务 ({weeklyOptionalTasks.length})
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-normal">周结算考核</span>
                                 </div>
-                                {todayRoutineTasks.map(t => (
+                                {weeklyOptionalTasks.map(t => (
                                     <div
                                         key={t.id}
-                                        className={`p-3 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/50 border-emerald-500/20 opacity-75' : 'bg-slate-900 border-slate-800'}`}
+                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/60 border-emerald-500/30' : 'bg-slate-900 border-slate-800'}`}
                                     >
-                                        <div className="flex items-center gap-2.5 min-w-0">
-                                            <span className="text-lg shrink-0">{t.icon || '📝'}</span>
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-xl shrink-0">{t.icon || '🎯'}</span>
                                             <div className="min-w-0">
-                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-400 line-through' : 'text-slate-200'}`}>
-                                                    {t.title}
+                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-300' : 'text-slate-100'}`}>
+                                                    {t.displayName}
                                                 </div>
-                                                <div className="text-[10px] text-slate-500 mt-0.5">
-                                                    +{t.reward || 0}元宝 / +{t.xpReward || 0}XP
+                                                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                                    <span className="text-sky-300">本周已打卡 {t.weekCheckins} / {t.weeklyTarget} 次</span>
+                                                    <span>+{t.reward || 0}元宝</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="shrink-0">
                                             {t.isCompleted ? (
-                                                <span className="text-emerald-400 text-xs font-bold">✅ 已打卡</span>
+                                                <span className="text-emerald-400 text-xs font-bold">✅ 今日已打卡</span>
                                             ) : (
-                                                <span className="text-slate-500 text-xs font-medium">未完成</span>
+                                                <span className="text-slate-400 text-xs font-medium">今日未打卡</span>
                                             )}
                                         </div>
                                     </div>
@@ -1028,14 +1127,53 @@ export const ParentApp = () => {
                             </div>
                         )}
 
-                        {(!cloudData || (todayCoreTasks.length === 0 && todayRoutineTasks.length === 0)) && (
+                        {/* 3. 目标按次任务 */}
+                        {countTasks.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                                <div className="text-[11px] font-black text-amber-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                                        目标按次任务 ({countTasks.length})
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-normal">累计完成满级奖励</span>
+                                </div>
+                                {countTasks.map(t => (
+                                    <div
+                                        key={t.id}
+                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/60 border-emerald-500/30' : 'bg-slate-900 border-slate-800'}`}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-xl shrink-0">{t.icon || '📝'}</span>
+                                            <div className="min-w-0">
+                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-300' : 'text-slate-100'}`}>
+                                                    {t.displayName}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                                    <span className="text-amber-300">累计进度 {t.totalCount} / {t.targetCount} 次</span>
+                                                    <span>+{t.reward || 0}元宝</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="shrink-0">
+                                            {t.isCompleted ? (
+                                                <span className="text-emerald-400 text-xs font-bold">✅ 今日已打卡</span>
+                                            ) : (
+                                                <span className="text-slate-400 text-xs font-medium">今日未打卡</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {(!cloudData || (dailyMustTasks.length === 0 && weeklyOptionalTasks.length === 0 && countTasks.length === 0)) && (
                             <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-5 text-center space-y-2 mt-2">
                                 <div className="text-2xl inline-block">☁️</div>
                                 <div className="text-xs font-bold text-amber-300">
-                                    {isLoading ? '正在拉取云端打卡数据...' : '云端暂未获取到打卡清单'}
+                                    {isLoading ? '正在拉取云端打卡数据...' : '暂无进行中的打卡任务'}
                                 </div>
                                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                                    已成功绑定【{operatorRole}的护航手机】！若电脑刚打开，请在电脑主程序中点击【保存并退出】以将孩子数据同步上云，然后点击右上角 🔄 刷新。
+                                    已成功绑定【{operatorRole}的护航手机】！若电脑刚打开或刚修改了任务，请在电脑主程序中点击【保存并退出】以将数据同步上云，然后点击右上角 🔄 刷新。
                                 </p>
                             </div>
                         )}
@@ -1302,11 +1440,23 @@ export const ParentApp = () => {
                                                     作者: <b className="text-amber-400">{msg.author}</b> · {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </div>
                                             </div>
-                                            {msg.isParent && (
-                                                <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 shrink-0">
-                                                    👑 慈亲
-                                                </span>
-                                            )}
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                {msg.isParent && (
+                                                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                                                        👑 慈亲
+                                                    </span>
+                                                )}
+                                                {msg.author === operatorRole && (
+                                                    <button
+                                                        type="button"
+                                                        title="撤回此条寄语"
+                                                        onClick={() => handleDeleteOracle(msg.id)}
+                                                        className="p-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/60 transition-colors text-xs cursor-pointer"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

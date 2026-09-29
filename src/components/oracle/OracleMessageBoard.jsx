@@ -140,7 +140,8 @@ export const OracleMessageBoard = ({
 
                     const isBlessed = !!(msg.blessedBy && msg.blessedBy[activeChild]);
                     const blessingCount = msg.blessings || 0;
-                    const canDelete = activeChild === msg.author || activeChild === '测试员' || isParentAuthor;
+                    // 家长寄语由手机端家长掌控，电脑端孩子不得删除；普通孩子只能删除自己刻录的传书
+                    const canDelete = !isParentAuthor && (activeChild === msg.author || activeChild === '测试员');
 
                     return (
                         <div
