@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Production build outputs
+dist/
+dist-test/
+
+# Cloudflare & Wrangler cache
+.wrangler/
+.env
+.env.*
+!.env.example
+
+# IDE & Editor caches
+.codegraph/
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Backups & Large archives (STRICT: Prevent exceeding GitHub 100MB limit)
+*.zip
+*.tar.gz
+*.7z
+backup_*/
+*.bak
+*.tmp*
+index.html.bak
+index.html.tmp*
+
+# Scratch & local testing
+scratch/
+test_*.py
+test_*.cjs
+*.log
+
+# Personal data exports
+*备份*.json
+时空市集*.json

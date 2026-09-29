@@ -1,0 +1,7 @@
+name = "daka-sync"
+main = "cloudflare-worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "DAKA_SYNC"
+id = "d5f0e4601ff84b3e908ff248042d78a2"

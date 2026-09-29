@@ -1,0 +1,13 @@
+# 金元宝兑换零花钱 · 汇率系统 Worker 配置
+name = "daka-exchange"
+main = "exchange-worker.js"
+compatibility_date = "2024-01-01"
+
+# 定时任务：每天凌晨 2 点更新汇率 + Big Mac 指数
+[triggers]
+crons = ["0 2 * * *"]
+
+# KV 命名空间（汇率数据 + 兑换记录）
+[[kv_namespaces]]
+binding = "EXCHANGE_KV"
+id = "1de9436c0dde4f9598a52b6e235df5a5"

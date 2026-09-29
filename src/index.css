@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+@keyframes flame-flicker {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 3px rgba(249, 115, 22, 0.85));
+  }
+  20% {
+    transform: scale(1.08, 0.94) rotate(-3.5deg);
+    filter: drop-shadow(0 0 6px rgba(251, 146, 60, 1));
+  }
+  40% {
+    transform: scale(0.95, 1.07) rotate(2.5deg);
+    filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.9));
+  }
+  60% {
+    transform: scale(1.05, 0.97) rotate(-2deg);
+    filter: drop-shadow(0 0 7px rgba(245, 158, 11, 1));
+  }
+  80% {
+    transform: scale(0.97, 1.04) rotate(2.5deg);
+    filter: drop-shadow(0 0 5px rgba(251, 146, 60, 0.9));
+  }
+}
+
+@keyframes flame-badge-glow {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(249, 115, 22, 0.75), inset 0 0 3px rgba(245, 158, 11, 0.4);
+    border-color: rgba(251, 191, 36, 0.85);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(251, 146, 60, 1), 0 0 4px rgba(239, 68, 68, 0.8), inset 0 0 5px rgba(245, 158, 11, 0.7);
+    border-color: rgba(253, 224, 71, 1);
+  }
+}
+
+.animate-flame-flicker {
+  animation: flame-flicker 1.8s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+
+.animate-flame-glow {
+  animation: flame-badge-glow 1.8s ease-in-out infinite;
+}
+
+/* --- 新春限定·火树银花背景特效 --- */
+.bg-lunar-night {
+  background: linear-gradient(to bottom, #1e3a8a 0%, #0f172a 60%, #4c0519 100%);
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bg-lunar-night::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 35%;
+  background: radial-gradient(ellipse at bottom, rgba(220, 50, 60, 0.2) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* --- 甲骨文预加载字体声明 --- */
+@font-face {
+  font-family: 'FZXJRW';
+  src: local('方正甲骨文.TTF'),
+       local('FZXJRW'),
+       url('/fangzheng-jiaguwen.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '方正甲骨文.TTF';
+  src: local('方正甲骨文.TTF'),
+       local('FZXJRW'),
+       url('/fangzheng-jiaguwen.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '方正甲骨文';
+  src: local('方正甲骨文.TTF'),
+       local('FZXJRW'),
+       url('/fangzheng-jiaguwen.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.oracle-font {
+  font-family: '方正甲骨文.TTF', 'FZXJRW', '方正甲骨文', 'STKaiti', 'KaiTi', serif;
+}
+
+/* --- 甲骨文传书·吉金玄玉展台 (默认实心不透明，无特效背景时使用) --- */
+.oracle-solid-stage {
+  background: linear-gradient(145deg, #1c1917 0%, #26211e 50%, #181513 100%);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(245, 158, 11, 0.25), inset 0 0 20px rgba(245, 158, 11, 0.05);
+}
+
+/* --- 甲骨文传书·吉金玄玉展台 (装备特效背景时：通透毛玻璃，透出背景流光) --- */
+.oracle-glass-stage {
+  background: linear-gradient(135deg, rgba(30, 24, 20, 0.45) 0%, rgba(45, 32, 22, 0.38) 50%, rgba(26, 18, 14, 0.42) 100%);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(245, 158, 11, 0.30);
+  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.20), inset 0 0 20px rgba(245, 158, 11, 0.05);
+}
+
+.oracle-bone-tablet {
+  background: linear-gradient(145deg, #fdfbf7 0%, #f6f0e4 45%, #ece2cd 100%);
+  border: 1px solid #dcd1be;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.95), inset 0 -2px 6px rgba(180, 130, 80, 0.15);
+  transform-style: preserve-3d;
+}
+
+.oracle-bone-tablet::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  border: 1px dashed rgba(192, 160, 128, 0.35);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.oracle-chiseled-text {
+  /* 刀锋阴刻质感：上暗影、下微白光，营造向内镌刻的立体金石感 */
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85), 0 -0.5px 0.8px rgba(69, 26, 3, 0.45);
+  font-family: '方正甲骨文.TTF', 'FZXJRW', 'STKaiti', 'KaiTi', serif;
+}
+
+.oracle-cinnabar-seal {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  border: 1.5px solid rgba(254, 202, 202, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0 4px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.4);
+}
+
+/* --- 天工司·设置长卷横向精致滚动条 --- */
+.settings-tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.4) rgba(241, 245, 249, 0.8);
+}
+
+.settings-tabs-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+
+.settings-tabs-scroll::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.85);
+  border-radius: 9999px;
+  margin: 0 12px;
+}
+
+.settings-tabs-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+.settings-tabs-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.85);
+}
+

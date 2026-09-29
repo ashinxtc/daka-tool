@@ -102,6 +102,84 @@ async function updateExchangeRate(env) {
 }
 
 // ============================================================
+// 兑换限额（服务端强制执行，家长通过 /api/limits 配置）
+// ============================================================
+
+const DEFAULT_LIMITS = {
+    minGold: 500,       // 最低兑换金元宝
+    maxSingle: 0,       // 单次上限（0 = 不限）
+    maxWeekly: 0,       // 每周已核销+待核销总上限（0 = 不限）
+    maxCnyPerGold: 0,   // 单个金元宝最高兑换人民币（元，0 = 不限），防止客户端伪造汇率
+};
+
+async function getLimits(env, syncCode) {
+    try {
+        const data = await env.EXCHANGE_KV.get(`limits:${syncCode}`);
+        if (data) return { ...DEFAULT_LIMITS, ...JSON.parse(data) };
+    } catch (e) {}
+    return { ...DEFAULT_LIMITS };
+}
+
+// 北京时间（UTC+8）的日期辅助
+function beijingNow() {
+    return new Date(Date.now() + 8 * 3600 * 1000);
+}
+
+function beijingDateKey(isoString) {
+    // 输入 UTC ISO 字符串，输出北京时间的 YYYY-MM-DD
+    const d = new Date(new Date(isoString).getTime() + 8 * 3600 * 1000);
+    return d.toISOString().slice(0, 10);
+}
+
+function beijingWeekStartKey() {
+    // 本周一（北京时间）的 YYYY-MM-DD
+    const bj = beijingNow();
+    const dayOfWeek = bj.getUTCDay() || 7; // 周日=7
+    bj.setUTCDate(bj.getUTCDate() - dayOfWeek + 1);
+    return bj.toISOString().slice(0, 10);
+}
+
+// 读取/更新限额配置
+async function handleLimitsGet(request, env) {
+    const url = new URL(request.url);
+    const syncCode = url.searchParams.get('code');
+    if (!syncCode) return json({ error: '缺少同步码' }, 400);
+    const limits = await getLimits(env, syncCode);
+    // pinHash 不回传给客户端
+    const { pinHash, ...pub } = limits;
+    return json({ ok: true, limits: pub, protected: !!pinHash });
+}
+
+async function handleLimitsSet(request, env) {
+    const body = await request.json();
+    const { syncCode, limits, pinHash } = body;
+    if (!syncCode || !limits) return json({ error: '参数不完整' }, 400);
+
+    const existing = await getLimits(env, syncCode);
+    // 若已注册家长密码哈希，更新时必须匹配
+    if (existing.pinHash && existing.pinHash !== pinHash) {
+        return json({ error: '家长密码验证失败，无法修改兑换限额' }, 403);
+    }
+
+    const sanitize = (v, max) => {
+        const n = parseFloat(v);
+        return (isFinite(n) && n >= 0) ? Math.min(n, max) : 0;
+    };
+    const next = {
+        minGold: Math.max(1, sanitize(limits.minGold, 1000000) || DEFAULT_LIMITS.minGold),
+        maxSingle: sanitize(limits.maxSingle, 10000000),
+        maxWeekly: sanitize(limits.maxWeekly, 10000000),
+        maxCnyPerGold: sanitize(limits.maxCnyPerGold, 1000),
+    };
+    // 首次携带 pinHash 即注册保护；已有保护则沿用
+    if (pinHash || existing.pinHash) next.pinHash = existing.pinHash || pinHash;
+
+    await env.EXCHANGE_KV.put(`limits:${syncCode}`, JSON.stringify(next));
+    const { pinHash: _, ...pub } = next;
+    return json({ ok: true, limits: pub });
+}
+
+// ============================================================
 // 兑换申请
 // ============================================================
 
@@ -109,11 +187,27 @@ async function handleApply(request, env) {
     const body = await request.json();
     const { syncCode, childName, goldAmount, rate } = body;
 
-    if (!syncCode || !childName || !goldAmount || goldAmount < 500) {
-        return json({ error: '参数不完整或兑换数量不足（最低 500 金元宝）' }, 400);
+    // 基础参数校验（goldAmount 必须是正整数）
+    if (!syncCode || !childName || !goldAmount || !isFinite(goldAmount) || goldAmount <= 0 || Math.floor(goldAmount) !== goldAmount) {
+        return json({ error: '参数不完整或兑换数量无效' }, 400);
+    }
+    if (!isFinite(rate) || rate <= 0 || rate > 1000) {
+        return json({ error: '汇率参数无效' }, 400);
     }
 
-    // 防重复：检查当日是否有未核销的申请
+    // 服务端限额校验（家长配置，客户端无法绕过）
+    const limits = await getLimits(env, syncCode);
+    if (goldAmount < limits.minGold) {
+        return json({ error: `兑换数量不足（最低 ${limits.minGold} 金元宝）` }, 400);
+    }
+    if (limits.maxSingle > 0 && goldAmount > limits.maxSingle) {
+        return json({ error: `超过单次兑换上限（${limits.maxSingle} 金元宝）` }, 400);
+    }
+    if (limits.maxCnyPerGold > 0 && rate > limits.maxCnyPerGold) {
+        return json({ error: '汇率超出家长设置的上限' }, 400);
+    }
+
+    // 遍历现有记录：防当日重复 + 统计本周额度
     const indexKey = `exchange_index:${syncCode}`;
     let index = [];
     try {
@@ -121,15 +215,32 @@ async function handleApply(request, env) {
         if (idxData) index = JSON.parse(idxData);
     } catch (e) {}
 
-    const today = new Date().toISOString().slice(0, 10);
+    const todayBj = beijingDateKey(new Date().toISOString());
+    const weekStart = beijingWeekStartKey();
+    let weeklyUsed = 0;
+
     for (const id of index) {
         const existing = await env.EXCHANGE_KV.get(`exchange:${id}`);
-        if (existing) {
-            const rec = JSON.parse(existing);
-            if (rec.status === 'pending' && rec.createdAt?.startsWith(today)) {
+        if (!existing) continue;
+        const rec = JSON.parse(existing);
+        if (rec.status === 'cancelled') continue;
+        const recDay = rec.createdAt ? beijingDateKey(rec.createdAt) : '';
+        // 每日限兑 1 次（与 UI 承诺一致；已取消的不计）
+        if (recDay === todayBj && rec.childName === childName) {
+            if (rec.status === 'pending') {
                 return json({ error: '今天已有未核销的兑换申请，请先取消或等待核销后再申请。' }, 400);
             }
+            return json({ error: '每日限兑 1 次，今天已经兑换过啦，明天再来吧！' }, 400);
         }
+        // 本周额度统计（pending + verified 都占用额度）
+        if (recDay >= weekStart && rec.childName === childName) {
+            weeklyUsed += rec.goldAmount || 0;
+        }
+    }
+
+    if (limits.maxWeekly > 0 && weeklyUsed + goldAmount > limits.maxWeekly) {
+        const remaining = Math.max(0, limits.maxWeekly - weeklyUsed);
+        return json({ error: `超过每周兑换上限（${limits.maxWeekly} 金元宝），本周还可兑换 ${remaining}` }, 400);
     }
 
     // 生成 4 位核销码
@@ -303,6 +414,16 @@ export default {
             // 申请兑换
             if (path === '/api/exchange/apply' && request.method === 'POST') {
                 return await handleApply(request, env);
+            }
+
+            // 读取兑换限额（家长配置）
+            if (path === '/api/limits' && request.method === 'GET') {
+                return await handleLimitsGet(request, env);
+            }
+
+            // 更新兑换限额（家长配置）
+            if (path === '/api/limits' && request.method === 'POST') {
+                return await handleLimitsSet(request, env);
             }
 
             // 核销兑换

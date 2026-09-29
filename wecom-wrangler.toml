@@ -1,0 +1,27 @@
+# 企业微信亲子互动 Worker 配置
+# 独立于现有 cloudflare-worker.js（同步服务）
+name = "daka-wecom"
+main = "wecom-worker.js"
+compatibility_date = "2024-01-01"
+
+# 环境变量（非敏感配置）
+[vars]
+WECOM_CORP_ID = "ww38f2b0a2ef8a2ee2"            # 企业 ID（管理后台 → 我的企业 → 企业信息）
+WECOM_AGENT_ID = "1000002"           # 自建应用 AgentID（应用管理 → 自建应用）
+WECOM_TOKEN = "daka2026wecom"              # 回调 Token（自建应用 → 接收消息 → 设置 API 接收）
+WECOM_ENCODING_AES_KEY = "rr3osjad9HO5mUnmPXHXumjB5HcA2WVNdPEeIWsJjFD"   # 回调 EncodingAESKey（43 字符，同上页面生成）
+
+# 敏感信息通过 wrangler secret 设置：
+# wrangler secret put WECOM_SECRET       → 自建应用 Secret
+# wrangler secret put WECOM_WEBHOOK_KEY  → 群机器人 Webhook Key
+
+# KV 命名空间（企业微信消息存储）
+# 创建命令：wrangler kv namespace create WECOM_KV
+[[kv_namespaces]]
+binding = "WECOM_KV"
+id = "971f546885ca4c8e92a1bcb760954657"
+
+# 路由（可选，如果使用自定义域名）
+# [routes]
+# pattern = "wecom.daka-tool.top/*"
+# zone_name = "daka-tool.top"

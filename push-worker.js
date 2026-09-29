@@ -43,6 +43,10 @@ async function sha256(data) {
 
 // HKDF-SHA256
 async function hkdf(ikm, salt, info, length) {
+    // Cloudflare Workers 不支持导入空的 HMAC 密钥；按 RFC 5869，空 salt 应视为 HashLen 个零字节
+    if (!salt || salt.length === 0) {
+        salt = new Uint8Array(32);
+    }
     const prkKey = await crypto.subtle.importKey('raw', salt, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const prk = new Uint8Array(await crypto.subtle.sign('HMAC', prkKey, ikm));
 
@@ -63,10 +67,10 @@ async function hkdf(ikm, salt, info, length) {
     return result;
 }
 
-// AES-128-CTR
-async function aesCtrEncrypt(key, counter, data) {
-    const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'AES-CTR' }, false, ['encrypt']);
-    return new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CTR', counter: counter, length: 64 }, cryptoKey, data));
+// AES-128-GCM（Web Push 标准加密）
+async function aesGcmEncrypt(key, nonce, data) {
+    const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'AES-GCM' }, false, ['encrypt']);
+    return new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, cryptoKey, data));
 }
 
 // ECDH
@@ -75,7 +79,8 @@ async function generateECDHKeyPair() {
 }
 
 async function computeSharedSecret(privateKey, publicKeyBuffer) {
-    const peerKey = await crypto.subtle.importKey('raw', publicKeyBuffer, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+    // Cloudflare Workers 中 ECDH 公钥的 usage 必须为空数组
+    const peerKey = await crypto.subtle.importKey('raw', publicKeyBuffer, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
     return new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: peerKey }, privateKey, 256));
 }
 
@@ -98,7 +103,7 @@ async function encryptPushPayload(payload, p256dh, auth) {
     const nonce = (await hkdf(prk, new Uint8Array(0), nonceInfo, 12)).slice(0, 12);
 
     const padded = pkcs7Pad(content, 16);
-    const encrypted = await aesCtrEncrypt(key, nonce, padded);
+    const encrypted = await aesGcmEncrypt(key, nonce, padded);
 
     return { salt: base64UrlEncode(salt), publicKey: base64UrlEncode(senderPubKey), ciphertext: encrypted };
 }
@@ -116,23 +121,62 @@ async function generateVapidJWT(audience, vapidPrivateKeyHex) {
     const payloadB64 = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
     const signingInput = `${headerB64}.${payloadB64}`;
 
-    // Import private key
-    const privKeyDer = hexToUint8Array(vapidPrivateKeyHex);
-    const privateKey = await crypto.subtle.importKey('pkcs8', privKeyDer, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    try {
+        // Import private key
+        const privKeyDer = decodePrivateKey(vapidPrivateKeyHex);
+        const privateKey = await crypto.subtle.importKey('pkcs8', privKeyDer, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
 
-    const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, new TextEncoder().encode(signingInput)));
+        const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, new TextEncoder().encode(signingInput)));
+        console.log('VAPID signature length:', signature.length, 'first byte:', signature[0]?.toString(16));
 
-    // DER decode r and s
-    const r = signature.slice(4, 4 + signature[3]);
-    const s = signature.slice(4 + signature[3] + 2);
+        // 解析 ECDSA 签名：Web Crypto 标准返回 DER，但某些环境可能返回 raw r||s
+        let r, s;
+        if (signature.length === 64) {
+            // raw r||s 格式
+            r = signature.slice(0, 32);
+            s = signature.slice(32, 64);
+        } else if (signature[0] === 0x30) {
+            // DER 格式
+            function readDerLength(data, pos) {
+                let len = data[pos++];
+                if (len & 0x80) {
+                    const numBytes = len & 0x7f;
+                    len = 0;
+                    for (let i = 0; i < numBytes; i++) {
+                        len = (len << 8) | data[pos++];
+                    }
+                }
+                return { len, pos };
+            }
+            let pos = 0;
+            pos++; // 0x30
+            const total = readDerLength(signature, pos);
+            pos = total.pos;
+            if (signature[pos++] !== 0x02) throw new Error('Invalid DER signature: missing INTEGER r');
+            const rInfo = readDerLength(signature, pos);
+            pos = rInfo.pos;
+            r = signature.slice(pos, pos + rInfo.len);
+            pos += rInfo.len;
+            if (signature[pos++] !== 0x02) throw new Error('Invalid DER signature: missing INTEGER s');
+            const sInfo = readDerLength(signature, pos);
+            pos = sInfo.pos;
+            s = signature.slice(pos, pos + sInfo.len);
+        } else {
+            throw new Error(`Unknown signature format: length=${signature.length}, first byte=0x${(signature[0] || 0).toString(16)}`);
+        }
 
-    const rPadded = new Uint8Array(32);
-    const sPadded = new Uint8Array(32);
-    rPadded.set(r.slice(Math.max(0, r.length - 32)));
-    sPadded.set(s.slice(Math.max(0, s.length - 32)));
+        console.log('VAPID r length:', r.length, 's length:', s.length);
 
-    const sigB64 = base64UrlEncode(new Uint8Array([...rPadded, ...sPadded]));
-    return `${signingInput}.${sigB64}`;
+        const rPadded = new Uint8Array(32);
+        const sPadded = new Uint8Array(32);
+        rPadded.set(r.slice(Math.max(0, r.length - 32)));
+        sPadded.set(s.slice(Math.max(0, s.length - 32)));
+
+        const sigB64 = base64UrlEncode(new Uint8Array([...rPadded, ...sPadded]));
+        return `${signingInput}.${sigB64}`;
+    } catch (e) {
+        throw new Error(`VAPID 签名失败: ${e.message}`);
+    }
 }
 
 function hexToUint8Array(hex) {
@@ -143,11 +187,30 @@ function hexToUint8Array(hex) {
     return bytes;
 }
 
+// 支持 hex 或 base64url 编码的 VAPID 私钥
+function decodePrivateKey(input) {
+    const hexPattern = /^[0-9a-fA-F]+$/;
+    // 如果全是十六进制字符且长度为偶数，按 hex 解析
+    if (hexPattern.test(input) && input.length % 2 === 0 && input.length >= 32) {
+        return hexToUint8Array(input);
+    }
+    // 否则按 base64url 解析
+    const standard = input.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = standard + '='.repeat((4 - standard.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
 // Send Web Push notification
 async function sendWebPush(subscription, payload, vapidKeys) {
     const endpoint = subscription.endpoint;
     const p256dh = subscription.keys?.p256dh;
     const auth = subscription.keys?.auth;
+
+    if (!endpoint) throw new Error('订阅缺少 endpoint');
+    if (!p256dh || !auth) throw new Error('订阅缺少 p256dh 或 auth 密钥');
 
     const audience = new URL(endpoint).origin;
     const jwt = await generateVapidJWT(audience, vapidKeys.privateKeyHex);
@@ -177,7 +240,19 @@ async function sendWebPush(subscription, payload, vapidKeys) {
         body: body
     });
 
-    return { status: response.status, ok: response.ok };
+    // 410 Gone = 订阅已失效；404 也可能表示订阅不存在
+    const expired = response.status === 410 || response.status === 404;
+    return { status: response.status, ok: response.ok, expired };
+}
+
+// 校验 VAPID 密钥配置
+function getVapidKeys(env) {
+    const publicKey = env.VAPID_PUBLIC_KEY;
+    const privateKeyHex = env.VAPID_PRIVATE_KEY_HEX;
+    if (!publicKey || !privateKeyHex) {
+        throw new Error('VAPID 密钥未配置');
+    }
+    return { publicKey, privateKeyHex };
 }
 
 // ============================================================
@@ -235,14 +310,13 @@ async function handleCronTrigger(env) {
                 body: message,
                 tag: `daily-${childName}-${today}`,
                 url: 'https://daka-tool.vip/'
-            }), {
-                publicKey: env.VAPID_PUBLIC_KEY,
-                privateKeyHex: env.VAPID_PRIVATE_KEY_HEX
-            });
+            }), getVapidKeys(env));
 
             if (pushResult.ok || pushResult.status === 201) {
                 subData.lastNotified = notifyKey;
                 await env.PUSH_KV.put(key.name, JSON.stringify(subData));
+            } else if (pushResult.expired) {
+                await env.PUSH_KV.delete(key.name);
             }
 
             results.push({ child: childName, status: pushResult.status, message: message.slice(0, 50) });
@@ -310,22 +384,35 @@ export default {
             if (path === '/api/test-push' && request.method === 'POST') {
                 const body = await request.json();
                 const { syncCode, childName } = body;
+                if (!syncCode || !childName) {
+                    return json({ error: '缺少 syncCode 或 childName' }, 400, corsHeaders);
+                }
                 const key = `push_sub:${syncCode}:${childName}`;
                 const subData = await env.PUSH_KV.get(key);
                 if (!subData) return json({ error: '未找到订阅' }, 404, corsHeaders);
 
-                const parsed = JSON.parse(subData);
-                const result = await sendWebPush(parsed.subscription, JSON.stringify({
-                    title: '🔔 测试通知',
-                    body: `${childName}，打卡提醒测试成功！`,
-                    tag: 'test',
-                    url: 'https://daka-tool.vip/'
-                }), {
-                    publicKey: env.VAPID_PUBLIC_KEY,
-                    privateKeyHex: env.VAPID_PRIVATE_KEY_HEX
-                });
+                try {
+                    const parsed = JSON.parse(subData);
+                    const result = await sendWebPush(parsed.subscription, JSON.stringify({
+                        title: '🔔 测试通知',
+                        body: `${childName}，打卡提醒测试成功！`,
+                        tag: 'test',
+                        url: 'https://daka-tool.vip/'
+                    }), getVapidKeys(env));
 
-                return json({ ok: result.ok, status: result.status }, 200, corsHeaders);
+                    if (result.expired) {
+                        await env.PUSH_KV.delete(key);
+                        return json({ ok: false, status: result.status, error: '订阅已过期，请重新开启通知' }, 200, corsHeaders);
+                    }
+
+                    if (result.status === 403) {
+                        return json({ ok: false, status: 403, error: '推送被服务器拒绝（403）。可能是 VAPID 密钥与订阅不匹配，请取消通知后重新开启通知。' }, 200, corsHeaders);
+                    }
+
+                    return json({ ok: result.ok, status: result.status }, 200, corsHeaders);
+                } catch (e) {
+                    return json({ error: '推送失败：' + e.message }, 500, corsHeaders);
+                }
             }
 
             // 手动触发定时检查（调试用）
@@ -334,14 +421,56 @@ export default {
                 return json({ ok: true, results }, 200, corsHeaders);
             }
 
+            // 同步触发：打卡上传后通知其他设备拉取最新数据
+            if (path === '/api/notify-sync' && request.method === 'POST') {
+                const body = await request.json();
+                const { syncCode, excludeChild } = body;
+                if (!syncCode) return json({ error: '缺少 syncCode' }, 400, corsHeaders);
+
+                // 列出该 syncCode 的所有订阅
+                const listResult = await env.PUSH_KV.list({ prefix: `push_sub:${syncCode}:` });
+                const results = [];
+                for (const key of listResult.keys) {
+                    try {
+                        const subData = JSON.parse(await env.PUSH_KV.get(key.name));
+                        // 排除发起打卡的设备，避免自己给自己发
+                        if (excludeChild && subData.childName === excludeChild) continue;
+                        const pushResult = await sendWebPush(subData.subscription, JSON.stringify({
+                            triggerSync: true,
+                            syncCode: syncCode
+                        }), getVapidKeys(env));
+                        if (pushResult.expired) {
+                            await env.PUSH_KV.delete(key.name);
+                        }
+                        results.push({ child: subData.childName, ok: pushResult.ok });
+                    } catch (e) {
+                        results.push({ key: key.name, error: e.message });
+                    }
+                }
+                return json({ ok: true, results }, 200, corsHeaders);
+            }
+
             // 获取 VAPID 公钥（前端需要）
             if (path === '/api/vapid-key' && request.method === 'GET') {
                 return json({ publicKey: env.VAPID_PUBLIC_KEY }, 200, corsHeaders);
             }
 
+            // VAPID 密钥自检（调试用）
+            if (path === '/api/test-vapid' && request.method === 'GET') {
+                try {
+                    const keys = getVapidKeys(env);
+                    // 尝试生成一个测试 JWT
+                    await generateVapidJWT('https://fcm.googleapis.com', keys.privateKeyHex);
+                    return json({ ok: true, publicKeyPreview: keys.publicKey.slice(0, 20) + '...' }, 200, corsHeaders);
+                } catch (e) {
+                    return json({ ok: false, error: e.message }, 500, corsHeaders);
+                }
+            }
+
             return json({ error: 'Not found' }, 404, corsHeaders);
         } catch (e) {
-            return json({ error: e.message }, 500, corsHeaders);
+            console.error('push-worker error:', e);
+            return json({ error: e.message, stack: e.stack }, 500, corsHeaders);
         }
     },
 
