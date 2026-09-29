@@ -402,18 +402,20 @@ export const ParentApp = () => {
     const activeProfile = profiles.find(p => p.name === activeChild) || profiles[0];
 
     const tasks = useMemo(() => {
-        if (!cloudData?.app_tasks_v2) return [];
+        if (!cloudData?.app_tasks_v2) return {};
         try {
-            return JSON.parse(cloudData.app_tasks_v2) || [];
+            const parsed = JSON.parse(cloudData.app_tasks_v2);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
         } catch (e) {
-            return [];
+            return {};
         }
     }, [cloudData]);
 
     const checkins = useMemo(() => {
         if (!cloudData?.app_checkins_v2) return {};
         try {
-            return JSON.parse(cloudData.app_checkins_v2) || {};
+            const parsed = JSON.parse(cloudData.app_checkins_v2);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
         } catch (e) {
             return {};
         }
@@ -428,21 +430,27 @@ export const ParentApp = () => {
 
         try {
             const wh = JSON.parse(cloudData.app_wheel_history || '{}');
-            Object.entries(wh).forEach(([k, v]) => {
-                if (k.startsWith(`${activeChild}-`)) gold += (typeof v === 'number' ? v : 0);
-            });
+            if (wh && typeof wh === 'object') {
+                Object.entries(wh).forEach(([k, v]) => {
+                    if (k.startsWith(`${activeChild}-`)) gold += (typeof v === 'number' ? v : 0);
+                });
+            }
         } catch (e) {}
 
         try {
             const xph = JSON.parse(cloudData.app_xp_history || '{}');
-            Object.entries(xph).forEach(([k, v]) => {
-                if (k.startsWith(`${activeChild}-`)) xp += (typeof v === 'number' ? v : 0);
-            });
+            if (xph && typeof xph === 'object') {
+                Object.entries(xph).forEach(([k, v]) => {
+                    if (k.startsWith(`${activeChild}-`)) xp += (typeof v === 'number' ? v : 0);
+                });
+            }
         } catch (e) {}
 
         try {
             const starData = JSON.parse(cloudData.app_stars_v1 || '{}');
-            stars = starData[activeChild] || 0;
+            if (starData && typeof starData === 'object') {
+                stars = starData[activeChild] || 0;
+            }
         } catch (e) {}
 
         return { goldBalance: Math.max(0, gold), totalXp: Math.max(0, xp), starCount: stars };
@@ -453,19 +461,29 @@ export const ParentApp = () => {
     // 计算今日打卡进度
     const todayDateKey = getLocalDateKey(0);
     const { todayCoreTasks, todayRoutineTasks, todayDoneCount, todayTotalCount } = useMemo(() => {
-        const childCheckins = checkins[activeChild] || {};
-        const childTasks = tasks.filter(t => !t.assignedTo || t.assignedTo === activeChild);
+        const childCheckins = (checkins && typeof checkins === 'object') ? (checkins[activeChild] || {}) : {};
+        
+        // 关键兼容：主程序中 app_tasks_v2 是对象结构 { [childName]: [ task1, task2... ] }
+        let childTasks = [];
+        if (Array.isArray(tasks)) {
+            childTasks = tasks.filter(t => t && (!t.assignedTo || t.assignedTo === activeChild));
+        } else if (tasks && typeof tasks === 'object') {
+            childTasks = Array.isArray(tasks[activeChild]) ? tasks[activeChild] : [];
+        }
 
         const core = [];
         const routine = [];
         let done = 0;
 
         childTasks.forEach(task => {
-            const isCompleted = !!childCheckins[task.id]?.[todayDateKey];
-            const checkinVal = childCheckins[task.id]?.[todayDateKey];
+            if (!task) return;
+            const taskCheckinRecord = childCheckins[task.id];
+            const checkinVal = taskCheckinRecord?.[todayDateKey];
+            const isCompleted = Array.isArray(checkinVal) ? checkinVal.length > 0 : !!checkinVal;
             const item = { ...task, isCompleted, checkinVal };
 
-            if (task.isCore || task.type === 'core') {
+            const isCore = task.isCore || task.type === 'core' || task.frequencyType === 'daily_must';
+            if (isCore) {
                 core.push(item);
             } else {
                 routine.push(item);
@@ -487,8 +505,9 @@ export const ParentApp = () => {
     const oracleMessages = useMemo(() => {
         if (!cloudData?.app_global_messages_v2) return [];
         try {
-            const list = JSON.parse(cloudData.app_global_messages_v2) || [];
-            return list.filter(m => (m.expire || 0) > Date.now()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            const list = JSON.parse(cloudData.app_global_messages_v2);
+            if (!Array.isArray(list)) return [];
+            return list.filter(m => m && (m.expire || 0) > Date.now()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         } catch (e) {
             return [];
         }
@@ -498,8 +517,9 @@ export const ParentApp = () => {
     const parentActions = useMemo(() => {
         if (!cloudData?.app_parent_actions_v1) return [];
         try {
-            const list = JSON.parse(cloudData.app_parent_actions_v1) || [];
-            return list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            const list = JSON.parse(cloudData.app_parent_actions_v1);
+            if (!Array.isArray(list)) return [];
+            return list.filter(Boolean).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         } catch (e) {
             return [];
         }
@@ -816,6 +836,21 @@ export const ParentApp = () => {
                 </div>
             </header>
 
+            {/* 快捷进入小贴士 */}
+            <div className="bg-indigo-950/70 border-b border-indigo-500/20 px-4 py-1.5 flex items-center justify-between text-[11px] text-indigo-200">
+                <div className="flex items-center gap-1.5 truncate">
+                    <span>💡</span>
+                    <span className="truncate">微信点右上角【···】选【添加到桌面】，下次一键直达</span>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => setShowDeviceDrawer(true)}
+                    className="text-amber-400 font-bold shrink-0 ml-2 hover:underline cursor-pointer"
+                >
+                    入口说明 →
+                </button>
+            </div>
+
             {/* 孩子切换水平滚动栏 */}
             {profiles.length > 1 && (
                 <div className="bg-slate-900/50 border-b border-slate-800/60 px-4 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -827,7 +862,11 @@ export const ParentApp = () => {
                             onClick={() => setActiveChild(p.name)}
                             className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${activeChild === p.name ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
                         >
-                            <span>{p.icon || '👦'}</span>
+                            {p.avatar ? (
+                                <img src={p.avatar} alt={p.name} className="w-4 h-4 rounded-full object-cover" />
+                            ) : (
+                                <span>{p.icon || '👦'}</span>
+                            )}
                             <span>{p.name}</span>
                         </button>
                     ))}
@@ -842,8 +881,12 @@ export const ParentApp = () => {
 
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-2xl shadow-inner">
-                                {activeProfile.icon || '👦'}
+                            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-2xl shadow-inner overflow-hidden">
+                                {activeProfile.avatar ? (
+                                    <img src={activeProfile.avatar} alt={activeChild} className="w-full h-full object-cover" />
+                                ) : (
+                                    <span>{activeProfile.icon || '👦'}</span>
+                                )}
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
@@ -1411,6 +1454,18 @@ export const ParentApp = () => {
                             </div>
                         </div>
 
+                        {/* 以后如何快捷进入指南 */}
+                        <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3.5 space-y-2 text-xs">
+                            <div className="font-bold text-indigo-300 flex items-center gap-1.5">
+                                <span>📌</span> 以后从哪里进入？
+                            </div>
+                            <ul className="text-[11px] text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
+                                <li><b>添加到手机桌面（强烈推荐）</b>：点击微信右上角【···】选择【添加到桌面】（iOS Safari 点击分享【添加到主屏幕】），即可像独立 App 一样一键打开。</li>
+                                <li><b>微信浮窗 / 收藏</b>：点击右上角【···】选择【浮窗】或【收藏】，随时在微信中唤出。</li>
+                                <li><b>直接保存网址</b>：<span className="font-mono text-amber-300 select-all">https://www.daka-tool.top/parent.html</span>（已自动记住本机，打开即登入）。</li>
+                            </ul>
+                        </div>
+
                         <button
                             type="button"
                             onClick={() => {
@@ -1492,8 +1547,65 @@ export const ParentApp = () => {
     );
 };
 
+// 顶级渲染异常守护边界
+class ParentErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+    componentDidCatch(error, errorInfo) {
+        console.error('ParentApp runtime crash prevented:', error, errorInfo);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-3xl mb-4 shadow-lg">
+                        🛡️
+                    </div>
+                    <h2 className="text-base font-bold text-white mb-2">家长督学护航台</h2>
+                    <p className="text-xs text-slate-400 max-w-sm mb-5 leading-relaxed">
+                        数据渲染时遭遇异常：{this.state.error?.message || '未知错误'}<br />
+                        已为您安全拦截，请点击下方按钮重新加载。
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl active:scale-95 transition-all shadow-md shadow-indigo-600/30 cursor-pointer"
+                        >
+                            🔄 重新加载页面
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                localStorage.removeItem('parent_sync_code');
+                                localStorage.removeItem('parent_pair_token');
+                                localStorage.removeItem('parent_is_bound');
+                                window.location.href = window.location.pathname;
+                            }}
+                            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl active:scale-95 transition-all cursor-pointer"
+                        >
+                            重新扫码绑定
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 // 挂载 React 根节点
 const rootElement = document.getElementById('root');
 if (rootElement) {
-    ReactDOM.createRoot(rootElement).render(<ParentApp />);
+    ReactDOM.createRoot(rootElement).render(
+        <ParentErrorBoundary>
+            <ParentApp />
+        </ParentErrorBoundary>
+    );
 }
+
