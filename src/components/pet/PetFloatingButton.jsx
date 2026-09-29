@@ -418,10 +418,19 @@ export const PetFloatingButton = ({
         </div>
       </div>
 
-      {/* 原有宠物气泡通知 (仅在未悬停时展示，避免层叠遮挡) */}
+      {/* 原有宠物气泡通知 (增加 w-max、min-w 与指示箭头，杜绝单列竖直折行) */}
       {petNotifVisible && currentPetNotif && !currentPetNotif.resolved && !isHovered && (
-        <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 bg-white px-3 py-2 rounded-xl rounded-bl-none shadow-lg text-xs font-bold text-gray-700 border border-gray-100 max-w-[200px] z-[95]">
-          {currentPetNotif.message}
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenPet?.('home');
+          }}
+          className="absolute left-full ml-3 top-1/2 -translate-y-1/2 w-max min-w-[150px] max-w-[210px] bg-white/95 backdrop-blur-md px-3.5 py-2.5 rounded-2xl rounded-bl-sm shadow-xl text-xs font-bold text-slate-700 border border-teal-200/90 z-[95] animate-in fade-in slide-in-from-left-2 duration-300 cursor-pointer select-none"
+        >
+          <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-0 h-0 border-t-[5px] border-t-transparent border-r-[6px] border-r-white border-b-[5px] border-b-transparent drop-shadow-2xs" />
+          <p className="relative z-10 leading-relaxed break-words whitespace-normal font-bold">
+            {currentPetNotif.message}
+          </p>
         </div>
       )}
     </div>
