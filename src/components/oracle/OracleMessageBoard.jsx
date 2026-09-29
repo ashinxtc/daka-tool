@@ -185,9 +185,9 @@ export const OracleMessageBoard = ({
                                     </div>
                                 </div>
 
-                                {/* 骨片核心铭刻内容 (金石凹陷刻痕质感) */}
+                                {/* 骨片核心铭刻内容 (清晰现代中文字体，确保孩子阅读通畅) */}
                                 <div className="py-2.5">
-                                    <p className="text-base font-serif font-bold leading-relaxed text-amber-950 break-words oracle-chiseled-text">
+                                    <p className="text-base font-sans font-black leading-relaxed text-amber-950 break-words oracle-chiseled-text">
                                         “{msg.text}”
                                     </p>
                                 </div>

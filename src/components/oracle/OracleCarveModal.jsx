@@ -108,9 +108,9 @@ export const OracleCarveModal = ({
                             </div>
                         </div>
 
-                        {/* 刻字效果内容 */}
+                        {/* 刻字效果内容 (清晰易读的现代中文字体) */}
                         <div className="py-4 px-2">
-                            <p className="text-base sm:text-lg font-serif font-black text-amber-950 leading-relaxed tracking-wider break-words oracle-chiseled-text">
+                            <p className="text-base sm:text-lg font-sans font-black text-amber-950 leading-relaxed tracking-wider break-words oracle-chiseled-text">
                                 {messageText ? `“${messageText}”` : (
                                     <span className="text-amber-800/40 italic font-sans font-normal text-sm sm:text-base">
                                         “执刀于此，铭刻你的心声与勉励……”

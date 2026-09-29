@@ -137,7 +137,8 @@
 .oracle-chiseled-text {
   /* 刀锋阴刻质感：上暗影、下微白光，营造向内镌刻的立体金石感 */
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85), 0 -0.5px 0.8px rgba(69, 26, 3, 0.45);
-  font-family: '方正甲骨文.TTF', 'FZXJRW', 'STKaiti', 'KaiTi', serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  letter-spacing: 0.02em;
 }
 
 .oracle-cinnabar-seal {
