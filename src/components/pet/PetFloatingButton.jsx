@@ -21,7 +21,10 @@ export const PetFloatingButton = ({
   currentPetNotif = null,
   showPetNotifBubble,
   onOpenPet,
-  handleCompleteAdventure
+  handleCompleteAdventure,
+  handleDismissAdventure,
+  handleDismissAllAdventures,
+  showToast
 }) => {
   const [now, setNow] = useState(Date.now());
   const [isHovered, setIsHovered] = useState(false);
@@ -139,10 +142,37 @@ export const PetFloatingButton = ({
     e.stopPropagation();
     setIsHovered(false);
     if (adv?.isFinished) {
-      if (handleCompleteAdventure) {
-        handleCompleteAdventure(activeChild, adv.id, true);
-      } else if (typeof window !== 'undefined' && window.confetti) {
-        window.confetti({ particleCount: 75, spread: 70, origin: { y: 0.6 } });
+      if (adv.status === 'completed') {
+        // 已生成战利品的探险：点击领宝直接收下销项，播放撒花并提示
+        if (typeof window !== 'undefined' && window.confetti) {
+          window.confetti({ particleCount: 75, spread: 70, origin: { y: 0.6 } });
+        }
+        if (typeof handleDismissAdventure === 'function') {
+          handleDismissAdventure(activeChild, adv.id);
+        }
+        const pName = adv.petName || '宠物';
+        const rName = adv.realm?.name || adv.realmName || '秘境';
+        if (typeof showToast === 'function') {
+          showToast(`🎁 已收下「${pName}」从「${rName}」带回的历练战利品！`);
+        }
+        return;
+      } else if (adv.status === 'active' && Date.now() >= adv.expectedEndTime) {
+        // 到期尚未结算的：先结算，然后收下销项
+        if (typeof handleCompleteAdventure === 'function') {
+          handleCompleteAdventure(activeChild, adv.id, false);
+        }
+        if (typeof handleDismissAdventure === 'function') {
+          handleDismissAdventure(activeChild, adv.id);
+        }
+        if (typeof window !== 'undefined' && window.confetti) {
+          window.confetti({ particleCount: 75, spread: 70, origin: { y: 0.6 } });
+        }
+        const pName = adv.petName || '宠物';
+        const rName = adv.realm?.name || adv.realmName || '秘境';
+        if (typeof showToast === 'function') {
+          showToast(`🎁 已成功领取「${pName}」从「${rName}」带回的历练战利品！`);
+        }
+        return;
       }
     }
     if (onOpenPet) onOpenPet('adventure');

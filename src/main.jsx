@@ -848,18 +848,56 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
             const [petAdventureStats, setPetAdventureStats] = useStickyState({}, 'app_pet_adventure_stats_v1');
             const [petSlots, setPetSlots] = useStickyState({}, 'app_pet_slots_v1');
 
-            // 旧格式迁移：单探险对象 → 数组格式
+            // 旧格式迁移与历史数据自愈：单探险对象 → 数组格式，同时自愈清理超期已完成的探险卡片
             useEffect(() => {
                 let needsMigration = false;
                 const migrated = {};
-                Object.entries(petAdventures).forEach(([child, val]) => {
+                const now = Date.now();
+                let knownLogIds = new Set();
+                try {
+                    const rawLog = localStorage.getItem('app_pet_adventure_log_v1');
+                    if (rawLog) {
+                        const parsed = JSON.parse(rawLog);
+                        Object.values(parsed).forEach(list => {
+                            if (Array.isArray(list)) {
+                                list.forEach(item => {
+                                    if (item && item.id) knownLogIds.add(String(item.id));
+                                    if (item && item.startTime) knownLogIds.add(`${item.petId}_${item.realmId}_${item.startTime}`);
+                                });
+                            }
+                        });
+                    }
+                } catch (e) {}
+
+                Object.entries(petAdventures || {}).forEach(([child, val]) => {
                     if (val && !Array.isArray(val) && val.realmId) {
                         needsMigration = true;
                         migrated[child] = [{ ...val, id: val.id || ('adv_' + (val.startTime || Date.now())) }];
+                    } else if (Array.isArray(val)) {
+                        let arrChanged = false;
+                        const cleaned = val.map(a => {
+                            if (a && a.status === 'completed') {
+                                const endTime = a.result?.endTime || a.expectedEndTime || a.startTime || 0;
+                                const isLogged = (a.result?.id && knownLogIds.has(String(a.result.id))) ||
+                                                 (a.startTime && knownLogIds.has(`${a.petId}_${a.realmId}_${a.startTime}`));
+                                if ((endTime && (now - endTime > 2 * 3600000)) || isLogged) {
+                                    arrChanged = true;
+                                    return { ...a, status: 'claimed', claimedAt: a.claimedAt || now };
+                                }
+                            }
+                            return a;
+                        });
+                        if (arrChanged) {
+                            needsMigration = true;
+                            migrated[child] = cleaned;
+                        }
                     }
                 });
                 if (needsMigration) {
                     setPetAdventures(prev => ({ ...prev, ...migrated }));
+                    if (typeof window !== 'undefined' && typeof window.triggerSyncUpload === 'function') {
+                        window.triggerSyncUpload();
+                    }
                 }
             }, []);
 
@@ -2073,7 +2111,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return () => timers.forEach(t => t && clearTimeout(t));
             }, [petAdventures, deferredActiveChild, handleCompleteAdventure]);
 
-            // 立即召回探险（放弃，不获得奖励，星星不退还）
+            // 立即召回探险（放弃，不获得奖励，星星不退还，记录 cancelled 墓碑状态同步云端）
             const handleCancelAdventure = useCallback((adventureId) => {
                 const advArr = Array.isArray(petAdventures[deferredActiveChild]) ? petAdventures[deferredActiveChild] : [];
                 const adv = adventureId ? advArr.find(a => a.id === adventureId) : advArr.find(a => a.status === 'active');
@@ -2085,10 +2123,46 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                 setPetAdventures(prev => {
                     const arr = Array.isArray(prev[deferredActiveChild]) ? prev[deferredActiveChild] : [];
-                    return { ...prev, [deferredActiveChild]: arr.filter(a => a.id !== adv.id) };
+                    return { ...prev, [deferredActiveChild]: arr.map(a => a.id === adv.id ? { ...a, status: 'cancelled', cancelledAt: Date.now() } : a) };
                 });
+                if (typeof window !== 'undefined' && typeof window.triggerSyncUpload === 'function') {
+                    window.triggerSyncUpload();
+                }
                 showToast(`${petName} 已召回`);
             }, [deferredActiveChild, petAdventures, petData, setPetAdventures, showToast]);
+
+            // 收下/移除已完成探险卡片（标记 claimed 墓碑状态并同步上云，彻底防止死灰复燃）
+            const handleDismissAdventure = useCallback((childName, adventureId) => {
+                if (!childName || !adventureId) return;
+                setPetAdventures(prev => {
+                    const arr = Array.isArray(prev[childName]) ? prev[childName] : [];
+                    return {
+                        ...prev,
+                        [childName]: arr.map(a => a.id === adventureId ? { ...a, status: 'claimed', claimedAt: Date.now() } : a)
+                    };
+                });
+                if (typeof window !== 'undefined' && typeof window.triggerSyncUpload === 'function') {
+                    window.triggerSyncUpload();
+                }
+            }, [setPetAdventures]);
+
+            // 一键收下所有已完成探险
+            const handleDismissAllAdventures = useCallback((childName) => {
+                if (!childName) return;
+                setPetAdventures(prev => {
+                    const arr = Array.isArray(prev[childName]) ? prev[childName] : [];
+                    return {
+                        ...prev,
+                        [childName]: arr.map(a => (a.status === 'completed' || (a.status === 'active' && Date.now() >= a.expectedEndTime))
+                            ? { ...a, status: 'claimed', claimedAt: Date.now() }
+                            : a
+                        )
+                    };
+                });
+                if (typeof window !== 'undefined' && typeof window.triggerSyncUpload === 'function') {
+                    window.triggerSyncUpload();
+                }
+            }, [setPetAdventures]);
 
             // 辅助函数：从key中提取13位时间戳
             const extractTimestamp = (key) => {
@@ -3280,8 +3354,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_random_event_history',
                 'app_evil_penalty_log_v1',
             ]);
-            // 成就是 { child: { achId: date } } 两层结构，按 child 分别做扁平合并
-            const MERGEABLE_TWO_LEVEL_KEYS = new Set(['app_achievements_v1']);
+            // 两层字典结构 { child: { key: value } }，按 child 分别做扁平合并
+            const MERGEABLE_TWO_LEVEL_KEYS = new Set([
+                'app_achievements_v1',
+                'app_curriculum_progress_v1',
+                'app_weekly_payroll_v1',
+            ]);
             // checkins 是三层嵌套 { child: { taskId: { date: value } } }，需要深合并
             const MERGEABLE_NESTED_KEYS = new Set(['app_checkins_v2']);
 
@@ -3394,21 +3472,99 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return { merged, localChanged, cloudChanged };
             };
 
-            // 探险记录合并：同 id 时 completed/cancelled 状态优先于 active（完成是终态，不能被回退）
+            // 探险记录合并：
+            // 状态优先级：claimed (3) > completed (2) = cancelled (2) > active (1)
+            // 引入 claimed 墓碑机制：
+            // 1. 已领取的探险（claimed）优先级最高，绝不会被云端的 completed/active 复活
+            // 2. 超期（如超过 7 天）的 claimed 墓碑自动清理，防止数据无限膨胀
+            // 3. 对云端历史遗留的 completed 探险（完成时间超过 24 小时或已入日志且本地已无记录），
+            //    判定为历史已结算，自动收敛为 claimed 并回写云端，彻底根除死灰复燃
             const mergeAdventureArray = (localArr, cloudArr) => {
+                const getStatusPriority = (status) => {
+                    if (status === 'claimed') return 3;
+                    if (status === 'completed' || status === 'cancelled') return 2;
+                    if (status === 'active') return 1;
+                    return 0;
+                };
+
                 const seen = new Map();
-                const isFinal = (a) => a && a.status && a.status !== 'active';
-                cloudArr.forEach(e => seen.set(entryFingerprint(e), e));
                 let cloudChanged = false;
-                localArr.forEach(e => {
+
+                // 辅助：从 localStorage 快速读取已有日志的 fingerprint/id，以防历史已收下的记录复活
+                let knownLogIds = new Set();
+                try {
+                    const rawLog = localStorage.getItem('app_pet_adventure_log_v1');
+                    if (rawLog) {
+                        const parsed = JSON.parse(rawLog);
+                        Object.values(parsed).forEach(list => {
+                            if (Array.isArray(list)) {
+                                list.forEach(item => {
+                                    if (item && item.id) knownLogIds.add(String(item.id));
+                                    if (item && item.startTime) knownLogIds.add(`${item.petId}_${item.realmId}_${item.startTime}`);
+                                });
+                            }
+                        });
+                    }
+                } catch (e) {}
+
+                const isOldCompleted = (adv) => {
+                    if (!adv || adv.status !== 'completed') return false;
+                    const endTime = adv.result?.endTime || adv.expectedEndTime || adv.startTime || 0;
+                    if (endTime && (Date.now() - endTime > 2 * 3600000)) return true;
+                    if (adv.result?.id && knownLogIds.has(String(adv.result.id))) return true;
+                    if (adv.startTime && knownLogIds.has(`${adv.petId}_${adv.realmId}_${adv.startTime}`)) return true;
+                    return false;
+                };
+
+                // 先放入 cloudArr
+                (cloudArr || []).forEach(e => {
+                    if (!e) return;
+                    const fp = entryFingerprint(e);
+                    if (isOldCompleted(e)) {
+                        seen.set(fp, { ...e, status: 'claimed', claimedAt: e.claimedAt || Date.now() });
+                        cloudChanged = true;
+                    } else {
+                        seen.set(fp, e);
+                    }
+                });
+
+                // 再用 localArr 合并
+                (localArr || []).forEach(e => {
+                    if (!e) return;
                     const fp = entryFingerprint(e);
                     const existing = seen.get(fp);
-                    if (!existing) { seen.set(fp, e); cloudChanged = true; }
-                    else if (isFinal(e) && !isFinal(existing)) { seen.set(fp, e); cloudChanged = true; }
-                    else if (!isFinal(e) && isFinal(existing)) { /* 云端已终态，保云端 */ }
-                    else seen.set(fp, e); // 同状态：保本地
+                    if (!existing) {
+                        seen.set(fp, e);
+                        cloudChanged = true;
+                    } else {
+                        const localPri = getStatusPriority(e.status);
+                        const cloudPri = getStatusPriority(existing.status);
+                        if (localPri > cloudPri) {
+                            seen.set(fp, e);
+                            cloudChanged = true;
+                        } else if (localPri < cloudPri) {
+                            // 云端优先级更高（如云端已被其他端 claimed），保持云端
+                        } else {
+                            // 优先级相同：保留本地最新
+                            seen.set(fp, e);
+                        }
+                    }
                 });
-                const merged = [...seen.values()].sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+
+                // 清理超过 7 天的 claimed 墓碑
+                const now = Date.now();
+                const filtered = [...seen.values()].filter(a => {
+                    if (a.status === 'claimed') {
+                        const claimTime = a.claimedAt || a.result?.endTime || a.expectedEndTime || a.startTime || 0;
+                        if (now - claimTime > 7 * 86400000) {
+                            cloudChanged = true;
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+
+                const merged = filtered.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
                 const localChanged = JSON.stringify(merged) !== JSON.stringify(localArr);
                 if (!cloudChanged) cloudChanged = JSON.stringify(merged) !== JSON.stringify(cloudArr);
                 return { merged, localChanged, cloudChanged };
@@ -3507,6 +3663,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const localChanged = JSON.stringify(merged) !== JSON.stringify(l);
                     return { merged, localChanged, cloudChanged };
                 },
+                // 天工书阁读完名著历史：{ child: [book] }，按 id 并集
+                'app_reading_history_v1': (l, c) => mergeChildArrays(l, c),
+                // 作业登记记录：{ child: [record] }，按 id 并集，日期倒序
+                'app_homework_records_v1': (l, c) => mergeChildArrays(l, c, (a, b) => (b.date || '').localeCompare(a.date || '')),
+                // 考试成绩记录：{ child: [record] }，按 id 并集，日期倒序
+                'app_exam_records_v1': (l, c) => mergeChildArrays(l, c, (a, b) => (b.date || '').localeCompare(a.date || '')),
+                // 历史事件进度：{ child: [eventId] }，字符串数组并集
+                'app_historical_event_progress_v1': (l, c) => mergeChildArrays(l, c),
             };
 
             // 对单个 localStorage key 尝试合并。返回 { value: 合并后的 JSON 字符串, localChanged, cloudChanged }；不可合并时返回 null
@@ -7345,6 +7509,9 @@ ${context}
 							showPetNotifBubble={showPetNotifBubble}
 							onOpenPet={handleOpenPet}
 							handleCompleteAdventure={handleCompleteAdventure}
+							handleDismissAdventure={handleDismissAdventure}
+							handleDismissAllAdventures={handleDismissAllAdventures}
+							showToast={showToast}
 						/>
 
 
@@ -7711,6 +7878,8 @@ ${context}
 				      handleStartAdventure={handleStartAdventure}
 				      handleCancelAdventure={handleCancelAdventure}
 				      handleCompleteAdventure={handleCompleteAdventure}
+				      handleDismissAdventure={handleDismissAdventure}
+				      handleDismissAllAdventures={handleDismissAllAdventures}
 				      getAdventureMultiplierStatus={getAdventureMultiplierStatus}
 				      showToast={showToast}
 				      aiEnabled={aiEnabled}

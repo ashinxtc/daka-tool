@@ -1043,7 +1043,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
             );
         };
 
-        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, handleCompleteAdventure, getAdventureMultiplierStatus, showToast, aiEnabled, deepseekApiKey, callDeepSeekAPI, inventory, petCatalog, adventureConfig }) => {
+        const PetAdventureView = ({ activeChild, petData, activePet, ownedPets, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, totalStars, level, currentEra, handleStartAdventure, handleCancelAdventure, handleCompleteAdventure, handleDismissAdventure, handleDismissAllAdventures, triggerSyncUpload, getAdventureMultiplierStatus, showToast, aiEnabled, deepseekApiKey, callDeepSeekAPI, inventory, petCatalog, adventureConfig }) => {
             const [selectedRealm, setSelectedRealm] = useState(null);
             const [showGuide, setShowGuide] = useState(false);
             const [now, setNow] = useState(Date.now());
@@ -1094,7 +1094,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                 }
             };
 
-            // 收下单个已结算探险的战利品并移除卡片
+            // 收下单个已结算探险的战利品并移除卡片（设置 claimed 墓碑并同步云端）
             const handleDismissCompleted = (advId) => {
                 if (typeof window !== 'undefined' && window.confetti) {
                     window.confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
@@ -1102,10 +1102,15 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                 if (typeof showToast === 'function') {
                     showToast('战利品已悉数收入囊中！');
                 }
-                setPetAdventures(prev => ({
-                    ...prev,
-                    [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).filter(a => a.id !== advId)
-                }));
+                if (typeof handleDismissAdventure === 'function') {
+                    handleDismissAdventure(activeChild, advId);
+                } else {
+                    setPetAdventures(prev => ({
+                        ...prev,
+                        [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).map(a => a.id === advId ? { ...a, status: 'claimed', claimedAt: Date.now() } : a)
+                    }));
+                    if (typeof triggerSyncUpload === 'function') triggerSyncUpload();
+                }
             };
 
             // 一键收下所有已结算战利品
@@ -1116,11 +1121,16 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                 if (typeof showToast === 'function') {
                     showToast(`已全部收下 ${completedAdvs.length} 份历练战利品！`);
                 }
-                const completedIds = new Set(completedAdvs.map(a => a.id));
-                setPetAdventures(prev => ({
-                    ...prev,
-                    [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).filter(a => !completedIds.has(a.id))
-                }));
+                if (typeof handleDismissAllAdventures === 'function') {
+                    handleDismissAllAdventures(activeChild);
+                } else {
+                    const completedIds = new Set(completedAdvs.map(a => a.id));
+                    setPetAdventures(prev => ({
+                        ...prev,
+                        [activeChild]: (Array.isArray(prev[activeChild]) ? prev[activeChild] : []).map(a => completedIds.has(a.id) ? { ...a, status: 'claimed', claimedAt: Date.now() } : a)
+                    }));
+                    if (typeof triggerSyncUpload === 'function') triggerSyncUpload();
+                }
             };
 
             // 获取选中领域的倍率状态（传入选中宠物）
@@ -1729,7 +1739,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
             );
         };
 
-        const PetModal = ({ show, onClose, initialTab = 'home', theme, activeChild, profiles, petData, setPetData, exemptedDays = {}, triggerSyncUpload, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, totalStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, handleCompleteAdventure, getAdventureMultiplierStatus, showToast, petSlots, setPetSlots, checkins, tasks, aiEnabled, aiPetEnabled, deepseekApiKey, callDeepSeekAPI, inventory, petCatalog, adventureConfig }) => {
+        const PetModal = ({ show, onClose, initialTab = 'home', theme, activeChild, profiles, petData, setPetData, exemptedDays = {}, triggerSyncUpload, ownedPets, setOwnedPets, activePet, setActivePet, petCooldowns, setPetCooldowns, petStats, setPetStats, petMusicOn, setPetMusicOn, totalStars, setStarHistory, level, currentEra, achievements, setAchievements, lowPerfMode, checkAchievements, petAdventures, setPetAdventures, petAdventureLog, petAdventureStats, handleStartAdventure, handleCancelAdventure, handleCompleteAdventure, handleDismissAdventure, handleDismissAllAdventures, getAdventureMultiplierStatus, showToast, petSlots, setPetSlots, checkins, tasks, aiEnabled, aiPetEnabled, deepseekApiKey, callDeepSeekAPI, inventory, petCatalog, adventureConfig }) => {
             const [currentTab, setCurrentTab] = useState(initialTab || 'home');
 
             useEffect(() => {
@@ -1841,7 +1851,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                         <div className="flex-1 overflow-y-auto px-5 pb-5">
                             {currentTab === 'home' && <PetHomeView triggerSyncUpload={triggerSyncUpload} theme={theme} activeChild={activeChild} petData={petData} setPetData={setPetData} ownedPets={ownedPets} activePet={activePet} petCooldowns={petCooldowns} setPetCooldowns={setPetCooldowns} petStats={petStats} setPetStats={setPetStats} totalStars={totalStars} setStarHistory={setStarHistory} petMusicOn={petMusicOn} lowPerfMode={lowPerfMode} checkAchievements={checkAchievements} aiEnabled={aiEnabled} aiPetEnabled={aiPetEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} />}
                             {currentTab === 'shop' && <PetShopView theme={theme} activeChild={activeChild} level={level} currentEra={currentEra} ownedPets={ownedPets} setOwnedPets={setOwnedPets} petData={petData} setPetData={setPetData} activePet={activePet} setActivePet={setActivePet} totalStars={totalStars} setStarHistory={setStarHistory} petStats={petStats} setPetStats={setPetStats} checkAchievements={checkAchievements} showToast={showToast} petSlots={petSlots} setPetSlots={setPetSlots} currentStreak={slotStreak} recentCheckinRate={slotCheckinRate * 100} />}
-                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} handleCompleteAdventure={handleCompleteAdventure} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} aiEnabled={aiEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} inventory={inventory} petCatalog={petCatalog} adventureConfig={adventureConfig} />}
+                            {currentTab === 'adventure' && <PetAdventureView activeChild={activeChild} petData={petData} activePet={activePet} ownedPets={ownedPets} petAdventures={petAdventures} setPetAdventures={setPetAdventures} petAdventureLog={petAdventureLog} petAdventureStats={petAdventureStats} totalStars={totalStars} level={level} currentEra={currentEra} handleStartAdventure={handleStartAdventure} handleCancelAdventure={handleCancelAdventure} handleCompleteAdventure={handleCompleteAdventure} handleDismissAdventure={handleDismissAdventure} handleDismissAllAdventures={handleDismissAllAdventures} triggerSyncUpload={triggerSyncUpload} getAdventureMultiplierStatus={getAdventureMultiplierStatus} showToast={showToast} aiEnabled={aiEnabled} deepseekApiKey={deepseekApiKey} callDeepSeekAPI={callDeepSeekAPI} inventory={inventory} petCatalog={petCatalog} adventureConfig={adventureConfig} />}
                             {currentTab === 'album' && <PetAlbumView theme={theme} activeChild={activeChild} ownedPets={ownedPets} petData={petData} />}
                         </div>
                     </div>
