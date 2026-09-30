@@ -3354,6 +3354,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_random_event_history',
                 'app_evil_penalty_log_v1',
                 'app_daily_random_counts',
+                'app_daily_event_type_counts_v1',
             ]);
             // 两层字典结构 { child: { key: value } }，按 child 分别做扁平合并
             const MERGEABLE_TWO_LEVEL_KEYS = new Set([
