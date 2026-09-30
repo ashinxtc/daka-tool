@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SHOP_ITEMS, checkItemRestriction } from '../../data/shopItems';
 import { Zap, Lock, Coins, XIcon, CheckCircle2, Sparkles, Shield, Gift } from '../icons';
 import { getLocalDateKey } from '../../utils/date';
+import { QRCodeView } from '../../utils/qrcode';
 
 const showToast = (type, message, options) => {
     if (window.showToast) window.showToast(type, message, options);
@@ -701,8 +702,8 @@ export const ShopModal = ({
                                     请使用微信扫描下方二维码，在手机端确认核销后，将显示的 4 位核销码填入下方完成登记。
                                 </p>
                                 <div className="flex justify-center mb-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
-                                    <img 
-                                        src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(verifyPageUrl)} 
+                                    <QRCodeView 
+                                        text={verifyPageUrl} 
                                         alt="核销二维码" 
                                         className="w-44 h-44 rounded-xl"
                                     />

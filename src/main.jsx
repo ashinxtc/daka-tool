@@ -46,6 +46,7 @@ import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
 import { initLoadingScreen } from './utils/loadingScreen';
+import { QRCodeView } from './utils/qrcode';
 import { useState, useEffect, useMemo, useRef, useContext, createContext, useCallback, memo  } from "react";
 
         // --- 图标组件 ---
@@ -7757,8 +7758,8 @@ ${context}
                               </div>
                               <p className="text-xs text-gray-500 mb-3">请家长用手机扫描下方二维码，在手机端确认豁免后，将显示的豁免码输入下方。</p>
                               <div className="flex justify-center mb-4 p-4 bg-gray-50 rounded-xl">
-                                  <img
-                                      src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(verifyPageUrl)}
+                                  <QRCodeView
+                                      text={verifyPageUrl}
                                       alt="豁免二维码"
                                       className="w-48 h-48 rounded-lg"
                                   />
