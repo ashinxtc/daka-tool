@@ -1651,7 +1651,15 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
             }, [petData, activeChild, activePet, petNotif]);
 
             // ==================== 探险系统核心逻辑 ====================
-            const showToast = useCallback((msg) => { window.showToast('info', msg); }, []);
+            const showToast = useCallback((typeOrMsg, msg, options) => {
+                if (typeof window !== 'undefined' && window.showToast) {
+                    if (msg !== undefined) {
+                        window.showToast(typeOrMsg, msg, options);
+                    } else {
+                        window.showToast('info', typeOrMsg, options);
+                    }
+                }
+            }, []);
 
             // 获取当前探险加成状态（供倍率面板使用）
             const getAdventureMultiplierStatus = useCallback((realmId, overridePetId) => {

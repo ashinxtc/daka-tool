@@ -153,6 +153,23 @@ export const ExchangePanel = ({
                     const childRecords = d.records.filter(r => r.childName === activeChild || !r.childName);
                     setExchangeRecords(childRecords);
 
+                    // 自动恢复待核销申请，确保手机端随时可见二维码与核销码
+                    const pendingOrder = childRecords.find(r => r.status === 'pending');
+                    if (pendingOrder) {
+                        setApplyResult(prev => {
+                            if (!prev || prev.applyId !== pendingOrder.id) {
+                                return {
+                                    applyId: pendingOrder.id,
+                                    verifyCode: pendingOrder.verifyCode,
+                                    goldAmount: pendingOrder.goldAmount,
+                                    cnyAmount: pendingOrder.cnyAmount,
+                                    childName: pendingOrder.childName || activeChild
+                                };
+                            }
+                            return prev;
+                        });
+                    }
+
                     // 检查已核销订单自动扣减
                     d.records.filter(r => r.childName === activeChild && r.status === 'verified').forEach(rec => {
                         const historyKey = `${activeChild}-EXCHANGE-${rec.id}`;
@@ -343,60 +360,66 @@ export const ExchangePanel = ({
                     .then(d => { if (d.records) setExchangeRecords(d.records); })
                     .catch(() => {});
             } else if (data.error && data.error.includes('未核销')) {
-                // 如果发现之前有未核销单，自动拉取并尝试撤销后重新提交，避免死循环卡住孩子
+                // 如果发现之前已有未核销单，直接拉取并呈现该单的二维码与核销码，避免报错和重复卡死
                 const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000);
                 const statusData = await statusResp.json();
                 const pendingRecord = (statusData.records || []).find(r => r.status === 'pending' && (!r.childName || r.childName === activeChild));
 
                 if (pendingRecord) {
-                    await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/cancel`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ applyId: pendingRecord.id, syncCode: effectiveCode })
-                    }, 6000);
-
-                    // 重新提交新单
-                    const retryResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/apply`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            syncCode: effectiveCode,
-                            childName: activeChild,
-                            goldAmount: neededGold,
-                            rate: cnyPerGold,
-                            cnyAmount: targetCny
-                        })
-                    }, 9000);
-
-                    const retryData = await retryResp.json();
-                    if (retryData.ok) {
-                        setApplyResult({
-                            ...retryData,
-                            goldAmount: neededGold,
-                            cnyAmount: targetCny
-                        });
-                        showToast('success', '已自动撤销旧单，新兑换契约已成功提交！');
-                        fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000)
-                            .then(r => r.json())
-                            .then(d => { if (d.records) setExchangeRecords(d.records); })
-                            .catch(() => {});
-                    } else {
-                        showToast('error', retryData.error || '提交失败，请重试');
-                    }
+                    setApplyResult({
+                        applyId: pendingRecord.id,
+                        verifyCode: pendingRecord.verifyCode,
+                        goldAmount: pendingRecord.goldAmount,
+                        cnyAmount: pendingRecord.cnyAmount,
+                        childName: pendingRecord.childName || activeChild
+                    });
+                    showToast('info', '已为您展示待家长核销的二维码与核销码！若想更换金额可点击下方撤销重新申请。');
                 } else {
                     showToast('error', data.error);
                 }
+            } else if (data.error && data.error.includes('限兑')) {
+                showToast('warning', data.error);
             } else {
                 showToast('error', data.error || '申请提交失败，请重试');
             }
         } catch (e) {
             if (e.name === 'AbortError') {
-                showToast('error', '提交超时，手机网络连接较弱，请重试！');
+                showToast('error', '提交超时，手机网络连接较弱，请稍后重试！');
             } else {
-                showToast('error', '网络连接波动：' + (e.message || '请检查网络后重试'));
+                showToast('error', '网络异常：' + (e.message || '请检查网络后重试'));
             }
         } finally {
             // 无论如何保证解除按钮 loading，绝不卡死
+            setApplying(false);
+        }
+    };
+
+    // 撤销待核销申请
+    const handleCancelPending = async (applyIdToCancel) => {
+        const id = applyIdToCancel || applyResult?.applyId;
+        if (!id) return;
+        setApplying(true);
+        const effectiveCode = syncCode || 'local_' + activeChild;
+        try {
+            const resp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ applyId: id, syncCode: effectiveCode })
+            }, 6000);
+            const data = await resp.json();
+            if (data.ok) {
+                setApplyResult(null);
+                showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
+                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000)
+                    .then(r => r.json())
+                    .then(d => { if (d.records) setExchangeRecords(d.records); })
+                    .catch(() => {});
+            } else {
+                showToast('error', data.error || '撤销失败，请重试');
+            }
+        } catch (e) {
+            showToast('error', '网络异常，撤销失败：' + (e.message || '请检查网络'));
+        } finally {
             setApplying(false);
         }
     };
@@ -568,18 +591,18 @@ export const ExchangePanel = ({
                                         防伪核销码 48 小时内有效 · 家长确认转账核销后系统自动扣除金元宝
                                     </div>
 
-                                    <div className="mt-4 pt-3 border-t border-emerald-200/60 flex gap-2">
+                                    <div className="mt-4 pt-3 border-t border-emerald-200/60 flex flex-col sm:flex-row gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setApplyResult(null)}
-                                            className="flex-1 py-2.5 rounded-xl bg-white text-emerald-700 font-black text-xs border border-emerald-300 hover:bg-emerald-50 transition-colors"
+                                            onClick={() => handleCancelPending(applyResult.applyId)}
+                                            className="flex-1 py-2.5 rounded-xl bg-white text-rose-600 hover:bg-rose-50 font-black text-xs border border-rose-300 transition-colors flex items-center justify-center gap-1 shadow-xs"
                                         >
-                                            返回 / 发起新兑换
+                                            <span>❌ 撤销申请 · 重新兑换</span>
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}`;
+                                                const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}`;
                                                 if (navigator.clipboard) {
                                                     navigator.clipboard.writeText(verifyUrl);
                                                     showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');
@@ -587,9 +610,9 @@ export const ExchangePanel = ({
                                                     showToast('info', verifyUrl);
                                                 }
                                             }}
-                                            className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 transition-colors shadow-sm"
+                                            className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-1"
                                         >
-                                            📋 复制核销链接
+                                            <span>📋 复制核销链接</span>
                                         </button>
                                     </div>
                                 </div>
@@ -605,7 +628,7 @@ export const ExchangePanel = ({
                                         </span>
                                     </div>
 
-                                    {/* 人民币大字号输入框 */}
+                                    {/* 人民币大字号输入框（标准微信/支付宝转账风格：大¥符号，无右侧多余文字错乱） */}
                                     <div className="bg-gradient-to-r from-amber-50/70 via-orange-50/30 to-amber-50/70 p-4 rounded-2xl border-2 border-amber-300 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-400/20 transition-all">
                                         <div className="text-xs text-amber-900/80 font-bold mb-1.5 flex justify-between items-center">
                                             <span>兑现金额 (元人民币)</span>
@@ -624,18 +647,17 @@ export const ExchangePanel = ({
                                                 step="any"
                                                 value={cnyInput}
                                                 onChange={e => setCnyInput(e.target.value)}
-                                                placeholder="输入金额，如 5"
+                                                placeholder="0.00"
                                                 className="flex-1 bg-transparent text-3xl sm:text-4xl font-black text-gray-800 font-mono outline-none placeholder:text-gray-300 placeholder:text-2xl"
                                             />
-                                            <span className="text-sm font-bold text-gray-500 shrink-0">元现金</span>
                                         </div>
                                     </div>
 
-                                    {/* 快捷筹码按钮 */}
+                                    {/* 快捷筹码按钮（面额全覆盖起兑门槛，杜绝过小面额报错） */}
                                     <div className="space-y-1.5">
                                         <div className="text-[11px] font-bold text-gray-400">快捷面额选择：</div>
                                         <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-                                            {[1, 2, 5, 10, 20].map(val => (
+                                            {[5, 10, 20, 50, 100].map(val => (
                                                 <button
                                                     key={val}
                                                     type="button"
@@ -700,7 +722,7 @@ export const ExchangePanel = ({
                                                 <span>💵</span> 拟到账零花钱
                                             </span>
                                             <span className="font-black text-emerald-600 text-lg font-mono">
-                                                ¥{targetCny.toFixed(2)} 元现金
+                                                ¥{targetCny.toFixed(2)}
                                             </span>
                                         </div>
                                     </div>
