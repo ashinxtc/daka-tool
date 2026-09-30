@@ -1,27 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
+import { storage } from '../utils/storage.js';
 
 // --- 自定义 Hook：持久化 State ---
-// 全局 pending 写入注册表，用于 beforeunload 刷新（S1: 使用 window 持久化）
+// 全局 pending 写入注册表，用于 beforeunload 刷新
 if (typeof window !== 'undefined') {
     if (!window._pendingWrites) window._pendingWrites = {};
-    if (!window._stickyStateFlushRegistered) {
-        window._stickyStateFlushRegistered = true;
-        window.addEventListener('beforeunload', () => {
-            Object.entries(window._pendingWrites).forEach(([k, v]) => {
-                try { window.localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}
-            });
-        });
-    }
 }
 
 // === 逐 key 版本表：记录每个 app_* key 最后一次本地修改的时间戳 ===
 // 同步合并时按 key 比版本（而非整包比时间戳），避免"改了 A 的设备覆盖了别人改的 B"
 export const markKeyVersion = (key) => {
-    try {
-        const versions = JSON.parse(localStorage.getItem('_key_versions') || '{}');
-        versions[key] = Date.now();
-        localStorage.setItem('_key_versions', JSON.stringify(versions));
-    } catch (e) {}
+    storage.markKeyVersion(key);
 };
 
 if (typeof window !== 'undefined') {
@@ -31,7 +20,7 @@ if (typeof window !== 'undefined') {
 export const useStickyState = (defaultValue, key) => {
     const [value, setValue] = useState(() => {
         try {
-            const stickyValue = localStorage.getItem(key);
+            const stickyValue = storage.getItem(key);
             return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
         } catch (e) {
             return defaultValue;
@@ -49,21 +38,15 @@ export const useStickyState = (defaultValue, key) => {
         }
         timerRef.current = setTimeout(() => {
             try {
-                window.localStorage.setItem(key, JSON.stringify(value));
-                markKeyVersion(key); // 记录本地修改版本（同步合并用）
+                storage.setItem(key, JSON.stringify(value));
+                storage.markKeyVersion(key); // 记录本地修改版本（同步合并用）
                 if (typeof window !== 'undefined') {
                     delete window._pendingWrites[key]; // 写入完成，清除 pending
                 }
             } catch (error) {
-                console.error(`Error setting localStorage key "${key}":`, error);
-                if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-                    if (typeof window !== 'undefined' && !window._quotaAlertShown) {
-                        window._quotaAlertShown = true;
-                        alert("【严重警告】本地存储空间已满（通常限制为5MB）！\n\n您刚刚产生的新进度可能无法保存。请立即前往设置：\n1. 导出当前数据作为备份\n2. 尝试清理其他无用站点的缓存数据");
-                    }
-                }
+                console.error(`Error setting key "${key}":`, error);
             }
-        }, 400);
+        }, 300);
         return () => {
             clearTimeout(timerRef.current);
             if (typeof window !== 'undefined') {
@@ -72,11 +55,11 @@ export const useStickyState = (defaultValue, key) => {
         };
     }, [key, value]);
 
-    // 监听云端同步合并事件，从 localStorage 刷新 state 而无需 reload
+    // 监听云端同步合并事件，从 storage 刷新 state 而无需 reload
     useEffect(() => {
         const handler = () => {
             try {
-                const fresh = localStorage.getItem(key);
+                const fresh = storage.getItem(key);
                 if (fresh !== null) {
                     setValue(JSON.parse(fresh));
                 }
@@ -88,3 +71,4 @@ export const useStickyState = (defaultValue, key) => {
 
     return [value, setValue];
 };
+

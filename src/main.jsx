@@ -41,6 +41,7 @@ import { CompletedWallModal } from './components/modals/CompletedWallModal';
 import { TesterDashboard } from './components/tester/TesterDashboard';
 import { getHolidayInfo, getHeaderTheme } from './utils/holidays';
 import { useStickyState, markKeyVersion } from './hooks/useStickyState';
+import { storage, initStorage } from './utils/storage';
 import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
@@ -264,7 +265,7 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
 
 			const [activeChild, setActiveChild] = useState(() => {
 				try {
-					const savedProfiles = JSON.parse(localStorage.getItem('app_profiles_v1'));
+					const savedProfiles = JSON.parse(storage.getItem('app_profiles_v1'));
 					return savedProfiles && savedProfiles.length > 0 ? savedProfiles[0].name : '';
 				} catch {
 					return '';
@@ -534,9 +535,9 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
             const [statsOpenMode, setStatsOpenMode] = useState(null); // null | 'monthly'
             
             const [notifiedLevels, setNotifiedLevels] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('app_notified_levels')) || {}; } catch { return {}; }
+                try { return JSON.parse(storage.getItem('app_notified_levels')) || {}; } catch { return {}; }
             });
-            useEffect(() => { if (!window._syncReloading) localStorage.setItem('app_notified_levels', JSON.stringify(notifiedLevels)); }, [notifiedLevels]);
+            useEffect(() => { if (!window._syncReloading) storage.setItem('app_notified_levels', JSON.stringify(notifiedLevels)); }, [notifiedLevels]);
 
             const [showRandomEvent, setShowRandomEvent] = useState(false);
             const [currentRandomEvent, setCurrentRandomEvent] = useState(null);
@@ -855,7 +856,7 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
                 const now = Date.now();
                 let knownLogIds = new Set();
                 try {
-                    const rawLog = localStorage.getItem('app_pet_adventure_log_v1');
+                    const rawLog = storage.getItem('app_pet_adventure_log_v1');
                     if (rawLog) {
                         const parsed = JSON.parse(rawLog);
                         Object.values(parsed).forEach(list => {
@@ -1042,12 +1043,12 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
             useEffect(() => {
                 if (!reportConfig.enabled || !(reportConfig.formspreeUrl || '').trim()) return;
                 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
-                const lastSent = typeof localStorage !== 'undefined' ? localStorage.getItem('app_last_report_date') : null;
+                const lastSent = storage.getItem('app_last_report_date');
                 if (lastSent === today || reportSentRef.current) return;
-                let deviceId = typeof localStorage !== 'undefined' ? localStorage.getItem('app_device_id') : null;
+                let deviceId = storage.getItem('app_device_id');
                 if (!deviceId) {
                     deviceId = 'd' + Date.now() + '_' + Math.random().toString(36).slice(2, 11);
-                    if (typeof localStorage !== 'undefined') localStorage.setItem('app_device_id', deviceId);
+                    storage.setItem('app_device_id', deviceId);
                 }
                 const profilesList = (profiles || []).map(p => {
                     const name = p.name;
@@ -1119,7 +1120,7 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 }).then(() => {
-                    if (typeof localStorage !== 'undefined') localStorage.setItem('app_last_report_date', today);
+                    storage.setItem('app_last_report_date', today);
                     reportSentRef.current = true;
                 }).catch(() => {});
             }, [reportConfig.enabled, reportConfig.formspreeUrl, profiles, checkins, tasks, achievements, wheelHistory, activeBuffs, xpHistory, userCity, realWeather]);
@@ -3498,7 +3499,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 // 辅助：从 localStorage 快速读取已有日志的 fingerprint/id，以防历史已收下的记录复活
                 let knownLogIds = new Set();
                 try {
-                    const rawLog = localStorage.getItem('app_pet_adventure_log_v1');
+                    const rawLog = storage.getItem('app_pet_adventure_log_v1');
                     if (rawLog) {
                         const parsed = JSON.parse(rawLog);
                         Object.values(parsed).forEach(list => {
@@ -3758,17 +3759,17 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
             window._resolveSyncMerge = resolveSyncMerge;
 
-            // 把合并决策应用到 localStorage；返回实际写入数
+            // 把合并决策应用到 storage；返回实际写入数
             const applySyncMerge = (result) => {
                 let written = 0;
                 Object.entries(result.writes).forEach(([k, v]) => {
-                    try { localStorage.setItem(k, v); written++; } catch (e) {}
+                    try { storage.setItem(k, v); written++; } catch (e) {}
                 });
                 if (Object.keys(result.adoptVersions).length > 0) {
                     try {
-                        const versions = JSON.parse(localStorage.getItem('_key_versions') || '{}');
+                        const versions = storage.getKeyVersions();
                         Object.assign(versions, result.adoptVersions);
-                        localStorage.setItem('_key_versions', JSON.stringify(versions));
+                        storage.setItem('_key_versions', JSON.stringify(versions));
                     } catch (e) {}
                 }
                 return written;
@@ -3779,10 +3780,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const snapshot = {};
                 Object.keys(cloudData).forEach(key => {
                     if (key === '_syncTs' || key === '_keyVersions') return;
-                    snapshot[key] = localStorage.getItem(key);
+                    snapshot[key] = storage.getItem(key);
                 });
-                let versions = {};
-                try { versions = JSON.parse(localStorage.getItem('_key_versions') || '{}'); } catch (e) {}
+                const versions = storage.getKeyVersions();
                 return { snapshot, versions };
             };
 
@@ -3791,22 +3791,16 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 if (window._pendingWrites) {
                     Object.entries(window._pendingWrites).forEach(([k, v]) => {
                         try {
-                            localStorage.setItem(k, JSON.stringify(v));
-                            markKeyVersion(k);
+                            storage.setItem(k, JSON.stringify(v));
+                            storage.markKeyVersion(k);
                         } catch (e) {}
                     });
                 }
-                const data = {};
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (SYNC_PREFIXES.some(p => key.startsWith(p)) && key !== '_sync_last_hash' && key !== '_sync_local_ts') {
-                        data[key] = localStorage.getItem(key);
-                    }
-                }
+                const data = storage.getAllSyncData();
                 data._syncTs = Date.now();
                 // 逐 key 版本表随包上传（仅保留本包内存在的 key，防表膨胀）
                 try {
-                    const versions = JSON.parse(localStorage.getItem('_key_versions') || '{}');
+                    const versions = storage.getKeyVersions();
                     const trimmed = {};
                     Object.keys(data).forEach(k => { if (versions[k]) trimmed[k] = versions[k]; });
                     data._keyVersions = trimmed;
@@ -3834,7 +3828,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             const syncToCloud = async (force = false) => {
                 if (!syncCode) return;
-                const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
+                const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
                 // 自动上传时，如果本地从未同步过（localTs === 0），禁止上传，防止新设备空数据覆盖云端
                 if (!force && localTs === 0) {
                     console.warn('syncToCloud skipped: localTs is 0, need syncFromCloud first');
@@ -3857,8 +3851,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                     if (!resp.ok) throw new Error(`上传失败 (${resp.status})`);
                     const newHash = hashSyncPayload(data);
-                    localStorage.setItem('_sync_last_hash', newHash);
-                    localStorage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
+                    storage.setItem('_sync_last_hash', newHash);
+                    storage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
@@ -3893,8 +3887,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                                 body: JSON.stringify(data)
                             });
                             if (resp2.ok) {
-                                localStorage.setItem('_sync_last_hash', hashSyncPayload(data));
-                                localStorage.setItem('_sync_local_ts', String(data._syncTs));
+                                storage.setItem('_sync_last_hash', hashSyncPayload(data));
+                                storage.setItem('_sync_local_ts', String(data._syncTs));
                             }
                         } catch (e) { console.warn('Initial upload failed:', e); }
                         setSyncStatus('success');
@@ -3904,7 +3898,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
                     const cloudData = await resp.json();
                     const cloudHash = hashSyncPayload(cloudData);
-                    const lastHash = localStorage.getItem('_sync_last_hash');
+                    const lastHash = storage.getItem('_sync_last_hash');
 
                     // 哈希相同 = 数据未变化，跳过
                     if (cloudHash === lastHash) {
@@ -3919,20 +3913,20 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     // 不再整包"谁新用谁"：平板改打卡、手机改任务，两边修改都能保住。
                     // 本地未同步过（localTs === 0）：所有本地版本视为可信但通常为空表 → 云端值全收
                     const cloudTs = cloudData._syncTs || 0;
-                    const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
+                    const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
 
                     const { snapshot, versions } = buildLocalSnapshot(cloudData);
                     const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, localTs);
                     const written = applySyncMerge(mergeResult);
 
                     // 本地时间戳推进到云端（本地保留的新 key 会通过回传上传，届时再推进）
-                    localStorage.setItem('_sync_local_ts', String(Math.max(cloudTs, localTs)));
+                    storage.setItem('_sync_local_ts', String(Math.max(cloudTs, localTs)));
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
 
                     if (written > 0) {
-                        // 派发事件让所有 useStickyState 从 localStorage 刷新（替代 reload）
+                        // 派发事件让所有 useStickyState 从 storage 刷新（替代 reload）
                         window._syncReloading = true;
                         window.dispatchEvent(new CustomEvent('_syncDataMerged'));
                         setTimeout(() => { window._syncReloading = false; }, 1000);
@@ -3942,7 +3936,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         setTimeout(() => { try { syncToCloud(true); } catch (e) {} }, 1500);
                     } else {
                         // 无需回传时，哈希记为云端值，后续轮询可短路
-                        localStorage.setItem('_sync_last_hash', cloudHash);
+                        storage.setItem('_sync_last_hash', cloudHash);
                     }
                 } catch (e) {
                     console.error('Sync download failed:', e);
@@ -3987,7 +3981,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                                 const resp = await fetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
                                 if (resp.ok) {
                                     const { ts } = await resp.json();
-                                    const localTs = parseInt(localStorage.getItem('_sync_local_ts') || '0', 10);
+                                    const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
                                     // 云端时间戳比本地新 → 有其他设备上传过 → 完整拉取合并
                                     if (ts && ts > localTs) await syncFromCloud();
                                 }
@@ -8216,6 +8210,15 @@ ${context}
 
 export default App;
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<AppErrorBoundary><PerformanceProvider><App /><ToastContainer /></PerformanceProvider></AppErrorBoundary>);
+initStorage().finally(() => {
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+        <AppErrorBoundary>
+            <PerformanceProvider>
+                <App />
+                <ToastContainer />
+            </PerformanceProvider>
+        </AppErrorBoundary>
+    );
+});
 

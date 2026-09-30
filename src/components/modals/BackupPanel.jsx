@@ -1,6 +1,7 @@
 import React from 'react';
 import { XIcon, Sparkles } from '../icons.jsx';
 import { getLocalDateKey } from '../../utils/date.js';
+import { storage } from '../../utils/storage.js';
 
 // 数据备份/恢复 Modal（时空档案司 · 数据方舟）
 export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) => {
@@ -11,72 +12,72 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
         const data = {
             version: '2.0',
             exportDate: new Date().toISOString(),
-            tasks: localStorage.getItem('app_tasks_v2'),
-            checkins: localStorage.getItem('app_checkins_v2'),
-            wheelHistory: localStorage.getItem('app_wheel_history'),
-            xpHistory: localStorage.getItem('app_xp_history'),
-            profiles: localStorage.getItem('app_profiles_v1'),
-            achievements: localStorage.getItem('app_achievements_v1'),
-            stats: localStorage.getItem('app_stats_v1'),
-            inventory: localStorage.getItem('app_inventory_v1'),
-            activeBuffs: localStorage.getItem('app_active_buffs_v1'),
-            redeemedCoupons: localStorage.getItem('app_coupons_v1'),
-            equippedGear: localStorage.getItem('app_equipped_gear_v1'),
-            milestones: localStorage.getItem('app_milestones_v1'),
-            globalMessages: localStorage.getItem('app_global_messages_v2'),
-            globalDates: localStorage.getItem('app_global_dates'),
-            wheelConfig: localStorage.getItem('app_wheel_config'),
-            wheelSettings: localStorage.getItem('app_wheel_settings'),
-            evilWheelConfig: localStorage.getItem('app_evil_wheel_config'),
-            randomEventHistory: localStorage.getItem('app_random_event_history'),
-            dailyRandomCounts: localStorage.getItem('app_daily_random_counts'),
-            historicalEventProgress: localStorage.getItem('app_historical_event_progress_v1'),
-            dailyEventTypeCounts: localStorage.getItem('app_daily_event_type_counts_v1'),
-            userCity: localStorage.getItem('app_user_city_v1'),
-            curriculumProgress: localStorage.getItem('app_curriculum_progress_v1'),
-            xpWheelConfig: localStorage.getItem('app_xp_wheel_config'),
-            settingsPassword: localStorage.getItem('app_settings_password'),
-            testMode: localStorage.getItem('app_test_mode'),
-            weekendSettings: localStorage.getItem('app_weekend_settings'),
-            notifiedLevels: localStorage.getItem('app_notified_levels'),
-            exemptedDays: localStorage.getItem('app_exempted_days_v1'),
-            silenceMutes: localStorage.getItem('app_silence_mutes_v1'),
-            homeworkExamConfig: localStorage.getItem('app_homework_exam_config_v1'),
-            homeworkRecords: localStorage.getItem('app_homework_records_v1'),
-            examRecords: localStorage.getItem('app_exam_records_v1'),
-            repairedCheckins: localStorage.getItem('app_repaired_checkins_v1'),
-            weeklyPayroll: localStorage.getItem('app_weekly_payroll_v1'),
-            reportConfig: localStorage.getItem('app_report_config_v1'),
-            stars: localStorage.getItem('app_stars_v1'),
-            starHistory: localStorage.getItem('app_star_history_v1'),
-            petData: localStorage.getItem('app_pet_data_v1'),
-            ownedPets: localStorage.getItem('app_owned_pets_v1'),
-            activePet: localStorage.getItem('app_active_pet_v1'),
-            petCooldowns: localStorage.getItem('app_pet_cooldowns_v1'),
-            petStats: localStorage.getItem('app_pet_stats_v1'),
-            petSkillCooldowns: localStorage.getItem('app_pet_skill_cd_v1'),
-            petBuffs: localStorage.getItem('app_pet_buffs_v1'),
-            petAdventures: localStorage.getItem('app_pet_adventures_v1'),
-            petAdventureLog: localStorage.getItem('app_pet_adventure_log_v1'),
-            petAdventureStats: localStorage.getItem('app_pet_adventure_stats_v1'),
-            petSlots: localStorage.getItem('app_pet_slots_v1'),
-            petMusic: localStorage.getItem('app_pet_music_v1'),
-            petNotif: localStorage.getItem('app_pet_notif_v1'),
-            evilPenaltyLog: localStorage.getItem('app_evil_penalty_log_v1'),
-            evilAutoTrigger: localStorage.getItem('app_evil_auto_trigger'),
-            pendingEvilPenalty: localStorage.getItem('app_pending_evil_penalty_v1'),
-            aiEnabled: localStorage.getItem('app_ai_enabled'),
-            deepseekApiKey: localStorage.getItem('app_deepseek_api_key'),
-            aiPetEnabled: localStorage.getItem('app_ai_pet_enabled'),
-            aiChatEnabled: localStorage.getItem('app_ai_chat_enabled'),
-            aiDailyLimit: localStorage.getItem('app_ai_daily_limit'),
-            aiDailyUsage: localStorage.getItem('app_ai_daily_usage'),
-            aiChatHistory: localStorage.getItem('app_ai_chat_history'),
-            aiReminderLog: localStorage.getItem('app_ai_reminder_log_v1'),
-            syncCode: localStorage.getItem('app_sync_code'),
-            syncLastTime: localStorage.getItem('app_sync_last_time'),
-            authorizedParents: localStorage.getItem('app_authorized_parents_v1'),
-            parentActions: localStorage.getItem('app_parent_actions_v1')
+            tasks: storage.getItem('app_tasks_v2'),
+            checkins: storage.getItem('app_checkins_v2'),
+            wheelHistory: storage.getItem('app_wheel_history'),
+            xpHistory: storage.getItem('app_xp_history'),
+            profiles: storage.getItem('app_profiles_v1'),
+            achievements: storage.getItem('app_achievements_v1'),
+            stats: storage.getItem('app_stats_v1'),
+            inventory: storage.getItem('app_inventory_v1'),
+            activeBuffs: storage.getItem('app_active_buffs_v1'),
+            redeemedCoupons: storage.getItem('app_coupons_v1'),
+            equippedGear: storage.getItem('app_equipped_gear_v1'),
+            milestones: storage.getItem('app_milestones_v1'),
+            globalMessages: storage.getItem('app_global_messages_v2'),
+            globalDates: storage.getItem('app_global_dates'),
+            wheelConfig: storage.getItem('app_wheel_config'),
+            wheelSettings: storage.getItem('app_wheel_settings'),
+            evilWheelConfig: storage.getItem('app_evil_wheel_config'),
+            randomEventHistory: storage.getItem('app_random_event_history'),
+            dailyRandomCounts: storage.getItem('app_daily_random_counts'),
+            historicalEventProgress: storage.getItem('app_historical_event_progress_v1'),
+            dailyEventTypeCounts: storage.getItem('app_daily_event_type_counts_v1'),
+            userCity: storage.getItem('app_user_city_v1'),
+            curriculumProgress: storage.getItem('app_curriculum_progress_v1'),
+            xpWheelConfig: storage.getItem('app_xp_wheel_config'),
+            settingsPassword: storage.getItem('app_settings_password'),
+            testMode: storage.getItem('app_test_mode'),
+            weekendSettings: storage.getItem('app_weekend_settings'),
+            notifiedLevels: storage.getItem('app_notified_levels'),
+            exemptedDays: storage.getItem('app_exempted_days_v1'),
+            silenceMutes: storage.getItem('app_silence_mutes_v1'),
+            homeworkExamConfig: storage.getItem('app_homework_exam_config_v1'),
+            homeworkRecords: storage.getItem('app_homework_records_v1'),
+            examRecords: storage.getItem('app_exam_records_v1'),
+            repairedCheckins: storage.getItem('app_repaired_checkins_v1'),
+            weeklyPayroll: storage.getItem('app_weekly_payroll_v1'),
+            reportConfig: storage.getItem('app_report_config_v1'),
+            stars: storage.getItem('app_stars_v1'),
+            starHistory: storage.getItem('app_star_history_v1'),
+            petData: storage.getItem('app_pet_data_v1'),
+            ownedPets: storage.getItem('app_owned_pets_v1'),
+            activePet: storage.getItem('app_active_pet_v1'),
+            petCooldowns: storage.getItem('app_pet_cooldowns_v1'),
+            petStats: storage.getItem('app_pet_stats_v1'),
+            petSkillCooldowns: storage.getItem('app_pet_skill_cd_v1'),
+            petBuffs: storage.getItem('app_pet_buffs_v1'),
+            petAdventures: storage.getItem('app_pet_adventures_v1'),
+            petAdventureLog: storage.getItem('app_pet_adventure_log_v1'),
+            petAdventureStats: storage.getItem('app_pet_adventure_stats_v1'),
+            petSlots: storage.getItem('app_pet_slots_v1'),
+            petMusic: storage.getItem('app_pet_music_v1'),
+            petNotif: storage.getItem('app_pet_notif_v1'),
+            evilPenaltyLog: storage.getItem('app_evil_penalty_log_v1'),
+            evilAutoTrigger: storage.getItem('app_evil_auto_trigger'),
+            pendingEvilPenalty: storage.getItem('app_pending_evil_penalty_v1'),
+            aiEnabled: storage.getItem('app_ai_enabled'),
+            deepseekApiKey: storage.getItem('app_deepseek_api_key'),
+            aiPetEnabled: storage.getItem('app_ai_pet_enabled'),
+            aiChatEnabled: storage.getItem('app_ai_chat_enabled'),
+            aiDailyLimit: storage.getItem('app_ai_daily_limit'),
+            aiDailyUsage: storage.getItem('app_ai_daily_usage'),
+            aiChatHistory: storage.getItem('app_ai_chat_history'),
+            aiReminderLog: storage.getItem('app_ai_reminder_log_v1'),
+            syncCode: storage.getItem('app_sync_code'),
+            syncLastTime: storage.getItem('app_sync_last_time'),
+            authorizedParents: storage.getItem('app_authorized_parents_v1'),
+            parentActions: storage.getItem('app_parent_actions_v1')
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -87,7 +88,7 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
         a.click();
         URL.revokeObjectURL(url);
 
-        localStorage.setItem('app_last_backup_date', new Date().toISOString());
+        storage.setItem('app_last_backup_date', new Date().toISOString());
         showToast('success', '备份成功！全量数据已下载至本地文件，请妥善保存。');
     };
 
@@ -183,7 +184,7 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
                                 key === 'parentActions' ? 'app_parent_actions_v1' : null;
 
                             if (storageKey) {
-                                localStorage.setItem(storageKey, data[key]);
+                                storage.setItem(storageKey, data[key]);
                             }
                         }
                     });
@@ -199,8 +200,8 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
         input.click();
     };
 
-    const totalRecords = Object.keys(localStorage).filter(k => k.startsWith('app_')).length;
-    const lastBackup = localStorage.getItem('app_last_backup_date');
+    const totalRecords = Object.keys(storage.getAllSyncData()).length;
+    const lastBackup = storage.getItem('app_last_backup_date');
     const daysSinceBackup = lastBackup
         ? Math.floor((Date.now() - new Date(lastBackup).getTime()) / (1000 * 60 * 60 * 24))
         : null;
