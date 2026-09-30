@@ -5,12 +5,21 @@ import { getLocalDateKey } from '../../utils/date.js';
 import { storage } from '../../utils/storage.js';
 import { XIcon, Coins, TrendingUp, Sparkles, CheckCircle2 } from '../icons.jsx';
 
-// 网络请求超时包装器（防止移动端弱网/断网时无限期挂起）
+// 网络请求超时包装器（防止移动端弱网/断网时无限期挂起，强制穿透缓存获取实时最新数据）
 const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
+        const response = await fetch(url, {
+            cache: 'no-store',
+            ...options,
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                ...(options.headers || {})
+            },
+            signal: controller.signal
+        });
         return response;
     } finally {
         clearTimeout(timer);
@@ -168,13 +177,50 @@ export const ExchangePanel = ({
         setExchangeRecords([]);
     }, [activeChild]);
 
-    // 3. 轮询兑换记录（每 10 秒刷新 + 核销时自动扣金元宝）
+    const settledOrderIdsRef = React.useRef(new Set());
+    const refreshRecordsRef = React.useRef(null);
+    const refreshRecords = React.useCallback(() => {
+        if (refreshRecordsRef.current) refreshRecordsRef.current();
+    }, []);
+
+    // 核心核销结算器（幂等安全，无论由单单据极速轮询还是全量列表轮询触发，均只执行一次）
+    const settleVerifiedOrder = React.useCallback((rec) => {
+        if (!rec || !rec.id) return;
+        const targetChild = rec.childName || activeChild;
+        const historyKey = `${targetChild}-EXCHANGE-${rec.id}`;
+
+        if (settledOrderIdsRef.current.has(historyKey)) return;
+        settledOrderIdsRef.current.add(historyKey);
+
+        setWheelHistory(wh => {
+            if (wh[historyKey]) return wh;
+            const totalKey = `app_exchange_total_${targetChild}`;
+            try {
+                const prev = parseFloat(storage.getItem(totalKey) || '0');
+                storage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
+            } catch (e) {}
+            return { ...wh, [historyKey]: -(rec.goldAmount || 0) };
+        });
+
+        // 结清本地待核销离线缓存
+        storage.removeItem(`app_offline_exchange_${targetChild}`);
+
+        // 如果当前显示的正是该订单，立即关闭待核销二维码
+        setApplyResult(current => (current && current.applyId === rec.id ? null : current));
+
+        showToast('success', `🎉 家长已核销 ¥${rec.cnyAmount} 元零花钱！金元宝已结清。`);
+        if (typeof onExchangeComplete === 'function') {
+            try { onExchangeComplete(rec); } catch (e) {}
+        }
+    }, [activeChild, setWheelHistory, showToast, onExchangeComplete]);
+
+    // 3. 全局兑换记录轮询（背景刷新 + 历史记录更新）
     React.useEffect(() => {
         if (!show || (!syncCode && !activeChild)) return;
         const effectiveCode = syncCode || 'local_' + activeChild;
 
         const poll = () => {
-            fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
+            fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                 .then(r => r.json())
                 .then(d => {
                     if (!d.records) return;
@@ -210,35 +256,72 @@ export const ExchangePanel = ({
 
                     // 检查已核销订单自动扣减（仅针对当前孩子）
                     childRecords.filter(r => r.status === 'verified').forEach(rec => {
-                        const historyKey = `${activeChild}-EXCHANGE-${rec.id}`;
-                        setWheelHistory(wh => {
-                            if (wh[historyKey]) return wh;
-                            const totalKey = `app_exchange_total_${activeChild}`;
-                            try {
-                                const prev = parseFloat(storage.getItem(totalKey) || '0');
-                                storage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
-                            } catch (e) {}
-                            showToast('success', `🎉 家长已核销 ¥${rec.cnyAmount} 元零花钱！金元宝已结清。`);
-                            return { ...wh, [historyKey]: -(rec.goldAmount || 0) };
-                        });
-
-                        // 如果当前显示的弹窗正是刚核销的单，关闭展示
-                        setApplyResult(current => {
-                            if (current && current.applyId === rec.id) {
-                                storage.removeItem(`app_offline_exchange_${activeChild}`);
-                                return null;
-                            }
-                            return current;
-                        });
+                        settleVerifiedOrder(rec);
                     });
                 })
                 .catch(() => {});
         };
 
+        refreshRecordsRef.current = poll;
         poll();
-        const interval = setInterval(poll, 10000);
+        const interval = setInterval(poll, 8000);
         return () => clearInterval(interval);
-    }, [show, syncCode, activeChild]);
+    }, [show, syncCode, activeChild, settleVerifiedOrder]);
+
+    // 4. 单笔待核销单“超高频自适应极速轮询”（1.5秒刷新 + 屏幕焦点唤醒，接近实时响应）
+    React.useEffect(() => {
+        if (!show || !applyResult?.applyId || applyResult.isOffline) return;
+        const currentApplyId = applyResult.applyId;
+        let isCancelled = false;
+
+        const checkActiveOrder = async () => {
+            try {
+                const resp = await fetchWithTimeout(
+                    `${EXCHANGE_WORKER_URL}/api/exchange/order?id=${encodeURIComponent(currentApplyId)}&_t=${Date.now()}`,
+                    {},
+                    3000
+                );
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (isCancelled) return;
+
+                if (data.ok && data.record) {
+                    if (data.record.status === 'verified') {
+                        settleVerifiedOrder(data.record);
+                        refreshRecords();
+                    } else if (data.record.status === 'cancelled') {
+                        storage.removeItem(`app_offline_exchange_${activeChild}`);
+                        setApplyResult(null);
+                        showToast('info', '该兑换申请已被撤销。');
+                        refreshRecords();
+                    }
+                }
+            } catch (e) {
+                // 弱网或偶发超时静默跳过
+            }
+        };
+
+        // 立即发起一次检查
+        checkActiveOrder();
+        // 1.5 秒超高频轮询（当且仅当展示待核销二维码时激活，秒级感知）
+        const timer = setInterval(checkActiveOrder, 1500);
+
+        // 手机屏幕唤醒或切回主程序时，毫秒级即时拉取最新状态
+        const handleFocusOrVisible = () => {
+            if (document.visibilityState === 'visible') {
+                checkActiveOrder();
+            }
+        };
+        window.addEventListener('focus', handleFocusOrVisible);
+        document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+        return () => {
+            isCancelled = true;
+            clearInterval(timer);
+            window.removeEventListener('focus', handleFocusOrVisible);
+            document.removeEventListener('visibilitychange', handleFocusOrVisible);
+        };
+    }, [show, applyResult?.applyId, applyResult?.isOffline, activeChild, settleVerifiedOrder, refreshRecords]);
 
     // 3. 汇率核心换算
     const currentRate = rate?.rates?.USD || 0.14918;
@@ -401,13 +484,13 @@ export const ExchangePanel = ({
                 storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(newRecord));
                 showToast('success', `🎉 申请已提交！请家长扫码或当面核销 ¥${targetCny.toFixed(2)} 元零花钱`);
                 // 刷新记录列表
-                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
+                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                     .then(r => r.json())
                     .then(d => { if (d.records) setExchangeRecords(d.records); })
                     .catch(() => {});
             } else if (data.error && data.error.includes('未核销')) {
                 // 如果发现之前已有未核销单，直接拉取并呈现该单的二维码与核销码，避免报错和重复卡死
-                const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000);
+                const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000);
                 const statusData = await statusResp.json();
                 const pendingRecord = (statusData.records || []).find(r => r.status === 'pending' && r.childName === activeChild);
 
@@ -532,7 +615,7 @@ export const ExchangePanel = ({
                 storage.removeItem(`app_offline_exchange_${activeChild}`);
                 setApplyResult(null);
                 showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
-                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
+                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                     .then(r => r.json())
                     .then(d => { if (d.records) setExchangeRecords(d.records); })
                     .catch(() => {});

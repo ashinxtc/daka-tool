@@ -303,6 +303,13 @@ async function handleVerify(request, env) {
 
 async function handleStatus(request, env) {
     const url = new URL(request.url);
+    const orderId = url.searchParams.get('id');
+    if (orderId) {
+        const recordData = await env.EXCHANGE_KV.get(`exchange:${orderId}`);
+        if (!recordData) return json({ error: '兑换记录不存在或已过期' }, 404);
+        return json({ ok: true, record: JSON.parse(recordData) });
+    }
+
     const syncCode = url.searchParams.get('code');
     if (!syncCode) return json({ error: '缺少同步码' }, 400);
 
@@ -329,6 +336,21 @@ async function handleStatus(request, env) {
     }
 
     return json({ records: records.sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+}
+
+// ============================================================
+// 查询单笔兑换订单状态（超轻量即时响应，毫秒级响应）
+// ============================================================
+
+async function handleOrder(request, env) {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) return json({ error: '缺少申请ID' }, 400);
+
+    const recordData = await env.EXCHANGE_KV.get(`exchange:${id}`);
+    if (!recordData) return json({ error: '兑换记录不存在或已过期' }, 404);
+
+    return json({ ok: true, record: JSON.parse(recordData) });
 }
 
 // ============================================================
@@ -366,6 +388,9 @@ function json(data, status = 200) {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
         }
     });
 }
@@ -429,6 +454,11 @@ export default {
             // 核销兑换
             if (path === '/api/exchange/verify' && request.method === 'POST') {
                 return await handleVerify(request, env);
+            }
+
+            // 查询单笔兑换状态（超轻量即时响应）
+            if (path === '/api/exchange/order' && request.method === 'GET') {
+                return await handleOrder(request, env);
             }
 
             // 查询兑换状态
