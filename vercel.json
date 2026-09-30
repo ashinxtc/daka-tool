@@ -1,5 +1,23 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/wecom/:match*",
+      "destination": "https://daka-wecom.2378385593.workers.dev/api/wecom/:match*"
+    },
+    {
+      "source": "/api/family/:match*",
+      "destination": "https://daka-wecom.2378385593.workers.dev/api/family/:match*"
+    },
+    {
+      "source": "/api/push/:match*",
+      "destination": "https://daka-push.2378385593.workers.dev/api/:match*"
+    },
+    {
+      "source": "/api/:match*",
+      "destination": "https://daka-exchange.2378385593.workers.dev/api/:match*"
+    }
+  ]
 }

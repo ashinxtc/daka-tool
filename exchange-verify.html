@@ -163,7 +163,15 @@
             var card = document.getElementById('card');
             var confirmBtn = document.getElementById('confirmBtn');
 
-            var WORKER_URL = 'https://daka-exchange.2378385593.workers.dev';
+            var isOffline = params.get('offline') === '1' || applyId.indexOf('ex_local_') === 0;
+            var expectedCode = params.get('code') || '';
+
+            var WORKER_URL = (
+                location.hostname.includes('daka-tool.top') ||
+                location.hostname.includes('vercel.app') ||
+                location.hostname === 'localhost' ||
+                location.hostname === '127.0.0.1'
+            ) ? '' : 'https://daka-exchange.2378385593.workers.dev';
 
             confirmBtn.addEventListener('click', function() {
                 if (!applyId) {
@@ -179,6 +187,22 @@
                 if (!code) {
                     confirmBtn.disabled = false;
                     confirmBtn.textContent = '✅ 确认已转账';
+                    return;
+                }
+
+                // 离线单据验证分支
+                if (isOffline) {
+                    if (expectedCode && code.trim() !== expectedCode.trim()) {
+                        alert('核销码不匹配，请核对孩子手机上的 4 位核销码！');
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '✅ 确认已转账';
+                        return;
+                    }
+                    confirmState.classList.add('hidden');
+                    successState.classList.add('visible');
+                    card.classList.add('success');
+                    document.getElementById('displayCode').textContent = code.trim();
+                    document.getElementById('verifyTime').textContent = '核销时间：' + new Date().toLocaleString('zh-CN');
                     return;
                 }
 
@@ -199,7 +223,7 @@
                         confirmBtn.textContent = '✅ 确认已转账';
                     }
                 }).catch(function() {
-                    alert('网络错误，请重试。');
+                    alert('网络连接超时，请重试或在孩子手机上当面完成核销。');
                     confirmBtn.disabled = false;
                     confirmBtn.textContent = '✅ 确认已转账';
                 });

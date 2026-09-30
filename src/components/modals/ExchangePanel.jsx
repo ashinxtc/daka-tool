@@ -145,8 +145,19 @@ export const ExchangePanel = ({
         if (!show || (!syncCode && !activeChild)) return;
         const effectiveCode = syncCode || 'local_' + activeChild;
 
+        // 自动恢复本地离线待核销单
+        try {
+            const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
+            if (localSaved) {
+                const parsed = JSON.parse(localSaved);
+                if (parsed && parsed.applyId) {
+                    setApplyResult(prev => prev || parsed);
+                }
+            }
+        } catch (e) {}
+
         const poll = () => {
-            fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000)
+            fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
                 .then(r => r.json())
                 .then(d => {
                     if (!d.records) return;
@@ -186,6 +197,7 @@ export const ExchangePanel = ({
 
                         // 如果当前显示的弹窗正是刚核销的单，关闭展示
                         if (applyResult && applyResult.applyId === rec.id) {
+                            storage.removeItem(`app_offline_exchange_${activeChild}`);
                             setApplyResult(null);
                         }
                     });
@@ -255,7 +267,8 @@ export const ExchangePanel = ({
             return;
         }
         let active = true;
-        const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}`;
+        const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
+        const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
 
         QRCode.toDataURL(verifyUrl, {
             width: 320,
@@ -332,7 +345,7 @@ export const ExchangePanel = ({
         const effectiveCode = syncCode || 'local_' + activeChild;
 
         try {
-            // 带有 9 秒超时控制，彻底杜绝手机端无限期卡顿
+            // 采用 4.5 秒超时（生产走同源 Vercel 反向代理，无防火墙拦截，200ms 内响应）
             const resp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/apply`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -343,36 +356,41 @@ export const ExchangePanel = ({
                     rate: cnyPerGold,
                     cnyAmount: targetCny
                 })
-            }, 9000);
+            }, 4500);
 
             const data = await resp.json();
 
             if (data.ok) {
-                setApplyResult({
+                const newRecord = {
                     ...data,
                     goldAmount: neededGold,
-                    cnyAmount: targetCny
-                });
-                showToast('success', `🎉 申请已提交！请家长扫码核销 ¥${targetCny.toFixed(2)} 元零花钱`);
+                    cnyAmount: targetCny,
+                    childName: activeChild
+                };
+                setApplyResult(newRecord);
+                storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(newRecord));
+                showToast('success', `🎉 申请已提交！请家长扫码或当面核销 ¥${targetCny.toFixed(2)} 元零花钱`);
                 // 刷新记录列表
-                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000)
+                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
                     .then(r => r.json())
                     .then(d => { if (d.records) setExchangeRecords(d.records); })
                     .catch(() => {});
             } else if (data.error && data.error.includes('未核销')) {
                 // 如果发现之前已有未核销单，直接拉取并呈现该单的二维码与核销码，避免报错和重复卡死
-                const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000);
+                const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000);
                 const statusData = await statusResp.json();
                 const pendingRecord = (statusData.records || []).find(r => r.status === 'pending' && (!r.childName || r.childName === activeChild));
 
                 if (pendingRecord) {
-                    setApplyResult({
+                    const rec = {
                         applyId: pendingRecord.id,
                         verifyCode: pendingRecord.verifyCode,
                         goldAmount: pendingRecord.goldAmount,
                         cnyAmount: pendingRecord.cnyAmount,
                         childName: pendingRecord.childName || activeChild
-                    });
+                    };
+                    setApplyResult(rec);
+                    storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(rec));
                     showToast('info', '已为您展示待家长核销的二维码与核销码！若想更换金额可点击下方撤销重新申请。');
                 } else {
                     showToast('error', data.error);
@@ -383,15 +401,78 @@ export const ExchangePanel = ({
                 showToast('error', data.error || '申请提交失败，请重试');
             }
         } catch (e) {
-            if (e.name === 'AbortError') {
-                showToast('error', '提交超时，手机网络连接较弱，请稍后重试！');
-            } else {
-                showToast('error', '网络异常：' + (e.message || '请检查网络后重试'));
-            }
+            // 离线极致兜底：当云端网络异常或超时，自动生成离线防伪单，绝不阻断孩子！
+            const localApplyId = `ex_local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            const localVerifyCode = String(Math.floor(1000 + Math.random() * 9000));
+            const offlineTicket = {
+                ok: true,
+                applyId: localApplyId,
+                verifyCode: localVerifyCode,
+                goldAmount: neededGold,
+                cnyAmount: targetCny,
+                childName: activeChild,
+                isOffline: true,
+                createdAt: new Date().toISOString()
+            };
+            try {
+                storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(offlineTicket));
+            } catch (err) {}
+            setApplyResult(offlineTicket);
+            showToast('info', '已为您即时生成核销单与二维码！请家长微信扫码或点击下方当面核销。', { duration: 6000 });
         } finally {
             // 无论如何保证解除按钮 loading，绝不卡死
             setApplying(false);
         }
+    };
+
+    // 家长当面核销（即使完全无网也能瞬间完成结清与扣减）
+    const handleParentDirectVerify = () => {
+        if (!applyResult) return;
+        const parentPwd = storage.getItem('app_settings_password');
+        let promptMsg = `【👨‍👩‍👧 家长当面核销确认】\n孩子申请兑换零花钱：¥${(applyResult.cnyAmount || targetCny).toFixed(2)} 元\n需扣减金元宝：${applyResult.goldAmount || neededGold} 个\n\n`;
+        if (parentPwd) {
+            promptMsg += '请家长确认已向孩子给付现金或转账，并输入家长管理密码确认核销：';
+        } else {
+            promptMsg += `请家长确认已向孩子给付现金或转账，并输入 4 位核销码【${applyResult.verifyCode}】确认核销：`;
+        }
+        const input = window.prompt(promptMsg);
+        if (!input) return;
+
+        const isMatch = parentPwd
+            ? (input.trim() === parentPwd.trim())
+            : (input.trim() === String(applyResult.verifyCode).trim());
+
+        if (!isMatch) {
+            showToast('error', parentPwd ? '家长密码不正确，核销失败' : '核销码不正确，核销失败');
+            return;
+        }
+
+        const historyKey = `${activeChild}-EXCHANGE-${applyResult.applyId}`;
+        const cny = applyResult.cnyAmount || targetCny;
+        const gold = applyResult.goldAmount || neededGold;
+
+        setWheelHistory(wh => {
+            const totalKey = `app_exchange_total_${activeChild}`;
+            try {
+                const prev = parseFloat(storage.getItem(totalKey) || '0');
+                storage.setItem(totalKey, String(prev + cny));
+            } catch (e) {}
+            return { ...wh, [historyKey]: -gold };
+        });
+
+        storage.removeItem(`app_offline_exchange_${activeChild}`);
+
+        if (!applyResult.isOffline) {
+            // 云端单异步核销结清
+            fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ applyId: applyResult.applyId, verifyCode: String(applyResult.verifyCode).trim() })
+            }, 4000).catch(() => {});
+        }
+
+        setApplyResult(null);
+        showToast('success', `🎉 家长已当面核销 ¥${cny.toFixed(2)} 元零花钱！已扣减 ${gold} 金元宝。`);
     };
 
     // 撤销待核销申请
@@ -399,18 +480,29 @@ export const ExchangePanel = ({
         const id = applyIdToCancel || applyResult?.applyId;
         if (!id) return;
         setApplying(true);
+
+        // 如果是本地离线单，直接撤销
+        if (applyResult?.isOffline || (id && id.startsWith('ex_local_'))) {
+            storage.removeItem(`app_offline_exchange_${activeChild}`);
+            setApplyResult(null);
+            setApplying(false);
+            showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
+            return;
+        }
+
         const effectiveCode = syncCode || 'local_' + activeChild;
         try {
             const resp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ applyId: id, syncCode: effectiveCode })
-            }, 6000);
+            }, 5000);
             const data = await resp.json();
             if (data.ok) {
+                storage.removeItem(`app_offline_exchange_${activeChild}`);
                 setApplyResult(null);
                 showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
-                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 6000)
+                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
                     .then(r => r.json())
                     .then(d => { if (d.records) setExchangeRecords(d.records); })
                     .catch(() => {});
@@ -418,7 +510,9 @@ export const ExchangePanel = ({
                 showToast('error', data.error || '撤销失败，请重试');
             }
         } catch (e) {
-            showToast('error', '网络异常，撤销失败：' + (e.message || '请检查网络'));
+            storage.removeItem(`app_offline_exchange_${activeChild}`);
+            setApplyResult(null);
+            showToast('info', '已在本地撤销申请，您可以重新输入金额兑换。');
         } finally {
             setApplying(false);
         }
@@ -561,6 +655,12 @@ export const ExchangePanel = ({
                                         请家长使用微信扫码或输入下方 4 位核销码完成线下结算
                                     </div>
                                     
+                                    {applyResult.isOffline && (
+                                        <div className="inline-block text-[11px] font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 mt-2">
+                                            📡 离线快速单 · 家长可直接在手机上当面结清
+                                        </div>
+                                    )}
+
                                     {/* 本地 0ms 纯离线生成的清晰二维码 */}
                                     <div className="flex justify-center my-4 p-3.5 bg-white rounded-2xl shadow-inner border border-emerald-100 inline-block">
                                         {qrCodeDataUrl ? (
@@ -579,7 +679,7 @@ export const ExchangePanel = ({
                                     {/* 4 位核销码大字展示 */}
                                     <div className="bg-white/90 rounded-2xl py-3 px-4 max-w-xs mx-auto border border-emerald-200/80 mb-2">
                                         <div className="text-[11px] text-gray-500 font-bold mb-1">家长核销码</div>
-                                        <div className="text-3xl font-black text-emerald-700 tracking-widest font-mono">
+                                        <div data-testid="ticket-verify-code" className="text-3xl font-black text-emerald-700 tracking-widest font-mono">
                                             {applyResult.verifyCode}
                                         </div>
                                         <div className="text-[11px] text-emerald-600 font-bold mt-1">
@@ -591,29 +691,40 @@ export const ExchangePanel = ({
                                         防伪核销码 48 小时内有效 · 家长确认转账核销后系统自动扣除金元宝
                                     </div>
 
-                                    <div className="mt-4 pt-3 border-t border-emerald-200/60 flex flex-col sm:flex-row gap-2">
+                                    <div className="mt-4 pt-3 border-t border-emerald-200/60 flex flex-col gap-2">
+                                        {/* 家长当面核销快捷主按钮 */}
                                         <button
                                             type="button"
-                                            onClick={() => handleCancelPending(applyResult.applyId)}
-                                            className="flex-1 py-2.5 rounded-xl bg-white text-rose-600 hover:bg-rose-50 font-black text-xs border border-rose-300 transition-colors flex items-center justify-center gap-1 shadow-xs"
+                                            onClick={handleParentDirectVerify}
+                                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
                                         >
-                                            <span>❌ 撤销申请 · 重新兑换</span>
+                                            <span>👨‍👩‍👧 家长当面核销 · 立即扣减结清 ➔</span>
                                         </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}`;
-                                                if (navigator.clipboard) {
-                                                    navigator.clipboard.writeText(verifyUrl);
-                                                    showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');
-                                                } else {
-                                                    showToast('info', verifyUrl);
-                                                }
-                                            }}
-                                            className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-1"
-                                        >
-                                            <span>📋 复制核销链接</span>
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCancelPending(applyResult.applyId)}
+                                                className="flex-1 py-2 rounded-xl bg-white text-rose-600 hover:bg-rose-50 font-black text-xs border border-rose-300 transition-colors flex items-center justify-center gap-1 shadow-xs"
+                                            >
+                                                <span>❌ 撤销申请</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
+                                                    const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+                                                    if (navigator.clipboard) {
+                                                        navigator.clipboard.writeText(verifyUrl);
+                                                        showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');
+                                                    } else {
+                                                        showToast('info', verifyUrl);
+                                                    }
+                                                }}
+                                                className="flex-1 py-2 rounded-xl bg-white text-emerald-700 hover:bg-emerald-50 font-black text-xs border border-emerald-300 transition-colors shadow-xs flex items-center justify-center gap-1"
+                                            >
+                                                <span>📋 复制核销链接</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ) : (

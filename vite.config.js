@@ -8,6 +8,22 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'https://daka-exchange.2378385593.workers.dev',
+        changeOrigin: true,
+      }
+    }
+  },
+  preview: {
+    port: 4173,
+    host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'https://daka-exchange.2378385593.workers.dev',
+        changeOrigin: true,
+      }
+    }
   },
   build: {
     outDir: 'dist',
@@ -16,6 +32,9 @@ export default defineConfig({
       input: {
         main: 'index.html',
         parent: 'parent.html',
+        exchangeVerify: 'exchange-verify.html',
+        exemptionVerify: 'exemption-verify.html',
+        redemptionVerify: 'redemption-verify.html',
       }
     }
   }
