@@ -47,6 +47,10 @@ import { PerformanceContext, PerformanceProvider } from './context/PerformanceCo
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
 import { initLoadingScreen } from './utils/loadingScreen';
 import { QRCodeView } from './utils/qrcode';
+import confetti from 'canvas-confetti';
+if (typeof window !== 'undefined' && !window.confetti) {
+    window.confetti = confetti;
+}
 import { useState, useEffect, useMemo, useRef, useContext, createContext, useCallback, memo  } from "react";
 
         // --- 图标组件 ---
@@ -6852,6 +6856,7 @@ ${context}
                                       const isActive = activeChild === profile.name;
                                       return (
                                         <button key={profile.id}
+                                          data-child={profile.name}
                                           onClick={() => startTransition(() => setActiveChild(profile.name))}
                                           className={`flex-shrink-0 transition-colors transition-transform duration-200 rounded-full ${isActive ? 'p-1.5 bg-white/90 shadow-sm ring-1 ring-white/40' : 'p-1.5 bg-white/20 hover:bg-white/30 active:scale-95'}`}>
                                           {profile.avatar ? <img src={profile.avatar} className="w-5 h-5 rounded-full object-cover" /> : <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-[9px] font-bold text-white">{profile.name[0]}</div>}
@@ -7664,6 +7669,7 @@ ${context}
 
                   {/* 金元宝兑换面板 */}
                   <ExchangePanel
+                      key={activeChild}
                       show={showExchange}
                       onClose={() => setShowExchange(false)}
                       totalGold={totalGold}

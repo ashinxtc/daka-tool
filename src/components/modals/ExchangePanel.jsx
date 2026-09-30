@@ -55,7 +55,18 @@ export const ExchangePanel = ({
     const [rate, setRate] = React.useState(null);
     const [knowledge, setKnowledge] = React.useState(null);
     const [applying, setApplying] = React.useState(false);
-    const [applyResult, setApplyResult] = React.useState(null);
+    const [applyResult, setApplyResult] = React.useState(() => {
+        try {
+            const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
+            if (localSaved) {
+                const parsed = JSON.parse(localSaved);
+                if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
+                    return { ...parsed, childName: parsed.childName || activeChild };
+                }
+            }
+        } catch (e) {}
+        return null;
+    });
     const [qrCodeDataUrl, setQrCodeDataUrl] = React.useState('');
     const [exchangeRecords, setExchangeRecords] = React.useState([]);
     const [priceItems, setPriceItems] = React.useState([]);
@@ -140,49 +151,65 @@ export const ExchangePanel = ({
         }).catch(() => {});
     }, [show, syncCode]);
 
-    // 2. 轮询兑换记录（每 10 秒刷新 + 核销时自动扣金元宝）
+    // 2. 孩子切换重置监听：保证组件内部状态彻底切换到当前选中的孩子
     React.useEffect(() => {
-        if (!show || (!syncCode && !activeChild)) return;
-        const effectiveCode = syncCode || 'local_' + activeChild;
-
-        // 自动恢复本地离线待核销单
+        let initialTicket = null;
         try {
             const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
             if (localSaved) {
                 const parsed = JSON.parse(localSaved);
-                if (parsed && parsed.applyId) {
-                    setApplyResult(prev => prev || parsed);
+                if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
+                    initialTicket = { ...parsed, childName: parsed.childName || activeChild };
                 }
             }
         } catch (e) {}
+        setApplyResult(initialTicket);
+        setQrCodeDataUrl('');
+        setExchangeRecords([]);
+    }, [activeChild]);
+
+    // 3. 轮询兑换记录（每 10 秒刷新 + 核销时自动扣金元宝）
+    React.useEffect(() => {
+        if (!show || (!syncCode && !activeChild)) return;
+        const effectiveCode = syncCode || 'local_' + activeChild;
 
         const poll = () => {
             fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000)
                 .then(r => r.json())
                 .then(d => {
                     if (!d.records) return;
-                    const childRecords = d.records.filter(r => r.childName === activeChild || !r.childName);
+                    // 严格隔离：仅过滤出当前选中孩子的记录，绝不带入没有孩子名或属于其他孩子的单据
+                    const childRecords = d.records.filter(r => r.childName === activeChild);
                     setExchangeRecords(childRecords);
 
-                    // 自动恢复待核销申请，确保手机端随时可见二维码与核销码
+                    // 自动恢复当前孩子的待核销申请，确保手机端随时可见二维码与核销码
                     const pendingOrder = childRecords.find(r => r.status === 'pending');
                     if (pendingOrder) {
-                        setApplyResult(prev => {
-                            if (!prev || prev.applyId !== pendingOrder.id) {
-                                return {
-                                    applyId: pendingOrder.id,
-                                    verifyCode: pendingOrder.verifyCode,
-                                    goldAmount: pendingOrder.goldAmount,
-                                    cnyAmount: pendingOrder.cnyAmount,
-                                    childName: pendingOrder.childName || activeChild
-                                };
-                            }
-                            return prev;
+                        setApplyResult({
+                            applyId: pendingOrder.id,
+                            verifyCode: pendingOrder.verifyCode,
+                            goldAmount: pendingOrder.goldAmount,
+                            cnyAmount: pendingOrder.cnyAmount,
+                            childName: pendingOrder.childName || activeChild,
+                            isOffline: false
                         });
+                    } else {
+                        // 云端没有当前孩子的待核销单，检查本地是否有属于当前孩子的离线单；若无则重置为 null
+                        let localPending = null;
+                        try {
+                            const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
+                            if (localSaved) {
+                                const parsed = JSON.parse(localSaved);
+                                if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
+                                    localPending = { ...parsed, childName: parsed.childName || activeChild };
+                                }
+                            }
+                        } catch (e) {}
+                        setApplyResult(localPending);
                     }
 
-                    // 检查已核销订单自动扣减
-                    d.records.filter(r => r.childName === activeChild && r.status === 'verified').forEach(rec => {
+                    // 检查已核销订单自动扣减（仅针对当前孩子）
+                    childRecords.filter(r => r.status === 'verified').forEach(rec => {
                         const historyKey = `${activeChild}-EXCHANGE-${rec.id}`;
                         setWheelHistory(wh => {
                             if (wh[historyKey]) return wh;
@@ -196,10 +223,13 @@ export const ExchangePanel = ({
                         });
 
                         // 如果当前显示的弹窗正是刚核销的单，关闭展示
-                        if (applyResult && applyResult.applyId === rec.id) {
-                            storage.removeItem(`app_offline_exchange_${activeChild}`);
-                            setApplyResult(null);
-                        }
+                        setApplyResult(current => {
+                            if (current && current.applyId === rec.id) {
+                                storage.removeItem(`app_offline_exchange_${activeChild}`);
+                                return null;
+                            }
+                            return current;
+                        });
                     });
                 })
                 .catch(() => {});
@@ -208,7 +238,7 @@ export const ExchangePanel = ({
         poll();
         const interval = setInterval(poll, 10000);
         return () => clearInterval(interval);
-    }, [show, syncCode, activeChild, applyResult]);
+    }, [show, syncCode, activeChild]);
 
     // 3. 汇率核心换算
     const currentRate = rate?.rates?.USD || 0.14918;
@@ -262,7 +292,7 @@ export const ExchangePanel = ({
 
     // 5. 纯离线高性能生成核销二维码 Data URL（彻底告别外部失效第三方服务）
     React.useEffect(() => {
-        if (!applyResult || !applyResult.applyId) {
+        if (!applyResult || !applyResult.applyId || (applyResult.childName && applyResult.childName !== activeChild)) {
             setQrCodeDataUrl('');
             return;
         }
@@ -379,7 +409,7 @@ export const ExchangePanel = ({
                 // 如果发现之前已有未核销单，直接拉取并呈现该单的二维码与核销码，避免报错和重复卡死
                 const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}`, {}, 4000);
                 const statusData = await statusResp.json();
-                const pendingRecord = (statusData.records || []).find(r => r.status === 'pending' && (!r.childName || r.childName === activeChild));
+                const pendingRecord = (statusData.records || []).find(r => r.status === 'pending' && r.childName === activeChild);
 
                 if (pendingRecord) {
                     const rec = {
@@ -643,7 +673,7 @@ export const ExchangePanel = ({
                             </div>
 
                             {/* 核心区域：若已提交则置顶展示电子汇票二维码与核销码，否则展示人民币输入表单 */}
-                            {applyResult ? (
+                            {applyResult && applyResult.childName === activeChild ? (
                                 <div className="bg-emerald-50/90 rounded-3xl p-5 border-2 border-emerald-300 text-center shadow-lg animate-in zoom-in-95 duration-200">
                                     <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 flex items-center justify-center text-2xl mb-2 shadow-inner">
                                         ✅
@@ -922,8 +952,14 @@ export const ExchangePanel = ({
                                                     <span className="font-black text-emerald-600 font-mono text-sm">¥{r.cnyAmount}</span>
                                                     {r.status === 'pending' && (
                                                         <button 
-                                                            type="button"
-                                                            onClick={() => setApplyResult({ applyId: r.id, verifyCode: r.verifyCode, cnyAmount: r.cnyAmount, goldAmount: r.goldAmount })}
+                                                            type="button" 
+                                                            onClick={() => setApplyResult({ 
+                                                                applyId: r.id, 
+                                                                verifyCode: r.verifyCode, 
+                                                                cnyAmount: r.cnyAmount, 
+                                                                goldAmount: r.goldAmount,
+                                                                childName: r.childName || activeChild 
+                                                            })}
                                                             className="text-[10px] text-amber-700 bg-amber-50 hover:bg-amber-100 font-bold px-2 py-0.5 rounded-md border border-amber-200 transition-colors"
                                                         >
                                                             核销码
@@ -931,7 +967,7 @@ export const ExchangePanel = ({
                                                     )}
                                                     {r.status === 'pending' && (
                                                         <button 
-                                                            type="button"
+                                                            type="button" 
                                                             onClick={async () => {
                                                                 try {
                                                                     const effectiveCode = syncCode || 'local_' + activeChild;
@@ -943,7 +979,10 @@ export const ExchangePanel = ({
                                                                     const data = await resp.json();
                                                                     if (data.ok) {
                                                                         setExchangeRecords(prev => prev.map(rec => rec.id === r.id ? { ...rec, status: 'cancelled' } : rec));
-                                                                        if (applyResult && applyResult.applyId === r.id) setApplyResult(null);
+                                                                        if (applyResult && applyResult.applyId === r.id) {
+                                                                            storage.removeItem(`app_offline_exchange_${activeChild}`);
+                                                                            setApplyResult(null);
+                                                                        }
                                                                         showToast('success', '兑换已撤销');
                                                                     } else {
                                                                         showToast('error', data.error || '取消失败');
