@@ -63,3 +63,15 @@ export const getHeaderTheme = (dateObj, holiday) => {
     const theme = weekThemes[dateObj.getDay()];
     return { ...theme, text: 'text-white' };
 };
+
+// 判断指定日期对象或日期字符串 ('YYYY-MM-DD') 是否是周末或法定重大节日
+export const isDateHolidayOrWeekend = (dateInput) => {
+    if (!dateInput) return false;
+    const d = typeof dateInput === 'string' ? new Date(dateInput.replace(/-/g, '/')) : dateInput;
+    if (!d || isNaN(d.getTime())) return false;
+    const day = d.getDay();
+    if (day === 0 || day === 6) return true; // 周末
+    const h = getHolidayInfo(d);
+    return !!(h && h.isMajor);
+};
+

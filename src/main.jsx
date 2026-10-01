@@ -39,7 +39,7 @@ import { convertWMOToType, getWeatherInfo, WeatherEffects } from './components/w
 import { TributeModal } from './components/modals/TributeModal';
 import { CompletedWallModal } from './components/modals/CompletedWallModal';
 import { TesterDashboard } from './components/tester/TesterDashboard';
-import { getHolidayInfo, getHeaderTheme } from './utils/holidays';
+import { getHolidayInfo, getHeaderTheme, isDateHolidayOrWeekend } from './utils/holidays';
 import { useStickyState, markKeyVersion } from './hooks/useStickyState';
 import { storage, initStorage } from './utils/storage';
 import { useNightMode } from './hooks/useNightMode';
@@ -70,6 +70,7 @@ import { OracleCarveModal } from './components/oracle/OracleCarveModal';
 import { ReadingFloatingButton } from './components/reading/ReadingFloatingButton';
 import { ReadingCheckinModal } from './components/reading/ReadingCheckinModal';
 import { ReadingPavilionModal } from './components/reading/ReadingPavilionModal';
+import { ReadingTransitionModal } from './components/reading/ReadingTransitionModal';
 import { ParentGiftModal } from './components/modals/ParentGiftModal';
 
         // ===== Toast 系统已迁移至 src/components/common/Toast.jsx =====
@@ -553,6 +554,8 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
 
             // --- 天工书阁与阅读伴读任务状态 ---
             const [readingHistory, setReadingHistory] = useStickyState({}, 'app_reading_history_v1');
+            const [shelvedBooks, setShelvedBooks] = useStickyState({}, 'app_reading_shelved_v1');
+            const [readingTransitionModal, setReadingTransitionModal] = useState({ show: false, data: null });
             const [showReadingPavilion, setShowReadingPavilion] = useState(false);
             const [showReadingQuickCheckin, setShowReadingQuickCheckin] = useState(false);
             const [readingTaskForCheckin, setReadingTaskForCheckin] = useState(null);
@@ -593,7 +596,8 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
 				const completed = [];
 				all.forEach(task => {
 					const freq = task.frequencyType || 'count';
-					if (freq === 'daily_must' || freq === 'weekly_optional') {
+					const isReading = !!task.readingConfig?.isReading || freq === 'reading';
+					if (freq === 'daily_must' || freq === 'weekly_optional' || isReading) {
 						if (task.earlyCompleted) { completed.push(task); } else { ongoing.push(task); }
 						return;
 					}
@@ -612,7 +616,7 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
             // 伴读书阁：筛选当前孩子的在读任务
             const activeReadingTasks = useMemo(() => {
                 const childTasks = tasks[deferredActiveChild] || [];
-                return childTasks.filter(t => t.readingConfig?.isReading && !t.earlyCompleted);
+                return childTasks.filter(t => (t.readingConfig?.isReading || t.frequencyType === 'reading') && !t.earlyCompleted);
             }, [tasks, deferredActiveChild]);
             const [wheelConfig, setWheelConfig] = useStickyState(DEFAULT_WHEEL_CONFIG, 'app_wheel_config');
             const [wheelSettings, setWheelSettings] = useStickyState(DEFAULT_WHEEL_SETTINGS, 'app_wheel_settings');
@@ -4406,20 +4410,43 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const pushWecomDailySummary = (childName, dailyMust, checkinsData) => {
                 if (!canPushWecom('dailySummary', childName)) return;
                 const today = getLocalDateKey(0);
+                const isHoliday = isDateHolidayOrWeekend(today);
+
+                // 彻底排除伴读任务与享受节假日豁免的任务
+                const activeMust = dailyMust
+                    .filter(t => !t.readingConfig?.isReading && t.frequencyType !== 'reading')
+                    .filter(t => !(t.holidayExempt && isHoliday));
+                if (activeMust.length === 0) return;
+
                 const completed = [];
                 const incomplete = [];
-                dailyMust.forEach(t => {
+                activeMust.forEach(t => {
                     if (checkinsData[childName]?.[t.id]?.[today]) {
                         completed.push(t.name);
                     } else {
                         incomplete.push(t.name);
                     }
                 });
+
                 if (incomplete.length === 0) return; // 全部完成时不推（事件1已覆盖）
-                const rate = Math.round((completed.length / dailyMust.length) * 100);
+
+                // 伴读任务今日有读才汇总进展，没读绝不标 ❌
+                const readingTasks = (tasks[childName] || []).filter(t => t.readingConfig?.isReading || t.frequencyType === 'reading');
+                const readingDoneToday = readingTasks.filter(t => checkinsData[childName]?.[t.id]?.[today]);
+                let readingSection = '';
+                if (readingDoneToday.length > 0) {
+                    const rList = readingDoneToday.map(t => {
+                        const title = t.readingConfig?.bookTitle || t.name;
+                        const cur = t.readingConfig?.currentProgress || 0;
+                        return `- 📖 《${title}》（已读至第 ${cur} 页）`;
+                    }).join('\n');
+                    readingSection = `\n>\n> 📚 **伴读书阁今日进展：**\n${rList}`;
+                }
+
+                const rate = Math.round((completed.length / activeMust.length) * 100);
                 const completedList = completed.map(n => `- ✅ ${n}`).join('\n') || '- （无）';
                 const incompleteList = incomplete.map(n => `- ❌ ${n}`).join('\n');
-                const content = `> 📊 **${childName} 今日学习情况**\n> 📅 ${today}\n>\n> ✅ 已完成：\n${completedList}\n>\n> ❌ 未完成：\n${incompleteList}\n>\n> 完成度：${completed.length}/${dailyMust.length}（${rate}%）`;
+                const content = `> 📊 **${childName} 今日学习情况**\n> 📅 ${today}\n>\n> ✅ 已完成：\n${completedList}\n>\n> ❌ 未完成：\n${incompleteList}${readingSection}\n>\n> 完成度：${completed.length}/${activeMust.length}（${rate}%）`;
                 sendWecomMessage('markdown', content);
                 markWecomPushed('dailySummary', childName);
             };
@@ -4436,14 +4463,18 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 markWecomPushed(eventType, childName);
             };
 
-            // 计算连续全部完成 daily_must 的天数
+            // 计算连续全部完成 daily_must 的天数（排除伴读任务与节假日豁免）
             const calcDailyMustStreak = (childName, tasksData, checkinsData) => {
-                const dailyMust = (tasksData[childName] || []).filter(t => t.frequencyType === 'daily_must');
+                const dailyMust = (tasksData[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
                 if (dailyMust.length === 0) return { streak: 0, startDate: '' };
                 let streak = 0;
                 for (let i = 0; i < 365; i++) {
                     const d = getLocalDateKey(-i);
-                    const allDone = dailyMust.every(t => checkinsData[childName]?.[t.id]?.[d]);
+                    const isHoliday = isDateHolidayOrWeekend(d);
+                    const allDone = dailyMust.every(t => {
+                        if (t.holidayExempt && isHoliday) return true;
+                        return !!checkinsData[childName]?.[t.id]?.[d];
+                    });
                     if (allDone) streak++;
                     else break;
                 }
@@ -4550,7 +4581,7 @@ ${context}
                     Object.keys(tasks).forEach(childName => {
                         const summaryKey = `wecom_push_dailySummary_${childName}_${today}`;
                         if (wecomPushLog[summaryKey]) return; // 已推过
-                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must');
+                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
                         if (dailyMust.length > 0) {
                             const allDone = dailyMust.every(t => checkins[childName]?.[t.id]?.[today]);
                             if (!allDone) {
@@ -4562,7 +4593,7 @@ ${context}
                 }
                 const timer = setTimeout(() => {
                     Object.keys(tasks).forEach(childName => {
-                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must');
+                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
                         if (dailyMust.length > 0) {
                             pushWecomDailySummary(childName, dailyMust, checkins);
                         }
@@ -5866,9 +5897,14 @@ ${context}
 					const log = aiReminderLog || {};
 					const milestones = [3, 7, 14, 30, 50, 100];
 					const milestone = milestones.find(m => streak >= m && (log[`lastCelebratedStreak_${activeChild}`] || 0) < m);
-					// 今日必做全部完成
+					// 今日必做全部完成（排除伴读任务与节假日豁免任务）
 					const today = getLocalDateKey(0);
-					const dailyMust = (tasks[activeChild] || []).filter(t => t.frequencyType === 'daily_must').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
+					const isTodayHoliday = isDateHolidayOrWeekend(today);
+					const dailyMust = (tasks[activeChild] || [])
+						.filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading)
+						.filter(t => !t.startDate || today >= t.startDate)
+						.filter(t => !t.earlyCompleted)
+						.filter(t => !(t.holidayExempt && isTodayHoliday));
 					const allDailyDone = dailyMust.length > 0 && dailyMust.every(t => newCheckins[activeChild]?.[t.id]?.[today]);
 					const dailyDoneKey = `dailyDone_${activeChild}_${today}`;
 
@@ -5934,6 +5970,27 @@ ${context}
                     currentNotes.push({ date: today, text: note.trim(), progress: newProgress });
                 }
 
+                const rCfg = task.readingConfig || {};
+                const rStartDate = rCfg.startDate || task.startDate || today;
+                const rDeadline = (() => {
+                    if (rCfg.deadlineDate) return rCfg.deadlineDate;
+                    const d = new Date(rStartDate.replace(/-/g, '/'));
+                    if (rCfg.period === 'monthly') {
+                        d.setDate(d.getDate() + 30);
+                    } else {
+                        d.setDate(d.getDate() + 7);
+                    }
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                })();
+
+                const isOverdue = today > rDeadline;
+                const finalGrandReward = grandReward !== undefined 
+                    ? grandReward 
+                    : (isOverdue ? (rCfg.overdueGrandReward ?? 20) : (rCfg.grandReward ?? 30));
+
                 const updatedTask = {
                     ...task,
                     readingConfig: {
@@ -5945,21 +6002,32 @@ ${context}
 
                 // 2. 满贯通关判定 (达成 100% 进度)
                 if (isFinished) {
-                    updatedTask.earlyCompleted = true;
+                    // 核心要求：绝不让任务从列表中消失，保持槽位持久运转；标记待换新书
+                    updatedTask.earlyCompleted = false;
+                    updatedTask.readingConfig = {
+                        ...updatedTask.readingConfig,
+                        needsNextBook: true,
+                        lastFinishedBook: {
+                            title: rCfg.bookTitle || task.name,
+                            completedDate: today,
+                            grandReward: finalGrandReward
+                        }
+                    };
 
                     // 存入孩子的天工藏书阁历史
                     const bookEntry = {
                         id: `book_${taskId}_${Date.now()}`,
                         taskId: task.id,
-                        title: task.readingConfig?.bookTitle || task.name,
-                        author: task.readingConfig?.author || '',
-                        coverEmoji: task.readingConfig?.coverEmoji || '📖',
-                        period: task.readingConfig?.period || 'weekly',
-                        mode: task.readingConfig?.mode || 'pages',
-                        totalPages: task.readingConfig?.totalPages || task.readingConfig?.totalChapters || newProgress,
-                        grandReward: grandReward || 30,
+                        title: rCfg.bookTitle || task.name,
+                        author: rCfg.author || '',
+                        coverEmoji: rCfg.coverEmoji || '📖',
+                        period: rCfg.period || 'weekly',
+                        mode: rCfg.mode || 'pages',
+                        totalPages: rCfg.totalPages || rCfg.totalChapters || newProgress,
+                        grandReward: finalGrandReward,
                         completedDate: today,
-                        quotes: currentNotes
+                        quotes: currentNotes,
+                        isOverdue
                     };
 
                     setReadingHistory(prev => {
@@ -5971,7 +6039,6 @@ ${context}
                     });
 
                     // 发放通关大奖金元宝
-                    const finalGrandReward = grandReward !== undefined ? grandReward : (task.readingConfig?.grandReward || 30);
                     if (finalGrandReward > 0) {
                         const grandRewardKey = `${activeChild}-READING_GRAND-${taskId}-${Date.now()}`;
                         setWheelHistory(prev => ({ ...prev, [grandRewardKey]: finalGrandReward }));
@@ -5979,7 +6046,17 @@ ${context}
                     }
 
                     confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-                    showToast('success', `🎉 恭喜读完全书《${task.readingConfig?.bookTitle || task.name}》！通关大奖 +${finalGrandReward} 金元宝！`, { duration: 4000 });
+                    showToast('success', `🎉 恭喜读完全本《${rCfg.bookTitle || task.name}》！${isOverdue ? '顺延续读' : '按期'}通关大奖 +${finalGrandReward} 金元宝！已入驻天工书阁！`, { duration: 4500 });
+
+                    // 自动弹出无缝接力小窗引导选下一本
+                    setReadingTransitionModal({
+                        show: true,
+                        data: {
+                            taskId: task.id,
+                            finishedTitle: rCfg.bookTitle || task.name,
+                            period: rCfg.period || 'weekly'
+                        }
+                    });
                 }
 
                 // 保存任务数据
@@ -6045,6 +6122,158 @@ ${context}
 
                 triggerSyncUpload();
                 showToast('success', `📖 今日阅读已记录！+${dailyReward} 金元宝，+3 星星！`);
+            };
+
+            // --- 【伴读书阁】接力开启下一本新书 ---
+            const handleSwitchNextBook = ({ taskId, bookTitle, author, coverEmoji, period, mode, totalPages, totalChapters, grandReward, overdueGrandReward }) => {
+                const today = getLocalDateKey(0);
+                const d = new Date();
+                if (period === 'monthly') {
+                    d.setDate(d.getDate() + 30);
+                } else {
+                    d.setDate(d.getDate() + 7);
+                }
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const deadlineDate = `${year}-${month}-${day}`;
+
+                setTasks(prev => {
+                    const list = prev[activeChild] || [];
+                    return {
+                        ...prev,
+                        [activeChild]: list.map(t => {
+                            if (t.id !== taskId) return t;
+                            return {
+                                ...t,
+                                earlyCompleted: false,
+                                frequencyType: 'reading',
+                                readingConfig: {
+                                    ...t.readingConfig,
+                                    isReading: true,
+                                    bookTitle,
+                                    author: author || '',
+                                    coverEmoji: coverEmoji || '📖',
+                                    period: period || 'weekly',
+                                    mode: mode || 'pages',
+                                    totalPages: totalPages || 180,
+                                    totalChapters: totalChapters || 12,
+                                    dailyTargetMinutes: t.readingConfig?.dailyTargetMinutes || 20,
+                                    targetCount: totalPages || 180,
+                                    currentProgress: 0,
+                                    grandReward: grandReward ?? 30,
+                                    overdueGrandReward: overdueGrandReward ?? 20,
+                                    startDate: today,
+                                    deadlineDate,
+                                    notes: [],
+                                    needsNextBook: false
+                                }
+                            };
+                        })
+                    };
+                });
+                showToast('success', `📖 已为《${bookTitle}》开启新伴读之旅！加油！`);
+                triggerSyncUpload();
+            };
+
+            // --- 【伴读书阁】插书签暂存换书 ---
+            const handleShelveBook = (taskId, customProgress) => {
+                const task = (tasks[activeChild] || []).find(t => t.id === taskId);
+                if (!task) return;
+                const today = getLocalDateKey(0);
+                const rCfg = task.readingConfig || {};
+                const bookTitle = rCfg.bookTitle || task.name;
+                const currentProgress = (typeof customProgress === 'number' && customProgress > 0)
+                    ? customProgress
+                    : (rCfg.currentProgress || 0);
+                const shelvedEntry = {
+                    id: `shelve_${taskId}_${Date.now()}`,
+                    taskId: task.id,
+                    bookTitle,
+                    author: rCfg.author || '',
+                    coverEmoji: rCfg.coverEmoji || '📖',
+                    period: rCfg.period || 'weekly',
+                    mode: rCfg.mode || 'pages',
+                    totalPages: rCfg.totalPages || 180,
+                    totalChapters: rCfg.totalChapters || 12,
+                    currentProgress,
+                    grandReward: rCfg.grandReward || 30,
+                    overdueGrandReward: rCfg.overdueGrandReward || 20,
+                    notes: rCfg.notes || [],
+                    startDate: rCfg.startDate || today,
+                    deadlineDate: rCfg.deadlineDate,
+                    shelvedDate: today
+                };
+                setShelvedBooks(prev => ({
+                    ...prev,
+                    [activeChild]: [shelvedEntry, ...(prev[activeChild] || [])]
+                }));
+                setTasks(prev => ({
+                    ...prev,
+                    [activeChild]: (prev[activeChild] || []).map(t => {
+                        if (t.id !== taskId) return t;
+                        return {
+                            ...t,
+                            readingConfig: {
+                                ...t.readingConfig,
+                                currentProgress: 0,
+                                needsNextBook: true,
+                                lastFinishedBook: null
+                            }
+                        };
+                    })
+                }));
+                showToast('info', `🔖 已为《${bookTitle}》插上书签暂存入待续书架！`);
+                setReadingTransitionModal({
+                    show: true,
+                    data: { taskId: task.id, period: rCfg.period || 'weekly' }
+                });
+                triggerSyncUpload();
+            };
+
+            // --- 【伴读书阁】从待续书架取回继续读 ---
+            const handleResumeShelvedBook = (shelvedEntry) => {
+                if (!shelvedEntry) return;
+                const today = getLocalDateKey(0);
+                setShelvedBooks(prev => ({
+                    ...prev,
+                    [activeChild]: (prev[activeChild] || []).filter(b => b.id !== shelvedEntry.id)
+                }));
+                const readingTask = (tasks[activeChild] || []).find(t => t.id === shelvedEntry.taskId || t.readingConfig?.isReading || t.frequencyType === 'reading');
+                if (readingTask) {
+                    setTasks(prev => ({
+                        ...prev,
+                        [activeChild]: (prev[activeChild] || []).map(t => {
+                            if (t.id !== readingTask.id) return t;
+                            return {
+                                ...t,
+                                earlyCompleted: false,
+                                frequencyType: 'reading',
+                                readingConfig: {
+                                    ...t.readingConfig,
+                                    isReading: true,
+                                    bookTitle: shelvedEntry.bookTitle,
+                                    author: shelvedEntry.author,
+                                    coverEmoji: shelvedEntry.coverEmoji,
+                                    period: shelvedEntry.period,
+                                    mode: shelvedEntry.mode,
+                                    totalPages: shelvedEntry.totalPages,
+                                    totalChapters: shelvedEntry.totalChapters,
+                                    currentProgress: shelvedEntry.currentProgress,
+                                    grandReward: shelvedEntry.grandReward,
+                                    overdueGrandReward: shelvedEntry.overdueGrandReward,
+                                    notes: shelvedEntry.notes || [],
+                                    startDate: shelvedEntry.startDate || today,
+                                    deadlineDate: shelvedEntry.deadlineDate,
+                                    needsNextBook: false
+                                }
+                            };
+                        })
+                    }));
+                }
+                showToast('success', `📖 已取回《${shelvedEntry.bookTitle}》，继续伴读！`);
+                setShowReadingPavilion(false);
+                triggerSyncUpload();
             };
 
             const spinWheel = () => {
@@ -7051,6 +7280,20 @@ ${context}
                         equippedGear={equippedGear}
                         onEarlyComplete={handleEarlyComplete}
                         onOpenSettings={() => handleOpenSettings('tasks')}
+                        onOpenQuickCheckin={(task) => {
+                            setReadingTaskForCheckin(task);
+                            setShowReadingQuickCheckin(true);
+                        }}
+                        onOpenTransition={(task) => {
+                            setReadingTransitionModal({
+                                show: true,
+                                data: {
+                                    taskId: task.id,
+                                    finishedTitle: task.readingConfig?.bookTitle,
+                                    period: task.readingConfig?.period || 'weekly'
+                                }
+                            });
+                        }}
                         sortBy={sortBy}
                         setSortBy={setSortBy}
                         viewMode={viewMode}
@@ -8178,6 +8421,8 @@ ${context}
 					  onClose={() => setShowReadingPavilion(false)}
 					  readingTasks={activeReadingTasks}
 					  readingHistory={readingHistory}
+					  shelvedBooks={shelvedBooks}
+					  onResumeShelvedBook={handleResumeShelvedBook}
 					  activeChild={activeChild}
 					  checkins={checkins}
 					  todayStr={getLocalDateKey(0)}
@@ -8203,10 +8448,20 @@ ${context}
 					  }}
 					  task={readingTaskForCheckin || activeReadingTasks[0]}
 					  onSaveProgress={handleSaveReadingProgress}
+					  onShelveBook={handleShelveBook}
 					  onOpenPavilion={() => {
 						  setShowReadingQuickCheckin(false);
 						  setShowReadingPavilion(true);
 					  }}
+					  theme={theme}
+				  />
+
+				  {/* 【伴读书阁】全本读完通关换书与接力小窗 */}
+				  <ReadingTransitionModal
+					  show={readingTransitionModal.show}
+					  onClose={() => setReadingTransitionModal({ show: false, data: null })}
+					  data={readingTransitionModal.data}
+					  onConfirmNextBook={handleSwitchNextBook}
 					  theme={theme}
 				  />				  
 

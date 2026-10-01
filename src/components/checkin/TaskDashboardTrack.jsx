@@ -13,7 +13,8 @@ import {
   Coins, 
   SortDesc,
   Flame,
-  Clipboard
+  Clipboard,
+  BookOpen
 } from '../icons.jsx';
 import { getLocalDateKey } from '../../utils/date.js';
 import { getCheckinSessionCount, getTaskTotalSessions } from '../../utils/checkin.js';
@@ -34,6 +35,8 @@ const CategoryTrack = ({
   onUseSkipCard,
   equippedGear,
   onEarlyComplete,
+  onOpenQuickCheckin,
+  onOpenTransition,
   isExpanded,
   onToggleExpand,
   hasBgEffect,
@@ -118,6 +121,29 @@ const CategoryTrack = ({
       };
     }
 
+    if (categoryKey === 'reading') {
+      let doneToday = 0;
+      let totalProgressSum = 0;
+      let totalPagesSum = 0;
+      tasks.forEach(t => {
+        const rCfg = t.readingConfig || {};
+        const cur = rCfg.currentProgress || 0;
+        const tot = rCfg.totalPages || rCfg.totalChapters || 180;
+        totalProgressSum += cur;
+        totalPagesSum += tot;
+        const record = checkins[activeChild]?.[t.id] || {};
+        if (record[todayStr]) doneToday += 1;
+      });
+      const percent = totalPagesSum > 0 ? Math.min(100, Math.round((totalProgressSum / totalPagesSum) * 100)) : 0;
+      return {
+        total,
+        done: doneToday,
+        percent,
+        isAllDone: doneToday === total,
+        remain: total - doneToday
+      };
+    }
+
     // 按总次数目标的长期任务
     let completedCount = 0;
     let nearestCandidate = null;
@@ -197,6 +223,20 @@ const CategoryTrack = ({
         const progA = Object.keys(recA).length / (a.targetCount || 1);
         const progB = Object.keys(recB).length / (b.targetCount || 1);
         return progB - progA;
+      });
+    }
+
+    if (categoryKey === 'reading') {
+      return list.sort((a, b) => {
+        const needA = a.readingConfig?.needsNextBook ? 0 : 1;
+        const needB = b.readingConfig?.needsNextBook ? 0 : 1;
+        if (needA !== needB) return needA - needB;
+
+        const recA = checkins[activeChild]?.[a.id] || {};
+        const recB = checkins[activeChild]?.[b.id] || {};
+        const doneA = !!recA[todayStr] ? 1 : 0;
+        const doneB = !!recB[todayStr] ? 1 : 0;
+        return doneA - doneB;
       });
     }
 
@@ -404,6 +444,35 @@ const CategoryTrack = ({
             </>
           )}
 
+          {categoryKey === 'reading' && (
+            <>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-bold ${
+                  hasBgEffect ? 'text-amber-300 drop-shadow-xs' : 'text-amber-700'
+                }`}>
+                  今日已读 {stats.done}/{stats.total} 本
+                </span>
+                <div className={`w-14 sm:w-18 h-1.5 rounded-full overflow-hidden ${
+                  hasBgEffect ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  <div 
+                    className="h-full rounded-full transition-all duration-500" 
+                    style={{ 
+                      width: `${stats.percent}%`, 
+                      background: accent.bar 
+                    }}
+                  />
+                </div>
+              </div>
+
+              <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                hasBgEffect ? 'text-amber-200' : 'text-amber-700'
+              }`}>
+                总体研读 {stats.percent}%
+              </span>
+            </>
+          )}
+
           {categoryKey === 'count' && (
             <>
               {stats.nearest ? (
@@ -519,6 +588,8 @@ const CategoryTrack = ({
                   onUseSkipCard={onUseSkipCard}
                   equippedGear={equippedGear}
                   onEarlyComplete={onEarlyComplete}
+                  onOpenQuickCheckin={onOpenQuickCheckin}
+                  onOpenTransition={onOpenTransition}
                 />
               </div>
             ))}
@@ -556,23 +627,29 @@ export const TaskDashboardTrack = ({
   equippedGear,
   onEarlyComplete,
   onOpenSettings,
+  onOpenQuickCheckin,
+  onOpenTransition,
   sortBy,
   setSortBy,
   viewMode
 }) => {
   const todayStr = useMemo(() => getLocalDateKey(0), []);
 
-  // 分类任务源
+  // 分类任务源（将伴读阅读任务彻底独立出来，不与每日必做/每周选做混杂）
+  const readingTasks = useMemo(() => {
+    return (tasks || []).filter(t => t.frequencyType === 'reading' || t.readingConfig?.isReading);
+  }, [tasks]);
+
   const dailyMustTasks = useMemo(() => {
-    return (tasks || []).filter(t => t.frequencyType === 'daily_must');
+    return (tasks || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
   }, [tasks]);
 
   const weeklyOptionalTasks = useMemo(() => {
-    return (tasks || []).filter(t => t.frequencyType === 'weekly_optional');
+    return (tasks || []).filter(t => t.frequencyType === 'weekly_optional' && !t.readingConfig?.isReading);
   }, [tasks]);
 
   const countTasks = useMemo(() => {
-    return (tasks || []).filter(t => !t.frequencyType || t.frequencyType === 'count');
+    return (tasks || []).filter(t => (!t.frequencyType || t.frequencyType === 'count') && !t.readingConfig?.isReading);
   }, [tasks]);
 
   // 折叠状态控制（结合 localStorage 偏好记忆与智能默认）
@@ -587,8 +664,9 @@ export const TaskDashboardTrack = ({
       // 忽略解析异常
     }
 
-    // 智能默认：若今天有未完成的每日必做，默认展开每日必做；其余默认收起保持紧凑
+    // 智能默认：伴读专栏与每日必做默认展开，其余默认收起保持紧凑
     return {
+      reading: true,
       daily_must: true,
       weekly_optional: false,
       count: false
@@ -609,11 +687,12 @@ export const TaskDashboardTrack = ({
   }, []);
 
   // 一键全部展开 / 全部收起
-  const isAllExpanded = expandedSections.daily_must && expandedSections.weekly_optional && expandedSections.count;
+  const isAllExpanded = expandedSections.daily_must && expandedSections.weekly_optional && expandedSections.count && (readingTasks.length === 0 || expandedSections.reading);
   const toggleAll = useCallback(() => {
     setExpandedSections(() => {
       const targetState = !isAllExpanded;
       const next = {
+        reading: targetState,
         daily_must: targetState,
         weekly_optional: targetState,
         count: targetState
@@ -724,6 +803,35 @@ export const TaskDashboardTrack = ({
           </div>
         </div>
       </div>
+
+      {/* 0. 伴读书阁专栏泳道 */}
+      {readingTasks.length > 0 && (
+        <CategoryTrack
+          categoryKey="reading"
+          title="伴读书阁专栏"
+          subtitle="以书为伴 · 随读随记 · 读完一本通关换下一本"
+          icon={<BookOpen className="w-4 h-4 text-amber-600" />}
+          accent={{
+            iconBg: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+            bar: 'linear-gradient(90deg, #f59e0b, #d97706)'
+          }}
+          tasks={readingTasks}
+          checkins={checkins}
+          activeChild={activeChild}
+          globalDates={globalDates}
+          theme={theme}
+          inventory={inventory}
+          onUseSkipCard={onUseSkipCard}
+          equippedGear={equippedGear}
+          onEarlyComplete={onEarlyComplete}
+          onOpenQuickCheckin={onOpenQuickCheckin}
+          onOpenTransition={onOpenTransition}
+          isExpanded={!!expandedSections.reading}
+          onToggleExpand={() => toggleSection('reading')}
+          hasBgEffect={hasBgEffect}
+          todayStr={todayStr}
+        />
+      )}
 
       {/* 1. 每日必做任务泳道 */}
       <CategoryTrack

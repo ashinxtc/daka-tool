@@ -12,6 +12,8 @@ export const ReadingPavilionModal = ({
   onClose,
   readingTasks = [],
   readingHistory = [],
+  shelvedBooks = {},
+  onResumeShelvedBook,
   activeChild,
   checkins = {},
   todayStr,
@@ -19,13 +21,15 @@ export const ReadingPavilionModal = ({
   onOpenSettingsToAddTask,
   theme
 }) => {
-  const [tab, setTab] = useState('current'); // 'current' | 'shelf' | 'stats'
+  const [tab, setTab] = useState('current'); // 'current' | 'shelf' | 'shelved' | 'stats'
   const [selectedMemorialBook, setSelectedMemorialBook] = useState(null);
 
   if (!show) return null;
 
   // 历史已读完藏书
   const childHistory = Array.isArray(readingHistory[activeChild]) ? readingHistory[activeChild] : [];
+  // 待续书架 (插书签暂存的书)
+  const childShelved = Array.isArray(shelvedBooks[activeChild]) ? shelvedBooks[activeChild] : [];
   
   // 累计阅读统计
   const totalBooksCompleted = childHistory.length;
@@ -65,11 +69,11 @@ export const ReadingPavilionModal = ({
           </div>
 
           {/* 切换 Tab */}
-          <div className="flex gap-2 mt-4 pt-1 border-t border-white/20">
+          <div className="flex gap-2 mt-4 pt-1 border-t border-white/20 flex-wrap">
             <button
               type="button"
               onClick={() => setTab('current')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 tab === 'current'
                   ? 'bg-white text-amber-900 shadow-md scale-105'
                   : 'bg-white/10 hover:bg-white/20 text-white'
@@ -80,7 +84,7 @@ export const ReadingPavilionModal = ({
             <button
               type="button"
               onClick={() => setTab('shelf')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 tab === 'shelf'
                   ? 'bg-white text-amber-900 shadow-md scale-105'
                   : 'bg-white/10 hover:bg-white/20 text-white'
@@ -90,8 +94,19 @@ export const ReadingPavilionModal = ({
             </button>
             <button
               type="button"
+              onClick={() => setTab('shelved')}
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                tab === 'shelved'
+                  ? 'bg-white text-amber-900 shadow-md scale-105'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+            >
+              <span>🔖 待续书架 ({childShelved.length})</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setTab('stats')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
                 tab === 'stats'
                   ? 'bg-white text-amber-900 shadow-md scale-105'
                   : 'bg-white/10 hover:bg-white/20 text-white'
@@ -300,7 +315,88 @@ export const ReadingPavilionModal = ({
             </div>
           )}
 
-          {/* TAB 3: 阅读修养统计 */}
+          {/* TAB 3: 待续书架 (插书签暂存的书) */}
+          {tab === 'shelved' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                <div>
+                  <h3 className="font-black text-amber-900 text-sm flex items-center gap-1.5">
+                    <span>🔖 待续书架</span>
+                    <span className="text-xs text-amber-700/80 font-normal">（插上书签暂存的书目，可随时取回继续研读）</span>
+                  </h3>
+                </div>
+              </div>
+
+              {childShelved.length === 0 ? (
+                <div className="text-center py-16 px-4 bg-amber-900/5 rounded-3xl border border-amber-900/10">
+                  <div className="text-5xl mb-3">🔖</div>
+                  <h4 className="font-bold text-amber-900 text-base mb-1">待续书架空空如也</h4>
+                  <p className="text-xs text-amber-800/70 max-w-sm mx-auto">
+                    当您或孩子在阅读过程中需要暂存当前书目换新书时，可在伴读打卡界面点击「插上书签暂存换书」，未读完的书目将安全收纳于此，随时可取回接力续读！
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {childShelved.map((b) => {
+                    const total = b.totalPages || b.totalChapters || 180;
+                    const cur = b.currentProgress || 0;
+                    const pct = Math.min(100, Math.round((cur / total) * 100));
+                    const unit = b.mode === 'chapters' ? '章' : b.mode === 'duration' ? '分' : '页';
+                    return (
+                      <div
+                        key={b.id}
+                        className="bg-white rounded-2xl p-4 border border-amber-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl">{b.coverEmoji || '📖'}</span>
+                              <div>
+                                <h4 className="font-black text-slate-800 text-sm leading-tight">{b.bookTitle}</h4>
+                                {b.author && <p className="text-[10px] text-slate-400">{b.author} 著</p>}
+                              </div>
+                            </div>
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold shrink-0">
+                              插书签
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 mb-3">
+                            <div className="flex justify-between text-[11px] text-slate-500 font-medium">
+                              <span>已读进度: {cur} / {total} {unit}</span>
+                              <span className="font-bold text-amber-600">{pct}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-amber-500 h-full rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <p className="text-[10px] text-slate-400 pt-0.5">
+                              暂存于 {b.shelvedDate || '近期'} · 通关大奖: +{b.grandReward || 30}💰
+                            </p>
+                          </div>
+                        </div>
+
+                        {onResumeShelvedBook && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`确定要取回《${b.bookTitle}》继续伴读吗？\n当前任务槽位将载入此书（已读 ${cur} 页），继续向全本通关冲刺！`)) {
+                                onResumeShelvedBook(b);
+                              }
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <span>📖 取回继续读</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: 阅读修养统计 */}
           {tab === 'stats' && (
             <div className="space-y-6">
               {/* 数据核心看板 */}

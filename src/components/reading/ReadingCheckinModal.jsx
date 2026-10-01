@@ -12,6 +12,7 @@ export const ReadingCheckinModal = ({
   task,
   onSaveProgress,
   onOpenPavilion,
+  onShelveBook,
   theme
 }) => {
   const cfg = task?.readingConfig || {};
@@ -78,6 +79,8 @@ export const ReadingCheckinModal = ({
   };
 
   const periodLabel = cfg.period === 'monthly' ? '月必读' : cfg.period === 'custom' ? '自选专栏' : '周必读';
+
+  if (!show || !task) return null;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -228,14 +231,32 @@ export const ReadingCheckinModal = ({
               <span>完成今日阅读打卡 (+{task.reward || 3} 金元宝)</span>
             </button>
 
-            <div className="flex items-center justify-center">
+            <div className="flex items-center justify-between pt-1">
+              {onShelveBook && !isFinished && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const title = cfg.bookTitle || task.name;
+                    const progressToSave = newProgress > 0 ? newProgress : currentBefore;
+                    if (window.confirm(`确定要为《${title}》插上书签暂存吗？\n当前进度（已读 ${progressToSave} 页）将被安全保存，不发通关奖，您可以换一本新书开始读。`)) {
+                      onClose();
+                      onShelveBook(task.id, progressToSave);
+                    }
+                  }}
+                  className="text-xs font-semibold text-slate-400 hover:text-amber-700 flex items-center gap-1 py-1 cursor-pointer transition-colors"
+                  title="暂存当前书目进度，腾出任务槽位换一本新书"
+                >
+                  <span>🔖 插上书签暂存换书</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
                   onClose();
                   if (onOpenPavilion) onOpenPavilion();
                 }}
-                className="text-xs font-bold text-amber-700 hover:text-amber-800 hover:underline flex items-center gap-1 py-1"
+                className="text-xs font-bold text-amber-700 hover:text-amber-800 hover:underline flex items-center gap-1 py-1 ml-auto cursor-pointer"
               >
                 <span>📚 翻看「天工书阁」藏书楼与完整书架 ➔</span>
               </button>

@@ -2539,23 +2539,35 @@ const CopyIcon = (props) => (
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'count')} className={seg(freq === 'count')}>按次数</button>
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'daily_must')} className={seg(freq === 'daily_must')}>每日</button>
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'weekly_optional')} className={seg(freq === 'weekly_optional')}>每周</button>
+													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'reading')} className={seg(freq === 'reading')}>📖 伴读</button>
 												</div>
 											</div>
 										</div>
 
 										{/* 频次附属配置 */}
 										{freq === 'daily_must' && (
-											<div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2">
-												<span className="text-[11px] font-bold text-slate-600 shrink-0">达标完成度阈值</span>
-												<input 
-													type="number" 
-													min="0" 
-													max="100"
-													value={task.dailyCompletionThresholdPercent ?? 80}
-													onChange={(e) => updateTaskSetting(task.id, 'dailyCompletionThresholdPercent', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-													className="w-16 px-2 py-1 bg-white border border-slate-200 rounded-lg text-sm text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" 
-												/>
-												<span className="text-[10px] text-slate-400">% · 每周完成比例 ≥ 阈值时按比例发放完成奖励</span>
+											<div className="space-y-2 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+												<div className="flex items-center gap-2">
+													<span className="text-[11px] font-bold text-slate-600 shrink-0">达标完成度阈值</span>
+													<input 
+														type="number" 
+														min="0" 
+														max="100" 
+														value={task.dailyCompletionThresholdPercent ?? 80}
+														onChange={(e) => updateTaskSetting(task.id, 'dailyCompletionThresholdPercent', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+														className="w-16 px-2 py-1 bg-white border border-slate-200 rounded-lg text-sm text-indigo-600 font-bold text-center outline-none focus:border-indigo-400" 
+													/>
+													<span className="text-[10px] text-slate-400">% · 每周完成比例 ≥ 阈值时按比例发放完成奖励</span>
+												</div>
+												<label className="flex items-center gap-2 cursor-pointer pt-1 border-t border-slate-200/60 text-xs font-bold text-slate-700 select-none">
+													<input 
+														type="checkbox" 
+														checked={!!task.holidayExempt} 
+														onChange={(e) => updateTaskSetting(task.id, 'holidayExempt', e.target.checked)} 
+														className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" 
+													/>
+													<span>🏖️ 法定节假日与周末免做（遇周末或重大节假日自动豁免，不中断全勤）</span>
+												</label>
 											</div>
 										)}
 										{freq === 'weekly_optional' && (
@@ -3013,15 +3025,27 @@ const CopyIcon = (props) => (
 																	/>
 																</div>
 
-																<div>
-																	<label className={labelCls}>🎉 全书读完通关大奖 (金元宝)</label>
-																	<input
-																		type="number"
-																		min="0"
-																		value={task.readingConfig.grandReward ?? 30}
-																		onChange={(e) => updateTaskSetting(task.id, 'readingConfig', { ...task.readingConfig, grandReward: parseInt(e.target.value, 10) || 0 })}
-																		className={inputCls + ' font-bold text-amber-600'}
-																	/>
+																<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+																	<div>
+																		<label className={labelCls}>🎉 按期通关大奖 (金元宝)</label>
+																		<input
+																			type="number"
+																			min="0"
+																			value={task.readingConfig.grandReward ?? 30}
+																			onChange={(e) => updateTaskSetting(task.id, 'readingConfig', { ...task.readingConfig, grandReward: parseInt(e.target.value, 10) || 0 })}
+																			className={inputCls + ' font-bold text-amber-600'}
+																		/>
+																	</div>
+																	<div>
+																		<label className={labelCls}>⏳ 顺延续读大奖 (金元宝)</label>
+																		<input
+																			type="number"
+																			min="0"
+																			value={task.readingConfig.overdueGrandReward ?? 20}
+																			onChange={(e) => updateTaskSetting(task.id, 'readingConfig', { ...task.readingConfig, overdueGrandReward: parseInt(e.target.value, 10) || 0 })}
+																			className={inputCls + ' font-bold text-amber-700/80'}
+																		/>
+																	</div>
 																</div>
 															</div>
 															<p className="text-[10px] text-amber-700/80">开启后首页将渲染环形进度悬浮球，支持未读快速登记与天工书阁藏书。</p>
@@ -3181,7 +3205,7 @@ const CopyIcon = (props) => (
 											const overrides = {
 												name,
 												type: String(fd.get('taskType') || 'daily'),
-												frequencyType: isReading ? 'daily_must' : freq,
+												frequencyType: isReading ? 'reading' : freq,
 												reward: Math.max(0, parseInt(fd.get('taskReward')) || 1),
 												startDate: String(fd.get('taskStart') || getLocalDateKey(0)),
 												deadline: String(fd.get('taskDeadline') || ''),
@@ -3200,6 +3224,7 @@ const CopyIcon = (props) => (
 													targetCount: 180,
 													currentProgress: 0,
 													grandReward: 30,
+													overdueGrandReward: 20,
 													notes: []
 												};
 											} else if (freq === 'count') {
