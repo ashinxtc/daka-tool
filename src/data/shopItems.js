@@ -272,9 +272,9 @@ export const SHOP_ITEMS = [
             },
             // 第八类：极致奢华
             { 
-                id: 'item_theme', name: '丝绸之路寻宝图', icon: '🗺️', type: 'unlock_theme', 
+                id: 'item_theme', name: '丝绸之路寻宝图', icon: '🗺️', type: 'unlock_theme', targetTheme: 'dunhuang',
                 price: 1000, era: '魏晋隋唐·融合与登科', minLevel: 20, 
-                desc: '解锁隐藏主题。购买后，软件会解锁一套隐藏的"西域敦煌"主题皮肤（金色与宝石蓝配色），且自带异域风情的背景音乐。',
+                desc: '解锁典藏主题【莫高流金】。大漠长风，沥粉贴金，飞天流光回荡于九层千佛楼阙之间。购买后可在“主题试衣间”自由更换。',
                 category: 'cosmetic'
             },
             { 
@@ -344,9 +344,21 @@ export const SHOP_ITEMS = [
                 category: 'cosmetic'
             },
             { 
-                id: 'theme_cyber', name: '赛博朋克主题色', icon: '🌃', type: 'cosmetic_theme', 
+                id: 'theme_cyber', name: '盛唐幻夜密匙', icon: '🌃', type: 'cosmetic_theme', targetTheme: 'theme_cyber',
                 price: 500, era: '魏晋隋唐·融合与登科', minLevel: 0, 
-                desc: '界面皮肤。解锁一套黑底、霓虹粉、电光蓝配色的"赛博唐朝"界面主题。当古老文明遇上未来科技。',
+                desc: '解锁典藏主题【盛唐幻夜】。上元长安夜色如织，全息琉璃与星际楼阙光影流转，东方浪漫主义科幻美学。购买后可在“主题试衣间”自由更换。',
+                category: 'cosmetic'
+            },
+            { 
+                id: 'item_theme_jiangshan', name: '只此青绿长卷', icon: '🏔️', type: 'cosmetic_theme', targetTheme: 'jiangshan',
+                price: 600, era: '魏晋隋唐·融合与登科', minLevel: 15, 
+                desc: '解锁典藏主题【只此青绿】。千里江山，层峦叠嶂，王希孟宋代石青石绿矿物重彩美学。购买后可在“主题试衣间”自由更换。',
+                category: 'cosmetic'
+            },
+            { 
+                id: 'item_theme_cosmic', name: '浑天观星仪', icon: '🔭', type: 'cosmetic_theme', targetTheme: 'cosmic',
+                price: 800, era: '全纪元通用', minLevel: 10, 
+                desc: '解锁典藏主题【星汉灿烂】。日月之行，若出其中；星汉灿烂，若出其里。浩瀚深空星云与星轨奇观。购买后可在“主题试衣间”自由更换。',
                 category: 'cosmetic'
             },
             // 第十三类：家庭博弈与趣味

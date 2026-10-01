@@ -228,6 +228,10 @@ export const ShopModal = ({
                                     let isOwned = false;
                                     if (item.type === 'cosmetic_confetti') {
                                         isOwned = stats?.[activeChild]?.premiumConfetti || (inventory[item.id] > 0);
+                                    } else if (item.type === 'unlock_theme' || item.type === 'cosmetic_theme') {
+                                        const targetTheme = item.targetTheme || (item.type === 'unlock_theme' ? 'dunhuang' : item.id);
+                                        const unlockedThemes = stats?.[activeChild]?.unlockedThemes || [];
+                                        isOwned = unlockedThemes.includes(targetTheme) || (inventory[item.id] > 0);
                                     } else if (item.category && item.category.includes('cosmetic')) {
                                         const hasInInventory = (inventory[item.id] || 0) > 0;
                                         let isEquipped = false;

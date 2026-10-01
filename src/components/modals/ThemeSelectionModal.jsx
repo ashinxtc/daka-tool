@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { XIcon, Sparkles, Lock, CheckCircle2, Palette } from '../icons.jsx';
-import { COLOR_PALETTES } from '../../data/themes.js';
+import { COLOR_PALETTES, BASE_THEME_IDS } from '../../data/themes.js';
 
 // 主题选择与个性更衣室弹窗
 export const ThemeSelectionModal = ({ 
@@ -23,7 +23,7 @@ export const ThemeSelectionModal = ({
         onClose(cancelled);
     };
 
-    const isLockedTheme = (id) => (id === 'theme_cyber' || id === 'dunhuang') && !unlockedThemes.includes(id);
+    const isLockedTheme = (id) => !BASE_THEME_IDS.includes(id) && !unlockedThemes.includes(id);
 
     const handleThemeClick = (p) => {
         if (isLockedTheme(p.id)) {
@@ -35,8 +35,8 @@ export const ThemeSelectionModal = ({
     };
 
     // 经典四季与典藏限定分组
-    const classicThemes = allPalettes.filter(p => p.id !== 'dunhuang' && p.id !== 'theme_cyber');
-    const mythicalThemes = allPalettes.filter(p => p.id === 'dunhuang' || p.id === 'theme_cyber');
+    const classicThemes = allPalettes.filter(p => BASE_THEME_IDS.includes(p.id));
+    const mythicalThemes = allPalettes.filter(p => !BASE_THEME_IDS.includes(p.id));
 
     // 当前试衣间微缩预览所呈现的主题
     const activePreviewId = hoveredThemeId || currentTheme?.id || 'amber';
@@ -166,7 +166,7 @@ export const ThemeSelectionModal = ({
                                         }`}
                                     >
                                         {/* 色彩圆珠 */}
-                                        <div className={`w-8 h-8 rounded-full shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-110 flex items-center justify-center text-white ${p.primaryBg}`}>
+                                        <div className={`w-8 h-8 rounded-full shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-110 flex items-center justify-center text-white ${p.iconGradient || p.primaryBg}`}>
                                             {isSelected && <CheckCircle2 className="w-4 h-4 stroke-[3]" />}
                                         </div>
                                         <div className="min-w-0 flex-1">
@@ -179,7 +179,7 @@ export const ThemeSelectionModal = ({
                                                 )}
                                             </div>
                                             <span className="text-[10px] text-gray-400 block truncate">
-                                                {isSelected ? '正在使用' : '点击装配'}
+                                                {p.tagline || (isSelected ? '正在使用' : '点击装配')}
                                             </span>
                                         </div>
                                     </button>
@@ -202,8 +202,6 @@ export const ThemeSelectionModal = ({
                                 const isSelected = currentTheme?.id === p.id;
                                 const isHovered = hoveredThemeId === p.id;
                                 const locked = isLockedTheme(p.id);
-                                const isCyber = p.id === 'theme_cyber';
-                                const isDunhuang = p.id === 'dunhuang';
                                 
                                 return (
                                     <button
@@ -225,11 +223,7 @@ export const ThemeSelectionModal = ({
                                         {/* 渐变流光色块 */}
                                         <div 
                                             className={`w-10 h-10 rounded-xl shrink-0 shadow-md flex items-center justify-center text-white transition-transform duration-200 group-hover:scale-105 ${
-                                                isCyber 
-                                                    ? 'bg-gradient-to-br from-fuchsia-600 via-indigo-600 to-cyan-500 shadow-fuchsia-500/30' 
-                                                    : isDunhuang 
-                                                    ? 'bg-gradient-to-br from-amber-600 via-yellow-600 to-blue-800 shadow-amber-500/30' 
-                                                    : p.primaryBg
+                                                p.iconGradient || p.primaryBg
                                             }`}
                                         >
                                             {locked ? (
@@ -242,26 +236,33 @@ export const ThemeSelectionModal = ({
                                         </div>
 
                                         <div className="min-w-0 flex-1">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-bold text-gray-900 truncate">
-                                                    {p.name}
-                                                </span>
+                                            <div className="flex items-center justify-between gap-1">
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <span className="text-xs font-bold text-gray-900 truncate">
+                                                        {p.name}
+                                                    </span>
+                                                    {p.subtitle && (
+                                                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100/70 text-amber-800 font-bold shrink-0">
+                                                            {p.subtitle}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 {locked ? (
-                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-200 text-stone-600">
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-200 text-stone-600 shrink-0">
                                                         未解锁
                                                     </span>
                                                 ) : isSelected ? (
-                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 shrink-0">
                                                         装配中
                                                     </span>
                                                 ) : (
-                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
                                                         已珍藏
                                                     </span>
                                                 )}
                                             </div>
                                             <p className="text-[10px] text-gray-400 mt-0.5 truncate">
-                                                {isCyber ? '赛博霓虹 · 极光穿梭' : '戈壁鸣沙 · 青金琉璃'}
+                                                {p.tagline}
                                             </p>
                                         </div>
                                     </button>

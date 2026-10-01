@@ -484,15 +484,8 @@ export const StatsModal = ({ show, onClose, checkins, tasks, activeChild, theme,
 
             const childTasks = tasks[activeChild] || [];
             
-            // 简单的颜色提取
-            let chartColor = '#6366f1'; // 默认 indigo
-            if (theme.primary.includes('rose')) chartColor = '#e11d48';
-            else if (theme.primary.includes('sky')) chartColor = '#0284c7';
-            else if (theme.primary.includes('amber')) chartColor = '#d97706';
-            else if (theme.primary.includes('emerald')) chartColor = '#059669';
-            else if (theme.primary.includes('violet')) chartColor = '#7c3aed';
-            else if (theme.id === 'theme_cyber') chartColor = '#22d3ee';
-            else if (theme.id === 'dunhuang') chartColor = '#f59e0b';
+            // 图表主题色提取
+            const chartColor = theme.chartColor || '#6366f1';
 
             return (
                 <div className="fixed inset-0 z-[85] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>

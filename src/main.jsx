@@ -3044,26 +3044,28 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     showToast('success', '皇家礼炮特效已永久升级！', {duration: 3000});
                 }
                 else if (item.type === 'cosmetic_theme') {
+                    const targetTheme = item.targetTheme || item.id;
                     setStats(prev => ({
                         ...prev,
                         [activeChild]: {
                             ...(prev[activeChild] || {}),
-                            unlockedThemes: [...((prev[activeChild]?.unlockedThemes) || []), item.id]
+                            unlockedThemes: Array.from(new Set([...((prev[activeChild]?.unlockedThemes) || []), targetTheme]))
                         }
                     }));
                     confetti({ particleCount: 150, spread: 120, colors: ['#06b6d4', '#ec4899', '#8b5cf6'] });
-                    showToast('success', `${item.name}已解锁！请在设置中切换主题。`);
+                    showToast('success', `${item.name}已解锁！请在主题试衣间中自由切换。`);
                 }
                 else if (item.type === 'unlock_theme') {
+                    const targetTheme = item.targetTheme || 'dunhuang';
                     setStats(prev => ({
                         ...prev,
                         [activeChild]: {
                             ...(prev[activeChild] || {}),
-                            unlockedThemes: [...((prev[activeChild]?.unlockedThemes) || []), 'dunhuang']
+                            unlockedThemes: Array.from(new Set([...((prev[activeChild]?.unlockedThemes) || []), targetTheme]))
                         }
                     }));
                     confetti({ particleCount: 200, spread: 140, colors: ['#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'] });
-                    showToast('success', '丝绸之路寻宝图已解锁！请在设置中切换主题。', {duration: 4000});
+                    showToast('success', `${item.name}已解锁！请在主题试衣间中自由切换。`, {duration: 4000});
                 }
                 else if (item.type === 'challenge') {
                     const otherProfile = profiles.find(p => p.name !== activeChild);
