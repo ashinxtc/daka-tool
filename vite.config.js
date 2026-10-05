@@ -35,6 +35,7 @@ export default defineConfig({
         exchangeVerify: 'exchange-verify.html',
         exemptionVerify: 'exemption-verify.html',
         redemptionVerify: 'redemption-verify.html',
+        wonderShowcase: 'wonder-showcase.html',
       }
     }
   }

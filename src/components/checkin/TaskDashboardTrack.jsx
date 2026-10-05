@@ -635,21 +635,24 @@ export const TaskDashboardTrack = ({
 }) => {
   const todayStr = useMemo(() => getLocalDateKey(0), []);
 
-  // 分类任务源（将伴读阅读任务彻底独立出来，不与每日必做/每周选做混杂）
+  // 习惯类任务定义（通过独立元气悬浮按钮与生活坊面板管理，彻底移出学业长卡片跑道）
+  const isHabitTask = (t) => t.frequencyType === 'habit' || !!t.isHabit || !!t.habitConfig?.isHabit;
+
+  // 分类任务源（将伴读阅读任务与生活习惯彻底独立出来，不与每日必做/每周选做混杂）
   const readingTasks = useMemo(() => {
-    return (tasks || []).filter(t => t.frequencyType === 'reading' || t.readingConfig?.isReading);
+    return (tasks || []).filter(t => (t.frequencyType === 'reading' || t.readingConfig?.isReading) && !isHabitTask(t));
   }, [tasks]);
 
   const dailyMustTasks = useMemo(() => {
-    return (tasks || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
+    return (tasks || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading && !isHabitTask(t));
   }, [tasks]);
 
   const weeklyOptionalTasks = useMemo(() => {
-    return (tasks || []).filter(t => t.frequencyType === 'weekly_optional' && !t.readingConfig?.isReading);
+    return (tasks || []).filter(t => t.frequencyType === 'weekly_optional' && !t.readingConfig?.isReading && !isHabitTask(t));
   }, [tasks]);
 
   const countTasks = useMemo(() => {
-    return (tasks || []).filter(t => (!t.frequencyType || t.frequencyType === 'count') && !t.readingConfig?.isReading);
+    return (tasks || []).filter(t => (!t.frequencyType || t.frequencyType === 'count') && !t.readingConfig?.isReading && !isHabitTask(t));
   }, [tasks]);
 
   // 折叠状态控制（结合 localStorage 偏好记忆与智能默认）

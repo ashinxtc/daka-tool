@@ -2316,10 +2316,11 @@ const CopyIcon = (props) => (
 							const ongoingTasksForSetting = [];
 							const completedTasksForSetting = [];
 							
-							// 动态分类：判断是否已完成目标（每日必做/每周选做不按目标次数判定，始终在进行中）
+							// 动态分类：判断是否已完成目标（每日必做/每周选做/生活习惯规范不按总目标次数判定，始终在进行中）
 							childTasks.forEach(task => {
 								const freq = task.frequencyType || 'count';
-								if (freq === 'daily_must' || freq === 'weekly_optional') {
+								const isHabit = freq === 'habit' || !!task.habitConfig?.isHabit || !!task.isHabit;
+								if (freq === 'daily_must' || freq === 'weekly_optional' || isHabit) {
 									if (task.earlyCompleted) { completedTasksForSetting.push(task); } else { ongoingTasksForSetting.push(task); }
 									return;
 								}
@@ -2338,7 +2339,15 @@ const CopyIcon = (props) => (
 									if (!(task.name || '').toLowerCase().includes(q) && !(task.targetGoal || '').toLowerCase().includes(q)) return false;
 								}
 								if (taskTypeFilter && (task.type === 'core' ? 'core' : 'daily') !== taskTypeFilter) return false;
-								if (taskFreqFilter && (task.frequencyType || 'count') !== taskFreqFilter) return false;
+								if (taskFreqFilter) {
+									const isHabit = task.frequencyType === 'habit' || !!task.habitConfig?.isHabit || !!task.isHabit;
+									if (taskFreqFilter === 'habit') {
+										if (!isHabit) return false;
+									} else {
+										if (isHabit) return false;
+										if ((task.frequencyType || 'count') !== taskFreqFilter) return false;
+									}
+								}
 								return true;
 							};
 							const filteredOngoing = ongoingTasksForSetting.filter(matchesFilter);
@@ -2350,6 +2359,12 @@ const CopyIcon = (props) => (
 							// 频次徽标
 							const freqLabel = (task) => {
 								const f = task.frequencyType || 'count';
+								if (f === 'habit' || !!task.habitConfig?.isHabit || !!task.isHabit) {
+									return { text: `🌱 习惯·${task.habitConfig?.icon || '💧'}`, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+								}
+								if (f === 'reading' || task.readingConfig?.isReading) {
+									return { text: '📖 伴读', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
+								}
 								if (f === 'daily_must') return { text: '每日必做', cls: 'bg-rose-50 text-rose-600 border-rose-200' };
 								if (f === 'weekly_optional') return { text: `每周${task.weeklyTargetCount ?? 3}次`, cls: 'bg-sky-50 text-sky-700 border-sky-200' };
 								return { text: '按次数', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
@@ -2535,14 +2550,149 @@ const CopyIcon = (props) => (
 											</div>
 											<div>
 												<label className={labelCls}>打卡频次</label>
-												<div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+												<div className="flex bg-slate-100 p-1 rounded-xl gap-1 flex-wrap">
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'count')} className={seg(freq === 'count')}>按次数</button>
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'daily_must')} className={seg(freq === 'daily_must')}>每日</button>
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'weekly_optional')} className={seg(freq === 'weekly_optional')}>每周</button>
 													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'reading')} className={seg(freq === 'reading')}>📖 伴读</button>
+													<button type="button" onClick={() => {
+														updateTaskSetting(task.id, 'frequencyType', 'habit');
+														if (!task.habitConfig) {
+															updateTaskSetting(task.id, 'habitConfig', {
+																isHabit: true,
+																icon: task.name?.includes('水') ? '💧' : task.name?.includes('眼') ? '👀' : task.name?.includes('跳绳') ? '🏃' : '🌱',
+																mode: task.name?.includes('水') ? 'count' : 'check',
+																targetCount: task.name?.includes('水') ? 8 : 1,
+																unit: task.name?.includes('水') ? '杯' : '次',
+																color: task.name?.includes('水') ? 'sky' : 'emerald'
+															});
+														}
+													}} className={seg(freq === 'habit' || !!task.habitConfig?.isHabit)}>🌱 习惯</button>
 												</div>
 											</div>
 										</div>
+
+										{/* 习惯专属微配置 */}
+										{(freq === 'habit' || !!task.habitConfig?.isHabit) && (
+											<div className="space-y-3 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-3.5">
+												<div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
+													<span className="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+														<span>🌱 生活习惯专属微配置</span>
+														<span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">轻量化·悬浮球</span>
+													</span>
+													<span className="text-[10px] text-emerald-700">自动脱离学业大卡片</span>
+												</div>
+
+												{/* 习惯专属 Emoji 快速挑选 */}
+												<div>
+													<label className="text-[11px] font-bold text-emerald-800 block mb-1.5">习惯徽章图标</label>
+													<div className="flex gap-1.5 flex-wrap">
+														{[
+															{ icon: '💧', label: '喝水' },
+															{ icon: '👀', label: '护眼' },
+															{ icon: '🏃', label: '跳绳/运动' },
+															{ icon: '🪥', label: '刷牙' },
+															{ icon: '🛏️', label: '早睡' },
+															{ icon: '🍎', label: '水果' },
+															{ icon: '🧹', label: '整理' },
+															{ icon: '🎒', label: '书包' },
+															{ icon: '🧘', label: '专注' },
+															{ icon: '🥛', label: '牛奶' }
+														].map(({ icon, label }) => {
+															const curIcon = task.habitConfig?.icon || '🌱';
+															const isSel = curIcon === icon;
+															return (
+																<button
+																	key={icon}
+																	type="button"
+																	onClick={() => updateTaskSetting(task.id, 'habitConfig', {
+																		...(task.habitConfig || {}),
+																		isHabit: true,
+																		icon
+																	})}
+																	className={`px-2 py-1 rounded-xl text-xs flex items-center gap-1 border transition-all cursor-pointer ${
+																		isSel 
+																			? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-bold scale-105' 
+																			: 'bg-white text-slate-700 border-slate-200 hover:border-emerald-300'
+																	}`}
+																>
+																	<span>{icon}</span>
+																	<span className="text-[10px]">{label}</span>
+																</button>
+															);
+														})}
+													</div>
+												</div>
+
+												{/* 打卡模式：单次 vs 多次计数 */}
+												<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+													<div>
+														<label className="text-[11px] font-bold text-emerald-800 block mb-1">打卡模式</label>
+														<div className="flex bg-white p-1 rounded-xl border border-emerald-200 gap-1">
+															<button
+																type="button"
+																onClick={() => updateTaskSetting(task.id, 'habitConfig', {
+																	...(task.habitConfig || {}),
+																	isHabit: true,
+																	mode: 'check',
+																	targetCount: 1
+																})}
+																className={seg((task.habitConfig?.mode || 'check') === 'check')}
+															>
+																单次完成 (每日1次)
+															</button>
+															<button
+																type="button"
+																onClick={() => updateTaskSetting(task.id, 'habitConfig', {
+																	...(task.habitConfig || {}),
+																	isHabit: true,
+																	mode: 'count',
+																	targetCount: (task.habitConfig?.targetCount > 1 ? task.habitConfig.targetCount : 8),
+																	unit: task.habitConfig?.unit || (task.habitConfig?.icon === '💧' ? '杯' : '次')
+																})}
+																className={seg(task.habitConfig?.mode === 'count')}
+															>
+																多次计数 (如喝8杯水)
+															</button>
+														</div>
+													</div>
+
+													{task.habitConfig?.mode === 'count' && (
+														<div className="flex items-center gap-2">
+															<div className="flex-1">
+																<label className="text-[11px] font-bold text-emerald-800 block mb-1">每日目标总量</label>
+																<input
+																	type="number"
+																	min="2"
+																	max="1000"
+																	value={task.habitConfig?.targetCount || 8}
+																	onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
+																		...(task.habitConfig || {}),
+																		isHabit: true,
+																		targetCount: Math.max(1, parseInt(e.target.value) || 1)
+																	})}
+																	className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 outline-none"
+																/>
+															</div>
+															<div className="w-20">
+																<label className="text-[11px] font-bold text-emerald-800 block mb-1">计量单位</label>
+																<input
+																	type="text"
+																	value={task.habitConfig?.unit || '杯'}
+																	onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
+																		...(task.habitConfig || {}),
+																		isHabit: true,
+																		unit: e.target.value
+																	})}
+																	placeholder="杯/次/组"
+																	className="w-full px-2 py-1.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 outline-none text-center"
+																/>
+															</div>
+														</div>
+													)}
+												</div>
+											</div>
+										)}
 
 										{/* 频次附属配置 */}
 										{freq === 'daily_must' && (
@@ -2625,8 +2775,8 @@ const CopyIcon = (props) => (
 													type="number" 
 													value={task.targetCount} 
 													onChange={(e) => updateTaskSetting(task.id, 'targetCount', parseInt(e.target.value)||0)}
-													disabled={freq === 'daily_must' || freq === 'weekly_optional'}
-													className={freq === 'daily_must' || freq === 'weekly_optional' ? 'w-full px-3 py-2 bg-slate-100 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 cursor-not-allowed' : inputCls + ' font-bold text-slate-700'} 
+													disabled={freq === 'daily_must' || freq === 'weekly_optional' || freq === 'habit' || !!task.habitConfig?.isHabit}
+													className={freq === 'daily_must' || freq === 'weekly_optional' || freq === 'habit' || !!task.habitConfig?.isHabit ? 'w-full px-3 py-2 bg-slate-100 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 cursor-not-allowed' : inputCls + ' font-bold text-slate-700'} 
 												/>
 											</div>
 										</div>
@@ -3084,8 +3234,8 @@ const CopyIcon = (props) => (
 											</button>
 										</div>
 
-										{/* 搜索 + 筛选栏（任务多于 5 项或已有筛选时显示）*/}
-										{(childTasks.length > 5 || filterActive) && (
+										{/* 搜索 + 筛选栏（任务多于 1 项或已有筛选时显示）*/}
+										{(childTasks.length > 1 || filterActive) && (
 											<div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 space-y-2.5">
 												<div className="relative">
 													<input 
@@ -3122,7 +3272,7 @@ const CopyIcon = (props) => (
 														</button>
 													))}
 													<span className="w-px h-3.5 bg-slate-200 mx-1" />
-													{[['', '全部频次'], ['daily_must', '每日必做'], ['weekly_optional', '每周选做'], ['count', '按总次数']].map(([v, label]) => (
+													{[['', '全部频次'], ['daily_must', '每日必做'], ['weekly_optional', '每周选做'], ['count', '按总次数'], ['habit', '🌱 生活习惯']].map(([v, label]) => (
 														<button 
 															key={'f' + v} 
 															type="button"
@@ -3202,15 +3352,25 @@ const CopyIcon = (props) => (
 											if (!name) return;
 											const freq = String(fd.get('taskFreq') || 'count');
 											const isReading = fd.get('isReadingTask') === 'on';
+											const isHabit = fd.get('isHabitTask') === 'on' || freq === 'habit';
 											const overrides = {
 												name,
 												type: String(fd.get('taskType') || 'daily'),
-												frequencyType: isReading ? 'reading' : freq,
+												frequencyType: isHabit ? 'habit' : (isReading ? 'reading' : freq),
 												reward: Math.max(0, parseInt(fd.get('taskReward')) || 1),
 												startDate: String(fd.get('taskStart') || getLocalDateKey(0)),
 												deadline: String(fd.get('taskDeadline') || ''),
 											};
-											if (isReading) {
+											if (isHabit) {
+												overrides.habitConfig = {
+													isHabit: true,
+													icon: name.includes('水') ? '💧' : name.includes('眼') ? '👀' : (name.includes('跳绳') || name.includes('跑')) ? '🏃' : name.includes('牙') ? '🪥' : name.includes('睡') ? '🛏️' : '🌱',
+													mode: (name.includes('水') || name.includes('跳绳') || name.includes('牙')) ? 'count' : 'check',
+													targetCount: name.includes('水') ? 8 : name.includes('跳绳') ? 500 : name.includes('牙') ? 2 : 1,
+													unit: name.includes('水') ? '杯' : name.includes('跳绳') ? '下' : '次',
+													color: name.includes('水') ? 'sky' : 'emerald'
+												};
+											} else if (isReading) {
 												overrides.readingConfig = {
 													isReading: true,
 													bookTitle: name,
@@ -3250,12 +3410,18 @@ const CopyIcon = (props) => (
 													</div>
 													<div>
 														<label className="text-xs text-slate-500 font-bold block mb-1">项目名称 *</label>
-														<input name="taskName" type="text" required autoFocus autoComplete="off" translate="no" placeholder="例如：奥数每日一练 或 《夏洛的网》" className="notranslate w-full px-3.5 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all font-medium" />
+														<input name="taskName" type="text" required autoFocus autoComplete="off" translate="no" placeholder="例如：奥数每日一练 或 喝水8杯" className="notranslate w-full px-3.5 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all font-medium" />
 													</div>
-													<label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 cursor-pointer">
-														<input name="isReadingTask" type="checkbox" className="w-4 h-4 rounded text-amber-500 accent-amber-500 cursor-pointer" />
-														<span className="text-xs font-bold text-amber-900">📚 作为阅读必读书目创建 (开启伴读模式)</span>
-													</label>
+													<div className="space-y-1.5">
+														<label className="flex items-center gap-2.5 p-2 rounded-xl bg-amber-50/70 border border-amber-200/80 cursor-pointer">
+															<input name="isReadingTask" type="checkbox" className="w-4 h-4 rounded text-amber-500 accent-amber-500 cursor-pointer" />
+															<span className="text-xs font-bold text-amber-900">📚 作为阅读必读书目创建 (开启伴读模式)</span>
+														</label>
+														<label className="flex items-center gap-2.5 p-2 rounded-xl bg-emerald-50/70 border border-emerald-200/80 cursor-pointer">
+															<input name="isHabitTask" type="checkbox" className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer" />
+															<span className="text-xs font-bold text-emerald-900">🌱 作为生活习惯规范创建 (轻量打卡·进入元气悬浮球)</span>
+														</label>
+													</div>
 													<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 														<div>
 															<label className="text-xs text-slate-500 font-bold block mb-1">类型</label>
@@ -3270,6 +3436,7 @@ const CopyIcon = (props) => (
 																<option value="count">按总次数</option>
 																<option value="daily_must">每日必做</option>
 																<option value="weekly_optional">每周选做</option>
+																<option value="habit">🌱 生活习惯</option>
 															</select>
 														</div>
 													</div>

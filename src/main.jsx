@@ -71,7 +71,9 @@ import { ReadingFloatingButton } from './components/reading/ReadingFloatingButto
 import { ReadingCheckinModal } from './components/reading/ReadingCheckinModal';
 import { ReadingPavilionModal } from './components/reading/ReadingPavilionModal';
 import { ReadingTransitionModal } from './components/reading/ReadingTransitionModal';
+import { HabitFloatingButton, HabitPavilionModal, PRESET_HABITS } from './components/habits';
 import { ParentGiftModal } from './components/modals/ParentGiftModal';
+import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
         // ===== Toast 系统已迁移至 src/components/common/Toast.jsx =====
 
@@ -523,6 +525,7 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
             const callDeepSeekAPIRef = React.useRef(null);
             const handleLaunchEvilWheelRef = React.useRef(null);
             const [showThemeModal, setShowThemeModal] = useState(false);
+            const [showWonderShowcase, setShowWonderShowcase] = useState(false);
 
             const [showEvilWheel, setShowEvilWheel] = useState(false);
             const [evilWheelSpinning, setEvilWheelSpinning] = useState(false);
@@ -618,6 +621,14 @@ import { ParentGiftModal } from './components/modals/ParentGiftModal';
                 const childTasks = tasks[deferredActiveChild] || [];
                 return childTasks.filter(t => (t.readingConfig?.isReading || t.frequencyType === 'reading') && !t.earlyCompleted);
             }, [tasks, deferredActiveChild]);
+
+            // 元气生活坊：筛选当前孩子的生活习惯规范任务
+            const activeHabitTasks = useMemo(() => {
+                const childTasks = tasks[deferredActiveChild] || [];
+                return childTasks.filter(t => (t.frequencyType === 'habit' || !!t.isHabit || !!t.habitConfig?.isHabit) && !t.earlyCompleted);
+            }, [tasks, deferredActiveChild]);
+
+            const [showHabitPavilion, setShowHabitPavilion] = useState(false);
             const [wheelConfig, setWheelConfig] = useStickyState(DEFAULT_WHEEL_CONFIG, 'app_wheel_config');
             const [wheelSettings, setWheelSettings] = useStickyState(DEFAULT_WHEEL_SETTINGS, 'app_wheel_settings');
             const [wheelHistory, setWheelHistory] = useStickyState({}, 'app_wheel_history');
@@ -4465,9 +4476,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 markWecomPushed(eventType, childName);
             };
 
-            // 计算连续全部完成 daily_must 的天数（排除伴读任务与节假日豁免）
+            // 计算连续全部完成 daily_must 的天数（排除伴读任务、生活习惯与节假日豁免）
             const calcDailyMustStreak = (childName, tasksData, checkinsData) => {
-                const dailyMust = (tasksData[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
+                const dailyMust = (tasksData[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading && !t.isHabit && t.frequencyType !== 'habit' && !t.habitConfig?.isHabit);
                 if (dailyMust.length === 0) return { streak: 0, startDate: '' };
                 let streak = 0;
                 for (let i = 0; i < 365; i++) {
@@ -4583,7 +4594,7 @@ ${context}
                     Object.keys(tasks).forEach(childName => {
                         const summaryKey = `wecom_push_dailySummary_${childName}_${today}`;
                         if (wecomPushLog[summaryKey]) return; // 已推过
-                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
+                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading && !t.isHabit && t.frequencyType !== 'habit' && !t.habitConfig?.isHabit);
                         if (dailyMust.length > 0) {
                             const allDone = dailyMust.every(t => checkins[childName]?.[t.id]?.[today]);
                             if (!allDone) {
@@ -4595,7 +4606,7 @@ ${context}
                 }
                 const timer = setTimeout(() => {
                     Object.keys(tasks).forEach(childName => {
-                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading);
+                        const dailyMust = (tasks[childName] || []).filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading && !t.isHabit && t.frequencyType !== 'habit' && !t.habitConfig?.isHabit);
                         if (dailyMust.length > 0) {
                             pushWecomDailySummary(childName, dailyMust, checkins);
                         }
@@ -5903,7 +5914,7 @@ ${context}
 					const today = getLocalDateKey(0);
 					const isTodayHoliday = isDateHolidayOrWeekend(today);
 					const dailyMust = (tasks[activeChild] || [])
-						.filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading)
+						.filter(t => t.frequencyType === 'daily_must' && !t.readingConfig?.isReading && !t.isHabit && t.frequencyType !== 'habit' && !t.habitConfig?.isHabit)
 						.filter(t => !t.startDate || today >= t.startDate)
 						.filter(t => !t.earlyCompleted)
 						.filter(t => !(t.holidayExempt && isTodayHoliday));
@@ -6276,6 +6287,127 @@ ${context}
                 showToast('success', `📖 已取回《${shelvedEntry.bookTitle}》，继续伴读！`);
                 setShowReadingPavilion(false);
                 triggerSyncUpload();
+            };
+
+            // --- 【元气生活】生活习惯微打卡处理器 ---
+            const handleHabitCheckin = (task, stepDelta = 1, isToggle = false) => {
+                if (!task) return;
+                const today = getLocalDateKey(0);
+                const childData = checkins[activeChild] || {};
+                const taskData = childData[task.id] || {};
+                const curRaw = taskData[today];
+                const curCount = curRaw === undefined || curRaw === null || curRaw === '' 
+                    ? 0 
+                    : (typeof curRaw === 'number' ? curRaw : (Array.isArray(curRaw) ? curRaw.length : 1));
+                const cfg = task.habitConfig || {};
+                const isCount = cfg.mode === 'count' && (cfg.targetCount > 1 || task.targetCount > 1);
+                const target = isCount ? (cfg.targetCount || task.targetCount || 8) : 1;
+
+                let nextVal = 0;
+                let rewardDelta = 0;
+
+                if (isToggle) {
+                    if (stepDelta === 1) {
+                        nextVal = 1;
+                        rewardDelta = task.reward || 1;
+                    } else {
+                        nextVal = 0;
+                        rewardDelta = 0;
+                    }
+                } else if (isCount) {
+                    nextVal = Math.max(0, curCount + stepDelta);
+                    rewardDelta = (stepDelta > 0) ? (task.reward || 1) * stepDelta : 0;
+                } else {
+                    if (curCount < target) {
+                        nextVal = curCount + 1;
+                        rewardDelta = task.reward || 1;
+                    } else {
+                        nextVal = Math.max(0, curCount - 1);
+                        rewardDelta = 0;
+                    }
+                }
+
+                // 写入打卡记录
+                const newCheckins = {
+                    ...checkins,
+                    [activeChild]: {
+                        ...childData,
+                        [task.id]: {
+                            ...taskData,
+                            [today]: nextVal
+                        }
+                    }
+                };
+                setCheckins(newCheckins);
+                triggerSyncUpload();
+
+                // 发放奖励与统计更新
+                if (rewardDelta > 0) {
+                    let multiplier = 1;
+                    const childBuffs = activeBuffs[activeChild] || {};
+                    const investStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : today);
+                    if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && today <= childBuffs.investExpire && today >= investStart) {
+                        multiplier = childBuffs.investMultiplier;
+                    }
+                    const finalReward = rewardDelta * multiplier;
+                    const historyKey = `${activeChild}-HABIT-${task.id}-${today}_${Date.now()}`;
+                    setWheelHistory(prev => ({
+                        ...prev,
+                        [historyKey]: finalReward
+                    }));
+                    updateStats(activeChild, 'gold_earn', finalReward, { source: 'habit', dateKey: today });
+                    updateStats(activeChild, 'checkin', 1, { taskName: task.name, dateKey: today });
+
+                    // 发放星星
+                    const starKey = `${activeChild}-STAR_HABIT-${task.id}-${today}`;
+                    if (!starHistory[starKey]) {
+                        setStarHistory(prev => ({ ...prev, [starKey]: 1 }));
+                    }
+
+                    // 伴宠心情微提升 +2
+                    const linkedPetId = activePet[activeChild];
+                    if (linkedPetId && petData[linkedPetId]) {
+                        setPetData(prev => {
+                            const curPet = prev[linkedPetId];
+                            if (!curPet) return prev;
+                            return {
+                                ...prev,
+                                [linkedPetId]: {
+                                    ...curPet,
+                                    mood: Math.min(100, (curPet.mood || 50) + 2)
+                                }
+                            };
+                        });
+                    }
+
+                    const unit = cfg.unit || (cfg.icon === '💧' ? '杯' : '次');
+                    if (nextVal >= target) {
+                        showToast('success', `🎉 太棒了！「${task.name}」今日圆满达标！金元宝 +${finalReward}`);
+                    } else {
+                        showToast('success', `${cfg.icon || '🌱'} ${task.name} +1${unit}！金元宝 +${finalReward}`);
+                    }
+                }
+            };
+
+            // --- 【元气生活】一键开启推荐习惯 ---
+            const handleAddPresetHabit = (preset) => {
+                const today = getLocalDateKey(0);
+                const d = new Date();
+                d.setFullYear(d.getFullYear() + 1);
+                const deadline = dateObjToLocalKey(d);
+
+                const overrides = {
+                    name: preset.name,
+                    type: 'daily',
+                    frequencyType: 'habit',
+                    reward: preset.reward || 1,
+                    startDate: today,
+                    deadline,
+                    habitConfig: preset.habitConfig
+                };
+
+                handleAddTask(overrides);
+                showToast('success', `✨ 成功开启「${preset.name}」生活习惯！`);
             };
 
             const spinWheel = () => {
@@ -7230,6 +7362,7 @@ ${context}
                                       <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="学习数据统计"><span className="text-base filter drop-shadow-sm">📊</span></button>
                                       <button onClick={() => setShowHomeworkExamModal(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="作业与考试"><span className="text-base filter drop-shadow-sm">📝</span></button>
                                       <div className="w-px h-4 bg-white/20 mx-0.5"></div>
+                                      {/* WonderShowcase hidden */}
                                       <button onClick={() => setShowThemeModal(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="切换主题"><span className="text-base filter drop-shadow-sm">🎨</span></button>
                                       <button onClick={handleOpenSettings} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="设置"><span className="text-base filter drop-shadow-sm">⚙️</span></button>
                                    </div>
@@ -7700,14 +7833,24 @@ ${context}
 					);
 				})()}
 
-						{/* 家长爱心礼物/红包悬浮按钮（位于伴读按钮上方 bottom-52，收到红包或转盘嘉奖时高亮浮现） */}
+						{/* 元气生活·习惯养成专属悬浮按钮（位于伴读按钮上方 bottom-52，支持环形进度条与轻量微打卡浮层） */}
+						<HabitFloatingButton
+							habitTasks={activeHabitTasks}
+							activeChild={activeChild}
+							checkins={checkins}
+							todayStr={getLocalDateKey(0)}
+							onCheckin={handleHabitCheckin}
+							onOpenPavilion={() => setShowHabitPavilion(true)}
+						/>
+
+						{/* 家长爱心礼物/红包悬浮按钮（位于元气习惯上方 bottom-68，收到红包或转盘嘉奖时高亮浮现） */}
 						{unclaimedGifts.length > 0 && (() => {
 							const topGift = unclaimedGifts[0];
 							const isRp = topGift.type === 'red_packet';
 							const operator = topGift.operatorRole || '家长';
 							const giftDesc = isRp ? `【${operator}】发来爱心红包！` : `【${operator}】赐予仙缘转盘！`;
 							return (
-								<div className="fixed bottom-52 left-3 lg:left-4 z-[90] flex items-center group select-none">
+								<div className="fixed bottom-68 left-3 lg:left-4 z-[90] flex items-center group select-none">
 									{/* 悬浮提示气泡 (类似伴宠气泡) */}
 									<div className="absolute left-14 lg:left-16 bottom-0 whitespace-nowrap bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl rounded-bl-xs shadow-xl border border-amber-300 text-stone-800 pointer-events-none animate-in fade-in slide-in-from-left-2 duration-300 z-10">
 										<div className="flex items-center gap-1.5 text-xs font-black text-rose-600">
@@ -8465,7 +8608,30 @@ ${context}
 					  data={readingTransitionModal.data}
 					  onConfirmNextBook={handleSwitchNextBook}
 					  theme={theme}
+				  />
+
+				  {/* 【元气生活坊】习惯养成全景殿堂 */}
+				  <HabitPavilionModal
+					  show={showHabitPavilion}
+					  onClose={() => setShowHabitPavilion(false)}
+					  habitTasks={activeHabitTasks}
+					  activeChild={activeChild}
+					  checkins={checkins}
+					  todayStr={getLocalDateKey(0)}
+					  onCheckin={handleHabitCheckin}
+					  onAddPresetHabit={handleAddPresetHabit}
+					  onOpenSettings={() => {
+						  setShowHabitPavilion(false);
+						  setSettingsInitialTab('tasks');
+						  setShowSettings(true);
+					  }}
 				  />				  
+
+				  {/* 【时空营造司】奇迹部件检视展厅 */}
+				  <WonderShowcaseModal
+					  isOpen={showWonderShowcase}
+					  onClose={() => setShowWonderShowcase(false)}
+				  />
 
                   <div className="fixed bottom-0 w-full bg-white/60 backdrop-blur-md border-t border-white/20 p-2 text-center text-[12px] text-Red-400 z-10">
                      张恒与&张又兮出品&nbsp; &nbsp; “不怕同学是学霸，就怕学霸放寒假“系列之2026年超强寒假学习打卡大计划 V2.8&nbsp; &nbsp; &nbsp; &nbsp; 灵感创意、产品小经理：张恒与&张又兮小朋友&nbsp; &nbsp; &nbsp; 大助理：爸爸&nbsp; &nbsp; &nbsp; Copyright ©2026&nbsp; 张恒与&张又兮（软件著作权注册中）&nbsp; &nbsp; &nbsp;  All right reserved.
