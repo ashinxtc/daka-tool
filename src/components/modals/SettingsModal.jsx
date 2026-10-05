@@ -11,6 +11,7 @@ import {
     SettingsIcon, Shield, ShoppingBag, Skull, Target, Trash2,
     TrendingUp, Trophy, Upload, Users, XIcon
 } from '../icons';
+import { HABIT_ICON_PRESETS } from '../habits/index';
 
 // 确保 AchievementSystem 兼容访问
 const CURRICULUM_CONFIG = ((typeof window !== 'undefined' && window.AchievementSystem) ? window.AchievementSystem.CURRICULUM_CONFIG : ((typeof AchievementSystem !== 'undefined') ? AchievementSystem.CURRICULUM_CONFIG : {})) || {};
@@ -2583,22 +2584,21 @@ const CopyIcon = (props) => (
 													<span className="text-[10px] text-emerald-700">自动脱离学业大卡片</span>
 												</div>
 
-												{/* 习惯专属 Emoji 快速挑选 */}
+												{/* 习惯专属徽章图标选择器（预设库 + 用户自定义输入） */}
 												<div>
-													<label className="text-[11px] font-bold text-emerald-800 block mb-1.5">习惯徽章图标</label>
-													<div className="flex gap-1.5 flex-wrap">
-														{[
-															{ icon: '💧', label: '喝水' },
-															{ icon: '👀', label: '护眼' },
-															{ icon: '🏃', label: '跳绳/运动' },
-															{ icon: '🪥', label: '刷牙' },
-															{ icon: '🛏️', label: '早睡' },
-															{ icon: '🍎', label: '水果' },
-															{ icon: '🧹', label: '整理' },
-															{ icon: '🎒', label: '书包' },
-															{ icon: '🧘', label: '专注' },
-															{ icon: '🥛', label: '牛奶' }
-														].map(({ icon, label }) => {
+													<div className="flex items-center justify-between mb-1.5">
+														<label className="text-[11px] font-bold text-emerald-800">
+															习惯徽章图标 <span className="text-[10px] text-emerald-600 font-normal">（可点击精选图标，也可输入任意Emoji/文字）</span>
+														</label>
+														<div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-lg border border-emerald-200">
+															<span className="text-[10px] text-slate-400">已选:</span>
+															<span className="text-base leading-none">{task.habitConfig?.icon || '🌱'}</span>
+														</div>
+													</div>
+
+													{/* 丰富精选预设库 */}
+													<div className="flex gap-1.5 flex-wrap max-h-36 overflow-y-auto p-1.5 bg-white/70 rounded-xl border border-emerald-100">
+														{(HABIT_ICON_PRESETS || []).map(({ icon, label }) => {
 															const curIcon = task.habitConfig?.icon || '🌱';
 															const isSel = curIcon === icon;
 															return (
@@ -2622,73 +2622,134 @@ const CopyIcon = (props) => (
 															);
 														})}
 													</div>
+
+													{/* 用户自定义输入框 */}
+													<div className="flex items-center gap-2 mt-2 pt-2 border-t border-emerald-200/60">
+														<span className="text-[11px] font-bold text-emerald-800 shrink-0">自定义图标:</span>
+														<input
+															type="text"
+															maxLength={6}
+															value={task.habitConfig?.icon || ''}
+															onChange={(e) => {
+																const val = e.target.value.trim();
+																updateTaskSetting(task.id, 'habitConfig', {
+																	...(task.habitConfig || {}),
+																	isHabit: true,
+																	icon: val || '🌱'
+																});
+															}}
+															placeholder="输入任意Emoji或单字，如 🛹、🏊‍♀️、🎯、操"
+															className="flex-1 px-3 py-1.5 bg-white border border-emerald-300 rounded-xl text-xs font-bold text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-200 placeholder:text-slate-400 placeholder:font-normal"
+														/>
+													</div>
 												</div>
 
-												{/* 打卡模式：单次 vs 多次计数 */}
-												<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-													<div>
-														<label className="text-[11px] font-bold text-emerald-800 block mb-1">打卡模式</label>
-														<div className="flex bg-white p-1 rounded-xl border border-emerald-200 gap-1">
-															<button
-																type="button"
-																onClick={() => updateTaskSetting(task.id, 'habitConfig', {
-																	...(task.habitConfig || {}),
-																	isHabit: true,
-																	mode: 'check',
-																	targetCount: 1
-																})}
-																className={seg((task.habitConfig?.mode || 'check') === 'check')}
-															>
-																单次完成 (每日1次)
-															</button>
-															<button
-																type="button"
-																onClick={() => updateTaskSetting(task.id, 'habitConfig', {
-																	...(task.habitConfig || {}),
-																	isHabit: true,
-																	mode: 'count',
-																	targetCount: (task.habitConfig?.targetCount > 1 ? task.habitConfig.targetCount : 8),
-																	unit: task.habitConfig?.unit || (task.habitConfig?.icon === '💧' ? '杯' : '次')
-																})}
-																className={seg(task.habitConfig?.mode === 'count')}
-															>
-																多次计数 (如喝8杯水)
-															</button>
-														</div>
+												{/* 打卡模式：单次 vs 定量目标 vs 随心多次 */}
+												<div className="space-y-2 pt-1">
+													<label className="text-[11px] font-bold text-emerald-800 block">打卡模式</label>
+													<div className="grid grid-cols-1 sm:grid-cols-3 bg-white p-1 rounded-xl border border-emerald-200 gap-1 text-center">
+														<button
+															type="button"
+															onClick={() => updateTaskSetting(task.id, 'habitConfig', {
+																...(task.habitConfig || {}),
+																isHabit: true,
+																mode: 'check',
+																targetCount: 1,
+																hasTarget: true
+															})}
+															className={seg((task.habitConfig?.mode || 'check') === 'check')}
+														>
+															🔘 单次达标 (每日1次)
+														</button>
+														<button
+															type="button"
+															onClick={() => updateTaskSetting(task.id, 'habitConfig', {
+																...(task.habitConfig || {}),
+																isHabit: true,
+																mode: 'count',
+																hasTarget: true,
+																targetCount: ((task.habitConfig?.targetCount || 0) > 1 ? task.habitConfig.targetCount : 8),
+																unit: task.habitConfig?.unit || (task.habitConfig?.icon === '💧' ? '杯' : '次')
+															})}
+															className={seg(task.habitConfig?.mode === 'count' && (task.habitConfig?.hasTarget !== false && (task.habitConfig?.targetCount || 0) > 0))}
+														>
+															🎯 定量打卡 (设目标总量)
+														</button>
+														<button
+															type="button"
+															onClick={() => updateTaskSetting(task.id, 'habitConfig', {
+																...(task.habitConfig || {}),
+																isHabit: true,
+																mode: 'count',
+																hasTarget: false,
+																targetCount: 0,
+																unit: task.habitConfig?.unit || '次'
+															})}
+															className={seg(task.habitConfig?.mode === 'count' && (task.habitConfig?.hasTarget === false || (task.habitConfig?.targetCount || 0) <= 0))}
+														>
+															♾️ 随心多次 (不设总量)
+														</button>
 													</div>
 
+													{/* 模式专属说明与参数输入 */}
 													{task.habitConfig?.mode === 'count' && (
-														<div className="flex items-center gap-2">
-															<div className="flex-1">
-																<label className="text-[11px] font-bold text-emerald-800 block mb-1">每日目标总量</label>
-																<input
-																	type="number"
-																	min="2"
-																	max="1000"
-																	value={task.habitConfig?.targetCount || 8}
-																	onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
-																		...(task.habitConfig || {}),
-																		isHabit: true,
-																		targetCount: Math.max(1, parseInt(e.target.value) || 1)
-																	})}
-																	className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 outline-none"
-																/>
+														(task.habitConfig?.hasTarget === false || (task.habitConfig?.targetCount || 0) <= 0) ? (
+															<div className="bg-emerald-100/70 border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between gap-3">
+																<div className="text-[11px] text-emerald-800 leading-relaxed">
+																	<span className="font-bold">💡 随心多次打卡（如眼保健操、即兴拉伸）：</span>
+																	<span>休息时随时可做，无需设置目标总量，每次打卡均累计记录并获得奖励。</span>
+																</div>
+																<div className="w-24 shrink-0">
+																	<label className="text-[10px] font-bold text-emerald-800 block mb-0.5">计量单位</label>
+																	<input
+																		type="text"
+																		value={task.habitConfig?.unit || '次'}
+																		onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
+																			...(task.habitConfig || {}),
+																			isHabit: true,
+																			unit: e.target.value
+																		})}
+																		placeholder="次/组/节"
+																		className="w-full px-2 py-1 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-emerald-700 outline-none text-center"
+																	/>
+																</div>
 															</div>
-															<div className="w-20">
-																<label className="text-[11px] font-bold text-emerald-800 block mb-1">计量单位</label>
-																<input
-																	type="text"
-																	value={task.habitConfig?.unit || '杯'}
-																	onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
-																		...(task.habitConfig || {}),
-																		isHabit: true,
-																		unit: e.target.value
-																	})}
-																	placeholder="杯/次/组"
-																	className="w-full px-2 py-1.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 outline-none text-center"
-																/>
+														) : (
+															<div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-emerald-200">
+																<div className="flex-1">
+																	<label className="text-[11px] font-bold text-emerald-800 block mb-1">
+																		每日目标总量 <span className="text-[10px] text-slate-400 font-normal">（如喝8杯水、跳绳500下）</span>
+																	</label>
+																	<input
+																		type="number"
+																		min="2"
+																		max="10000"
+																		value={task.habitConfig?.targetCount || 8}
+																		onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
+																			...(task.habitConfig || {}),
+																			isHabit: true,
+																			hasTarget: true,
+																			targetCount: Math.max(1, parseInt(e.target.value) || 1)
+																		})}
+																		className="w-full px-2.5 py-1.5 bg-emerald-50/50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-700 outline-none"
+																	/>
+																</div>
+																<div className="w-24 shrink-0">
+																	<label className="text-[11px] font-bold text-emerald-800 block mb-1">计量单位</label>
+																	<input
+																		type="text"
+																		value={task.habitConfig?.unit || '杯'}
+																		onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
+																			...(task.habitConfig || {}),
+																			isHabit: true,
+																			unit: e.target.value
+																		})}
+																		placeholder="杯/下/次"
+																		className="w-full px-2.5 py-1.5 bg-emerald-50/50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-700 outline-none text-center"
+																	/>
+																</div>
 															</div>
-														</div>
+														)
 													)}
 												</div>
 											</div>
@@ -3362,13 +3423,19 @@ const CopyIcon = (props) => (
 												deadline: String(fd.get('taskDeadline') || ''),
 											};
 											if (isHabit) {
+												const isEye = name.includes('眼');
+												const isWater = name.includes('水');
+												const isRope = name.includes('跳绳') || name.includes('跑');
+												const isTooth = name.includes('牙');
+												const isSleep = name.includes('睡');
 												overrides.habitConfig = {
 													isHabit: true,
-													icon: name.includes('水') ? '💧' : name.includes('眼') ? '👀' : (name.includes('跳绳') || name.includes('跑')) ? '🏃' : name.includes('牙') ? '🪥' : name.includes('睡') ? '🛏️' : '🌱',
-													mode: (name.includes('水') || name.includes('跳绳') || name.includes('牙')) ? 'count' : 'check',
-													targetCount: name.includes('水') ? 8 : name.includes('跳绳') ? 500 : name.includes('牙') ? 2 : 1,
-													unit: name.includes('水') ? '杯' : name.includes('跳绳') ? '下' : '次',
-													color: name.includes('水') ? 'sky' : 'emerald'
+													icon: isWater ? '💧' : isEye ? '👀' : isRope ? '🏃' : isTooth ? '🪥' : isSleep ? '🛏️' : '🌱',
+													mode: (isWater || isRope || isTooth || isEye) ? 'count' : 'check',
+													hasTarget: !isEye && (isWater || isRope || isTooth),
+													targetCount: isWater ? 8 : isRope ? 500 : isTooth ? 2 : (isEye ? 0 : 1),
+													unit: isWater ? '杯' : isRope ? '下' : '次',
+													color: isWater ? 'sky' : (isRope ? 'amber' : (isSleep ? 'purple' : 'emerald'))
 												};
 											} else if (isReading) {
 												overrides.readingConfig = {

@@ -34,11 +34,12 @@ export const PRESET_HABITS = [
       isHabit: true,
       icon: '👀',
       category: 'eye',
-      mode: 'check',
-      targetCount: 1,
+      mode: 'count',
+      targetCount: 0,
+      hasTarget: false,
       unit: '次',
       color: 'emerald',
-      desc: '课间眺望远方或做眼保健操，守护视力健康'
+      desc: '课间眺望远方或做眼操，休息时即可做，不设总量上限随时记录'
     }
   },
   {
@@ -135,22 +136,25 @@ export const HabitPavilionModal = ({
 
     const list = (habitTasks || []).map(t => {
       const cfg = t.habitConfig || {};
-      const isCount = cfg.mode === 'count' && (cfg.targetCount > 1 || t.targetCount > 1);
-      const target = isCount ? (cfg.targetCount || t.targetCount || 8) : 1;
+      const isCount = cfg.mode === 'count';
+      const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (t.targetCount || 0) > 1);
+      const isUnlimited = isCount && !hasTarget;
+      const target = hasTarget ? (cfg.targetCount || t.targetCount || 8) : 1;
       const rec = checkins[activeChild]?.[t.id] || {};
       const val = rec[todayStr];
       const cur = val === undefined || val === null || val === '' ? 0 : (typeof val === 'number' ? val : (Array.isArray(val) ? val.length : 1));
-      const isDone = cur >= target;
+      const isDone = isUnlimited ? (cur >= 1) : (cur >= target);
 
       if (isDone) completedCount++;
-      earnedCoins += (isCount ? Math.min(cur, target) : (isDone ? 1 : 0)) * (t.reward || 1);
+      earnedCoins += (hasTarget ? Math.min(cur, target) : cur) * (t.reward || 1);
 
       return {
         task: t,
         rec,
         cur,
         target,
-        isDone
+        isDone,
+        isUnlimited
       };
     });
 

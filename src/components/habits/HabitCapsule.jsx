@@ -1,6 +1,53 @@
 import React, { useState, useMemo } from 'react';
 import { Flame, CheckCircle2, Plus, Coins } from '../icons.jsx';
 
+// 常用精选习惯图标库（涵盖生活作息、健康饮食、体能运动、自律习惯、学习才艺等36+常见项）
+export const HABIT_ICON_PRESETS = [
+  // 健康生活与作息
+  { icon: '💧', label: '喝水', group: 'health' },
+  { icon: '👀', label: '护眼/眼操', group: 'health' },
+  { icon: '🪥', label: '早晚刷牙', group: 'health' },
+  { icon: '🛏️', label: '准时早睡', group: 'health' },
+  { icon: '⏰', label: '定时早起', group: 'health' },
+  { icon: '🍎', label: '新鲜水果', group: 'health' },
+  { icon: '🥛', label: '营养牛奶', group: 'health' },
+  { icon: '🥗', label: '多吃蔬菜', group: 'health' },
+  { icon: '🧼', label: '勤洗手', group: 'health' },
+  { icon: '☀️', label: '户外晒太阳', group: 'health' },
+  { icon: '🛁', label: '洗漱泡脚', group: 'health' },
+  { icon: '💊', label: '补充维生素', group: 'health' },
+
+  // 运动与体能锻炼
+  { icon: '🏃', label: '跑步跳绳', group: 'sport' },
+  { icon: '🤸', label: '伸展拉伸', group: 'sport' },
+  { icon: '🚴', label: '户外骑行', group: 'sport' },
+  { icon: '🧗', label: '攀爬运动', group: 'sport' },
+  { icon: '🏀', label: '篮球球类', group: 'sport' },
+  { icon: '🏊', label: '游泳锻炼', group: 'sport' },
+  { icon: '🥋', label: '武术散打', group: 'sport' },
+  { icon: '🚶', label: '饭后散步', group: 'sport' },
+
+  // 自律与生活常规
+  { icon: '🧹', label: '整理打扫', group: 'routine' },
+  { icon: '🎒', label: '整理书包', group: 'routine' },
+  { icon: '👕', label: '穿戴整洁', group: 'routine' },
+  { icon: '🌱', label: '自律萌芽', group: 'routine' },
+  { icon: '🐾', label: '照顾宠物', group: 'routine' },
+  { icon: '🤝', label: '分担家务', group: 'routine' },
+  { icon: '😄', label: '微笑感恩', group: 'routine' },
+  { icon: '🧘', label: '专注冥想', group: 'routine' },
+
+  // 学习与才艺修养
+  { icon: '📖', label: '课外阅读', group: 'study' },
+  { icon: '✍️', label: '硬笔练字', group: 'study' },
+  { icon: '🗣️', label: '朗读背诵', group: 'study' },
+  { icon: '🎹', label: '乐器练琴', group: 'study' },
+  { icon: '🎨', label: '绘画创作', group: 'study' },
+  { icon: '♟️', label: '益智棋类', group: 'study' },
+  { icon: '🧩', label: '拼图积木', group: 'study' },
+  { icon: '🔬', label: '科学探索', group: 'study' }
+];
+
 // 纯本地 Web Audio 合成音效（0KB 外部依赖，原生浏览器无感高频轻量音效）
 export function playHabitSound(type = 'water') {
   try {
@@ -47,20 +94,22 @@ export function playHabitSound(type = 'water') {
 
 /**
  * 计算单个习惯任务的连续达成天数
+ * - 定量计次：需要 >= 目标总量才算达标
+ * - 随心多次（无目标总量）：只要今日 >= 1 次即算今天已激活并维持连胜
+ * - 单次打卡：>= 1 次即算达标
  */
 export function getHabitStreak(task, taskRecord = {}, todayStr) {
   if (!task || !taskRecord) return 0;
-  const target = task.habitConfig?.targetCount || (task.habitConfig?.mode === 'count' ? (task.targetCount || 1) : 1);
-  const isCountMode = task.habitConfig?.mode === 'count' && target > 1;
+  const cfg = task.habitConfig || {};
+  const isCount = cfg.mode === 'count';
+  const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (task.targetCount || 0) > 1);
+  const target = hasTarget ? (cfg.targetCount || task.targetCount || 1) : 1;
 
   const isDayDone = (dateKey) => {
     const val = taskRecord[dateKey];
     if (val === undefined || val === null || val === '') return false;
-    if (isCountMode) {
-      const count = typeof val === 'number' ? val : (Array.isArray(val) ? val.length : 0);
-      return count >= target;
-    }
-    return !!val;
+    const count = typeof val === 'number' ? val : (Array.isArray(val) ? val.length : (val ? 1 : 0));
+    return count >= target;
   };
 
   let streak = 0;
@@ -92,10 +141,10 @@ export function getHabitStreak(task, taskRecord = {}, todayStr) {
 }
 
 /**
- * HabitCapsule: 紧凑型习惯微章/交互胶囊 (方案 A 落地)
- * - 支持计次模式（如 💧 喝水 8杯，展示小水滴点亮阵列）
- * - 支持单次模式（如 👀 做眼操，轻触圆形复选框完成）
- * - 即时正向激励粒子与音效反馈
+ * HabitCapsule: 紧凑型习惯微章/交互胶囊
+ * - 支持定量计次模式（如 💧 喝水 8杯，展示小水滴点亮阵列）
+ * - 支持随心多次打卡（如 👀 眼保健操，休息时即可做，不设每日目标总量，随时可记录+1并奖励）
+ * - 支持单次模式（如 🛏️ 早睡，轻触圆形复选框完成）
  */
 export const HabitCapsule = ({
   task,
@@ -108,8 +157,10 @@ export const HabitCapsule = ({
   const [justTapped, setJustTapped] = useState(false);
 
   const cfg = task.habitConfig || {};
-  const isCountMode = cfg.mode === 'count' && (cfg.targetCount > 1 || task.targetCount > 1);
-  const target = isCountMode ? (cfg.targetCount || task.targetCount || 8) : 1;
+  const isCount = cfg.mode === 'count';
+  const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (task.targetCount || 0) > 1);
+  const isUnlimited = isCount && !hasTarget;
+  const target = hasTarget ? (cfg.targetCount || task.targetCount || 8) : 1;
   const unit = cfg.unit || (cfg.icon === '💧' ? '杯' : '次');
   const icon = cfg.icon || '🌱';
   const reward = task.reward || 1;
@@ -123,7 +174,11 @@ export const HabitCapsule = ({
     return 1;
   }, [todayRaw]);
 
-  const isCompleted = curCount >= target;
+  // 完成度判定：
+  // 1. 定量目标：curCount >= target
+  // 2. 随心多次（无总量）：curCount >= 1 表示今日已达标/已激活，但依然可继续累积打卡
+  // 3. 单次模式：curCount >= 1
+  const isCompleted = isUnlimited ? (curCount >= 1) : (curCount >= target);
   const streak = useMemo(() => getHabitStreak(task, taskRecord, todayStr), [task, taskRecord, todayStr]);
 
   // 处理打卡动作
@@ -132,7 +187,20 @@ export const HabitCapsule = ({
     setJustTapped(true);
     setTimeout(() => setJustTapped(false), 500);
 
-    if (isCountMode) {
+    if (isUnlimited) {
+      // 随心多次打卡模式 (无总量上限)
+      if (targetStep === 'undo') {
+        if (curCount > 0) {
+          playHabitSound('default');
+          onCheckin?.(task, -1);
+        }
+      } else {
+        // 打卡记录 +1
+        playHabitSound(curCount === 0 ? 'complete' : (icon === '💧' ? 'water' : 'default'));
+        onCheckin?.(task, 1);
+      }
+    } else if (hasTarget) {
+      // 定量多次计数模式 (如喝水8杯)
       if (targetStep !== null) {
         // 直接点击某一个水滴/刻度
         const newCount = targetStep === curCount ? Math.max(0, curCount - 1) : targetStep;
@@ -142,7 +210,7 @@ export const HabitCapsule = ({
           onCheckin?.(task, delta);
         }
       } else {
-        // 点击主卡片步进 +1 (如果满了再点则回退或重置)
+        // 点击主卡片步进 +1
         if (curCount < target) {
           playHabitSound(curCount + 1 >= target ? 'complete' : (icon === '💧' ? 'water' : 'default'));
           onCheckin?.(task, 1);
@@ -202,7 +270,7 @@ export const HabitCapsule = ({
 
   const cTheme = colorMap[cfg.color] || (icon === '💧' ? colorMap.sky : colorMap.emerald);
 
-  // 1. 紧凑模式 (用于悬浮气泡或快捷预览)
+  // 1. 紧凑模式 (用于悬浮微坞气泡)
   if (compact) {
     return (
       <div 
@@ -217,7 +285,7 @@ export const HabitCapsule = ({
           <span className="text-base shrink-0">{icon}</span>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className={`text-xs font-bold truncate ${isCompleted ? 'text-emerald-900 line-through opacity-70' : 'text-slate-800'}`}>
+              <span className={`text-xs font-bold truncate ${isCompleted && !isUnlimited ? 'text-emerald-900 line-through opacity-70' : 'text-slate-800'}`}>
                 {task.name}
               </span>
               {streak > 1 && (
@@ -226,7 +294,11 @@ export const HabitCapsule = ({
                 </span>
               )}
             </div>
-            {isCountMode ? (
+            {isUnlimited ? (
+              <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                {curCount > 0 ? `已完成 ${curCount} ${unit} · 随心可再做` : `随心多次 · 每次+${reward}金币`}
+              </span>
+            ) : hasTarget ? (
               <span className="text-[10px] text-slate-400">
                 {curCount} / {target} {unit}
               </span>
@@ -240,15 +312,41 @@ export const HabitCapsule = ({
 
         {/* 快捷打卡操作按键 */}
         <div className="shrink-0 ml-2">
-          {isCompleted ? (
+          {isUnlimited ? (
+            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+              {curCount > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => handleTap(e, 'undo')}
+                  className="w-5 h-5 rounded-full bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-400 flex items-center justify-center text-[10px] font-bold transition-all cursor-pointer"
+                  title="撤销一次打卡"
+                >
+                  -
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => handleTap(e)}
+                className={`h-6 px-2 rounded-full flex items-center gap-0.5 text-xs font-extrabold transition-all active:scale-90 cursor-pointer ${
+                  curCount > 0 
+                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-2xs' 
+                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600'
+                }`}
+                title="随时打卡记录+1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>{curCount > 0 ? `${curCount}${unit}` : '+1'}</span>
+              </button>
+            </div>
+          ) : isCompleted ? (
             <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-black shadow-2xs">
               ✓
             </span>
-          ) : isCountMode ? (
+          ) : hasTarget ? (
             <button
               type="button"
               onClick={(e) => handleTap(e)}
-              className="w-6 h-6 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold transition-transform active:scale-90"
+              className="w-6 h-6 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold transition-transform active:scale-90 cursor-pointer"
               title="打卡+1"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -261,7 +359,7 @@ export const HabitCapsule = ({
     );
   }
 
-  // 2. 完整卡片模式 (用于元气生活堂专区)
+  // 2. 完整卡片模式 (用于元气生活坊专区)
   return (
     <div 
       className={`relative p-3.5 rounded-2xl border transition-all duration-300 select-none ${
@@ -279,13 +377,13 @@ export const HabitCapsule = ({
             {icon}
           </div>
           <div className="min-w-0">
-            <h4 className={`text-sm font-extrabold truncate ${isCompleted ? 'text-emerald-900' : 'text-slate-800'}`}>
+            <h4 className={`text-sm font-extrabold truncate ${isCompleted && !isUnlimited ? 'text-emerald-900' : 'text-slate-800'}`}>
               {task.name}
             </h4>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="flex items-center gap-0.5 text-[11px] font-bold text-amber-600">
                 <Coins className="w-3 h-3 text-amber-500" />
-                +{reward}
+                +{reward} {isUnlimited && <span className="text-[10px] font-normal text-slate-400">/每次</span>}
               </span>
               {streak > 0 && (
                 <span className={`inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.2 rounded-full ${
@@ -301,7 +399,18 @@ export const HabitCapsule = ({
 
         {/* 右侧主状态/打卡切换 */}
         <div>
-          {!isCountMode ? (
+          {isUnlimited ? (
+            <div className="text-right flex flex-col items-end">
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-slate-400">今日已做</span>
+                <span className="text-base font-black text-emerald-600">{curCount}</span>
+                <span className="text-xs font-bold text-slate-500">{unit}</span>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded-full mt-0.5">
+                随心多次 · 不设上限
+              </span>
+            </div>
+          ) : !hasTarget ? (
             <button
               type="button"
               onClick={(e) => handleTap(e)}
@@ -334,12 +443,41 @@ export const HabitCapsule = ({
         </div>
       </div>
 
-      {/* 计次模式专属：水滴/步进阵列 (方案 A 的视觉灵魂) */}
-      {isCountMode && (
+      {/* 随心多次打卡专属面板（如眼保健操、即兴拉伸等，不设上限） */}
+      {isUnlimited && (
+        <div className="pt-2 border-t border-slate-100/90 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-medium text-slate-500">
+            {curCount > 0 ? `🎉 今日已累计做 ${curCount} ${unit}，休息时随时可再做！` : `休息放松时即可做一次，做一次记录一次`}
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {curCount > 0 && (
+              <button
+                type="button"
+                onClick={(e) => handleTap(e, 'undo')}
+                className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 text-xs font-bold transition-all cursor-pointer"
+                title="撤销一次打卡"
+              >
+                撤销
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => handleTap(e)}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold text-xs shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>打卡记录 +1{unit}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 定量计次模式专属：水滴/步进阵列 (如喝水8杯) */}
+      {hasTarget && (
         <div className="pt-2 border-t border-slate-100/90">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-medium text-slate-400">
-              {isCompleted ? '🎉 今日饮水/习惯已圆满完成！' : `今日已完成 ${curCount} ${unit}，还差 ${Math.max(0, target - curCount)} ${unit}`}
+              {isCompleted ? '🎉 今日习惯已圆满完成！' : `今日已完成 ${curCount} ${unit}，还差 ${Math.max(0, target - curCount)} ${unit}`}
             </span>
             {curCount > 0 && (
               <button

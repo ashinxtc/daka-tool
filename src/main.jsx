@@ -6300,13 +6300,14 @@ ${context}
                     ? 0 
                     : (typeof curRaw === 'number' ? curRaw : (Array.isArray(curRaw) ? curRaw.length : 1));
                 const cfg = task.habitConfig || {};
-                const isCount = cfg.mode === 'count' && (cfg.targetCount > 1 || task.targetCount > 1);
-                const target = isCount ? (cfg.targetCount || task.targetCount || 8) : 1;
+                const isCount = cfg.mode === 'count';
+                const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (task.targetCount || 0) > 1);
+                const target = hasTarget ? (cfg.targetCount || task.targetCount || 8) : 1;
 
                 let nextVal = 0;
                 let rewardDelta = 0;
 
-                if (isToggle) {
+                if (isToggle || cfg.mode === 'check') {
                     if (stepDelta === 1) {
                         nextVal = 1;
                         rewardDelta = task.reward || 1;
@@ -6381,10 +6382,16 @@ ${context}
                     }
 
                     const unit = cfg.unit || (cfg.icon === '💧' ? '杯' : '次');
-                    if (nextVal >= target) {
-                        showToast('success', `🎉 太棒了！「${task.name}」今日圆满达标！金元宝 +${finalReward}`);
+                    if (hasTarget) {
+                        if (nextVal >= target) {
+                            showToast('success', `🎉 太棒了！「${task.name}」今日圆满达标！金元宝 +${finalReward}`);
+                        } else {
+                            showToast('success', `${cfg.icon || '🌱'} ${task.name} +1${unit} (${nextVal}/${target})！金元宝 +${finalReward}`);
+                        }
+                    } else if (isCount) {
+                        showToast('success', `${cfg.icon || '🌱'} 太棒了！「${task.name}」已记录第 ${nextVal} ${unit}！金元宝 +${finalReward}`);
                     } else {
-                        showToast('success', `${cfg.icon || '🌱'} ${task.name} +1${unit}！金元宝 +${finalReward}`);
+                        showToast('success', `🎉 太棒了！「${task.name}」今日圆满达标！金元宝 +${finalReward}`);
                     }
                 }
             };

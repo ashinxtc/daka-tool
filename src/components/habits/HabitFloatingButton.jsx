@@ -23,18 +23,22 @@ export const HabitFloatingButton = ({
   const structuredHabits = useMemo(() => {
     return (habitTasks || []).map(t => {
       const cfg = t.habitConfig || {};
-      const isCount = cfg.mode === 'count' && (cfg.targetCount > 1 || t.targetCount > 1);
-      const target = isCount ? (cfg.targetCount || t.targetCount || 8) : 1;
+      const isCount = cfg.mode === 'count';
+      const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (t.targetCount || 0) > 1);
+      const isUnlimited = isCount && !hasTarget;
+      const target = hasTarget ? (cfg.targetCount || t.targetCount || 8) : 1;
       const rec = checkins[activeChild]?.[t.id] || {};
       const val = rec[todayStr];
       const cur = val === undefined || val === null || val === '' ? 0 : (typeof val === 'number' ? val : (Array.isArray(val) ? val.length : 1));
-      const isDone = cur >= target;
-      const pct = Math.min(100, Math.round((cur / target) * 100));
+      const isDone = isUnlimited ? (cur >= 1) : (cur >= target);
+      const pct = isUnlimited ? (cur >= 1 ? 100 : 0) : Math.min(100, Math.round((cur / target) * 100));
 
       return {
         task: t,
         cfg,
         isCount,
+        hasTarget,
+        isUnlimited,
         cur,
         target,
         isDone,
