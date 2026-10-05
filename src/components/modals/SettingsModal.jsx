@@ -79,22 +79,6 @@ const CopyIcon = (props) => (
             const [activeSettingsTab, setActiveSettingsTab] = React.useState(initialTab);
             const [prevShowSettings, setPrevShowSettings] = React.useState(showSettings);
             const [prevInitialTab, setPrevInitialTab] = React.useState(initialTab);
-
-            // 当弹窗打开瞬间或 initialTab 变化时，无缝同步当前激活分页
-            if (showSettings && !prevShowSettings) {
-                setPrevShowSettings(true);
-                if (initialTab && activeSettingsTab !== initialTab) {
-                    setActiveSettingsTab(initialTab);
-                }
-            } else if (!showSettings && prevShowSettings) {
-                setPrevShowSettings(false);
-            }
-            if (initialTab !== prevInitialTab) {
-                setPrevInitialTab(initialTab);
-                if (showSettings && activeSettingsTab !== initialTab) {
-                    setActiveSettingsTab(initialTab);
-                }
-            }
             // 任务分页：手风琴展开 + 搜索筛选 + 新增弹窗
             const [expandedTaskId, setExpandedTaskId] = React.useState(null);
             const [taskSearch, setTaskSearch] = React.useState('');
@@ -102,6 +86,24 @@ const CopyIcon = (props) => (
             const [taskFreqFilter, setTaskFreqFilter] = React.useState('');   // '' | 'count' | 'daily_must' | 'weekly_optional'
             const [showAddTaskModal, setShowAddTaskModal] = React.useState(false);
             const [advOpen, setAdvOpen] = React.useState({}); // 编辑卡高级设置折叠状态
+
+            // 当弹窗打开瞬间或 initialTab 变化时，无缝同步当前激活分页与状态重置
+            if (showSettings && !prevShowSettings) {
+                setPrevShowSettings(true);
+                setExpandedTaskId(null);
+                if (initialTab && activeSettingsTab !== initialTab) {
+                    setActiveSettingsTab(initialTab);
+                }
+            } else if (!showSettings && prevShowSettings) {
+                setPrevShowSettings(false);
+                setExpandedTaskId(null);
+            }
+            if (initialTab !== prevInitialTab) {
+                setPrevInitialTab(initialTab);
+                if (showSettings && activeSettingsTab !== initialTab) {
+                    setActiveSettingsTab(initialTab);
+                }
+            }
 
             // 表单交互增强状态
             const [showPasswordEye, setShowPasswordEye] = React.useState(false);
@@ -2316,12 +2318,93 @@ const CopyIcon = (props) => (
 							const childTasks = tasks[activeChild] || [];
 							const ongoingTasksForSetting = [];
 							const completedTasksForSetting = [];
+
+							// 获取任务当前的权威生效频次
+							const getTaskEffectiveFreq = (t) => {
+								if (!t) return 'count';
+								if (t.frequencyType === 'habit') return 'habit';
+								if (t.frequencyType === 'reading') return 'reading';
+								if (t.frequencyType === 'daily_must') return 'daily_must';
+								if (t.frequencyType === 'weekly_optional') return 'weekly_optional';
+								if (t.frequencyType === 'count') return 'count';
+								// 历史无 frequencyType 数据时的兜底判定
+								if (t.habitConfig?.isHabit || t.isHabit) return 'habit';
+								if (t.readingConfig?.isReading) return 'reading';
+								return 'count';
+							};
+
+							// 切换打卡频次时的原子状态转换处理函数
+							const handleFrequencyChange = (targetTaskId, newFreq) => {
+								const curTask = childTasks.find(t => t.id === targetTaskId);
+								if (!curTask) return;
+
+								if (newFreq === 'habit') {
+									const isWater = curTask.name?.includes('水');
+									const isEye = curTask.name?.includes('眼');
+									const isRope = curTask.name?.includes('绳') || curTask.name?.includes('跳');
+									const isTooth = curTask.name?.includes('牙');
+									const isSleep = curTask.name?.includes('睡');
+
+									const existingCfg = curTask.habitConfig || {};
+									const newHabitCfg = {
+										...existingCfg,
+										isHabit: true,
+										icon: existingCfg.icon || (isWater ? '💧' : isEye ? '👀' : isRope ? '🏃' : isTooth ? '🪥' : isSleep ? '🛏️' : '🌱'),
+										mode: existingCfg.mode || ((isWater || isRope || isTooth || isEye) ? 'count' : 'check'),
+										hasTarget: existingCfg.hasTarget !== undefined ? existingCfg.hasTarget : (!isEye && (isWater || isRope || isTooth)),
+										targetCount: existingCfg.targetCount !== undefined ? existingCfg.targetCount : (isWater ? 8 : isRope ? 500 : isTooth ? 2 : (isEye ? 0 : 1)),
+										unit: existingCfg.unit || (isWater ? '杯' : isRope ? '下' : '次'),
+										color: existingCfg.color || (isWater ? 'sky' : isRope ? 'amber' : isSleep ? 'purple' : 'emerald')
+									};
+
+									const updateObj = {
+										frequencyType: 'habit',
+										isHabit: true,
+										habitConfig: newHabitCfg
+									};
+									// 随心多次模式下将旧的学业 targetCount 置零，彻底规避历史数据脏标污染
+									if (newHabitCfg.mode === 'count' && newHabitCfg.hasTarget === false) {
+										updateObj.targetCount = 0;
+									}
+									if (curTask.readingConfig?.isReading) {
+										updateObj.readingConfig = { ...curTask.readingConfig, isReading: false };
+									}
+									updateTaskSetting(targetTaskId, updateObj);
+								} else if (newFreq === 'reading') {
+									const updateObj = {
+										frequencyType: 'reading',
+										isHabit: false,
+										habitConfig: curTask.habitConfig ? { ...curTask.habitConfig, isHabit: false } : undefined,
+										readingConfig: {
+											...(curTask.readingConfig || {}),
+											isReading: true,
+											bookTitle: curTask.readingConfig?.bookTitle || curTask.name,
+											coverEmoji: curTask.readingConfig?.coverEmoji || '📖'
+										}
+									};
+									updateTaskSetting(targetTaskId, updateObj);
+								} else {
+									// 'count' | 'daily_must' | 'weekly_optional'
+									const updateObj = {
+										frequencyType: newFreq,
+										isHabit: false,
+										habitConfig: curTask.habitConfig ? { ...curTask.habitConfig, isHabit: false } : undefined
+									};
+									if (curTask.readingConfig?.isReading) {
+										updateObj.readingConfig = { ...curTask.readingConfig, isReading: false };
+									}
+									// 若切至按次数打卡且原目标次数为0或无效，默认赋予合理的初值
+									if (newFreq === 'count' && (!curTask.targetCount || curTask.targetCount <= 0)) {
+										updateObj.targetCount = 20;
+									}
+									updateTaskSetting(targetTaskId, updateObj);
+								}
+							};
 							
 							// 动态分类：判断是否已完成目标（每日必做/每周选做/生活习惯规范不按总目标次数判定，始终在进行中）
 							childTasks.forEach(task => {
-								const freq = task.frequencyType || 'count';
-								const isHabit = freq === 'habit' || !!task.habitConfig?.isHabit || !!task.isHabit;
-								if (freq === 'daily_must' || freq === 'weekly_optional' || isHabit) {
+								const freq = getTaskEffectiveFreq(task);
+								if (freq === 'daily_must' || freq === 'weekly_optional' || freq === 'habit') {
 									if (task.earlyCompleted) { completedTasksForSetting.push(task); } else { ongoingTasksForSetting.push(task); }
 									return;
 								}
@@ -2341,13 +2424,8 @@ const CopyIcon = (props) => (
 								}
 								if (taskTypeFilter && (task.type === 'core' ? 'core' : 'daily') !== taskTypeFilter) return false;
 								if (taskFreqFilter) {
-									const isHabit = task.frequencyType === 'habit' || !!task.habitConfig?.isHabit || !!task.isHabit;
-									if (taskFreqFilter === 'habit') {
-										if (!isHabit) return false;
-									} else {
-										if (isHabit) return false;
-										if ((task.frequencyType || 'count') !== taskFreqFilter) return false;
-									}
+									const freq = getTaskEffectiveFreq(task);
+									if (freq !== taskFreqFilter) return false;
 								}
 								return true;
 							};
@@ -2359,12 +2437,12 @@ const CopyIcon = (props) => (
 
 							// 频次徽标
 							const freqLabel = (task) => {
-								const f = task.frequencyType || 'count';
-								if (f === 'habit' || !!task.habitConfig?.isHabit || !!task.isHabit) {
-									return { text: `🌱 习惯·${task.habitConfig?.icon || '💧'}`, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+								const f = getTaskEffectiveFreq(task);
+								if (f === 'habit') {
+									return { text: `🌱 习惯·${task.habitConfig?.icon || '🌱'}`, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
 								}
-								if (f === 'reading' || task.readingConfig?.isReading) {
-									return { text: '📖 伴读', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
+								if (f === 'reading') {
+									return { text: `📖 伴读·${task.readingConfig?.coverEmoji || '📖'}`, cls: 'bg-amber-50 text-amber-700 border-amber-200' };
 								}
 								if (f === 'daily_must') return { text: '每日必做', cls: 'bg-rose-50 text-rose-600 border-rose-200' };
 								if (f === 'weekly_optional') return { text: `每周${task.weeklyTargetCount ?? 3}次`, cls: 'bg-sky-50 text-sky-700 border-sky-200' };
@@ -2398,7 +2476,7 @@ const CopyIcon = (props) => (
 							// 紧凑行：两行布局，默认收起，点击展开为完整编辑卡（同时只展开一张）
 							const renderTaskRow = (task, isCompleted) => {
 								const fl = freqLabel(task);
-								const freq = task.frequencyType || 'count';
+								const freq = getTaskEffectiveFreq(task);
 								const rec = taskRecOf(task);
 								const doneCount = Object.keys(rec).length;
 								const target = task.targetCount || 0;
@@ -2409,7 +2487,24 @@ const CopyIcon = (props) => (
 
 								// 第二行状态
 								let statusNode = null;
-								if (freq === 'count') {
+								if (freq === 'habit') {
+									const isCount = task.habitConfig?.mode === 'count';
+									const hasTarget = isCount && task.habitConfig?.hasTarget !== false && ((task.habitConfig?.targetCount || 0) > 0);
+									const isUnlimited = isCount && !hasTarget;
+									const tgt = hasTarget ? (task.habitConfig?.targetCount || 1) : 1;
+									const todayVal = rec[todayKey];
+									const curToday = todayVal === undefined || todayVal === null || todayVal === '' ? 0 : (typeof todayVal === 'number' ? todayVal : (Array.isArray(todayVal) ? todayVal.length : 1));
+									const unit = task.habitConfig?.unit || (task.habitConfig?.icon === '💧' ? '杯' : '次');
+									if (isUnlimited) {
+										statusNode = <span className="shrink-0 font-semibold text-emerald-600">{curToday > 0 ? `今日已做 ${curToday} ${unit}` : '随时可做'}</span>;
+									} else if (hasTarget) {
+										statusNode = <span className={`shrink-0 font-semibold ${curToday >= tgt ? 'text-emerald-600' : 'text-slate-600'}`}>今日 {curToday}/{tgt} {unit}</span>;
+									} else {
+										statusNode = <span className={`shrink-0 font-semibold ${curToday >= 1 ? 'text-emerald-600' : 'text-slate-600'}`}>{curToday >= 1 ? '今日已达标 ✓' : '今日待打卡'}</span>;
+									}
+								} else if (freq === 'reading') {
+									statusNode = <span className="shrink-0 font-semibold text-amber-700">{task.readingConfig?.bookTitle ? `《${task.readingConfig.bookTitle}》` : '伴读进行中'}</span>;
+								} else if (freq === 'count') {
 									const pct = target > 0 ? Math.min(100, Math.round(doneCount / target * 100)) : 0;
 									statusNode = (
 										<span className="flex items-center gap-1.5 shrink-0">
@@ -2474,7 +2569,7 @@ const CopyIcon = (props) => (
 
 							// 统一的卡片渲染函数（展开态：三段式布局 — 名称区 / 基础区 / 高级折叠区）
 							const renderTaskSettingCard = (task, isCompleted) => {
-								const freq = task.frequencyType || 'count';
+								const freq = getTaskEffectiveFreq(task);
 								const inputCls = "w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all font-medium";
 								const labelCls = "text-[11px] font-bold text-slate-400 block mb-1";
 								// 分段选择按钮（iOS 风格）
@@ -2505,14 +2600,14 @@ const CopyIcon = (props) => (
 											</div>
 											<div className="flex items-center gap-1.5">
 												<button 
-													type="button"
+													type="button" 
 													onClick={() => setExpandedTaskId(null)} 
 													className="px-3 py-1 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 rounded-xl transition-all active:scale-95 cursor-pointer"
 												>
 													▲ 收起编辑
 												</button>
 												<button 
-													type="button"
+													type="button" 
 													onClick={() => handleDeleteTask(task.id)} 
 													className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
 													title="删除任务"
@@ -2552,29 +2647,17 @@ const CopyIcon = (props) => (
 											<div>
 												<label className={labelCls}>打卡频次</label>
 												<div className="flex bg-slate-100 p-1 rounded-xl gap-1 flex-wrap">
-													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'count')} className={seg(freq === 'count')}>按次数</button>
-													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'daily_must')} className={seg(freq === 'daily_must')}>每日</button>
-													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'weekly_optional')} className={seg(freq === 'weekly_optional')}>每周</button>
-													<button type="button" onClick={() => updateTaskSetting(task.id, 'frequencyType', 'reading')} className={seg(freq === 'reading')}>📖 伴读</button>
-													<button type="button" onClick={() => {
-														updateTaskSetting(task.id, 'frequencyType', 'habit');
-														if (!task.habitConfig) {
-															updateTaskSetting(task.id, 'habitConfig', {
-																isHabit: true,
-																icon: task.name?.includes('水') ? '💧' : task.name?.includes('眼') ? '👀' : task.name?.includes('跳绳') ? '🏃' : '🌱',
-																mode: task.name?.includes('水') ? 'count' : 'check',
-																targetCount: task.name?.includes('水') ? 8 : 1,
-																unit: task.name?.includes('水') ? '杯' : '次',
-																color: task.name?.includes('水') ? 'sky' : 'emerald'
-															});
-														}
-													}} className={seg(freq === 'habit' || !!task.habitConfig?.isHabit)}>🌱 习惯</button>
+													<button type="button" onClick={() => handleFrequencyChange(task.id, 'count')} className={seg(freq === 'count')}>按次数</button>
+													<button type="button" onClick={() => handleFrequencyChange(task.id, 'daily_must')} className={seg(freq === 'daily_must')}>每日</button>
+													<button type="button" onClick={() => handleFrequencyChange(task.id, 'weekly_optional')} className={seg(freq === 'weekly_optional')}>每周</button>
+													<button type="button" onClick={() => handleFrequencyChange(task.id, 'reading')} className={seg(freq === 'reading')}>📖 伴读</button>
+													<button type="button" onClick={() => handleFrequencyChange(task.id, 'habit')} className={seg(freq === 'habit')}>🌱 习惯</button>
 												</div>
 											</div>
 										</div>
 
 										{/* 习惯专属微配置 */}
-										{(freq === 'habit' || !!task.habitConfig?.isHabit) && (
+										{freq === 'habit' && (
 											<div className="space-y-3 bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-3.5">
 												<div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
 													<span className="text-xs font-black text-emerald-900 flex items-center gap-1.5">
@@ -2650,12 +2733,15 @@ const CopyIcon = (props) => (
 													<div className="grid grid-cols-1 sm:grid-cols-3 bg-white p-1 rounded-xl border border-emerald-200 gap-1 text-center">
 														<button
 															type="button"
-															onClick={() => updateTaskSetting(task.id, 'habitConfig', {
-																...(task.habitConfig || {}),
-																isHabit: true,
-																mode: 'check',
-																targetCount: 1,
-																hasTarget: true
+															onClick={() => updateTaskSetting(task.id, {
+																habitConfig: {
+																	...(task.habitConfig || {}),
+																	isHabit: true,
+																	mode: 'check',
+																	targetCount: 1,
+																	hasTarget: true
+																},
+																targetCount: 1
 															})}
 															className={seg((task.habitConfig?.mode || 'check') === 'check')}
 														>
@@ -2663,27 +2749,36 @@ const CopyIcon = (props) => (
 														</button>
 														<button
 															type="button"
-															onClick={() => updateTaskSetting(task.id, 'habitConfig', {
-																...(task.habitConfig || {}),
-																isHabit: true,
-																mode: 'count',
-																hasTarget: true,
-																targetCount: ((task.habitConfig?.targetCount || 0) > 1 ? task.habitConfig.targetCount : 8),
-																unit: task.habitConfig?.unit || (task.habitConfig?.icon === '💧' ? '杯' : '次')
-															})}
+															onClick={() => {
+																const tgt = ((task.habitConfig?.targetCount || 0) > 1 ? task.habitConfig.targetCount : 8);
+																updateTaskSetting(task.id, {
+																	habitConfig: {
+																		...(task.habitConfig || {}),
+																		isHabit: true,
+																		mode: 'count',
+																		hasTarget: true,
+																		targetCount: tgt,
+																		unit: task.habitConfig?.unit || (task.habitConfig?.icon === '💧' ? '杯' : '次')
+																	},
+																	targetCount: tgt
+																});
+															}}
 															className={seg(task.habitConfig?.mode === 'count' && (task.habitConfig?.hasTarget !== false && (task.habitConfig?.targetCount || 0) > 0))}
 														>
 															🎯 定量打卡 (设目标总量)
 														</button>
 														<button
 															type="button"
-															onClick={() => updateTaskSetting(task.id, 'habitConfig', {
-																...(task.habitConfig || {}),
-																isHabit: true,
-																mode: 'count',
-																hasTarget: false,
-																targetCount: 0,
-																unit: task.habitConfig?.unit || '次'
+															onClick={() => updateTaskSetting(task.id, {
+																habitConfig: {
+																	...(task.habitConfig || {}),
+																	isHabit: true,
+																	mode: 'count',
+																	hasTarget: false,
+																	targetCount: 0,
+																	unit: task.habitConfig?.unit || '次'
+																},
+																targetCount: 0
 															})}
 															className={seg(task.habitConfig?.mode === 'count' && (task.habitConfig?.hasTarget === false || (task.habitConfig?.targetCount || 0) <= 0))}
 														>
@@ -2725,12 +2820,18 @@ const CopyIcon = (props) => (
 																		min="2"
 																		max="10000"
 																		value={task.habitConfig?.targetCount || 8}
-																		onChange={(e) => updateTaskSetting(task.id, 'habitConfig', {
-																			...(task.habitConfig || {}),
-																			isHabit: true,
-																			hasTarget: true,
-																			targetCount: Math.max(1, parseInt(e.target.value) || 1)
-																		})}
+																		onChange={(e) => {
+																			const val = Math.max(1, parseInt(e.target.value) || 1);
+																			updateTaskSetting(task.id, {
+																				habitConfig: {
+																					...(task.habitConfig || {}),
+																					isHabit: true,
+																					hasTarget: true,
+																					targetCount: val
+																				},
+																				targetCount: val
+																			});
+																		}}
 																		className="w-full px-2.5 py-1.5 bg-emerald-50/50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-700 outline-none"
 																	/>
 																</div>
@@ -2836,8 +2937,8 @@ const CopyIcon = (props) => (
 													type="number" 
 													value={task.targetCount} 
 													onChange={(e) => updateTaskSetting(task.id, 'targetCount', parseInt(e.target.value)||0)}
-													disabled={freq === 'daily_must' || freq === 'weekly_optional' || freq === 'habit' || !!task.habitConfig?.isHabit}
-													className={freq === 'daily_must' || freq === 'weekly_optional' || freq === 'habit' || !!task.habitConfig?.isHabit ? 'w-full px-3 py-2 bg-slate-100 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 cursor-not-allowed' : inputCls + ' font-bold text-slate-700'} 
+													disabled={freq !== 'count'}
+													className={freq !== 'count' ? 'w-full px-3 py-2 bg-slate-100 border border-dashed border-slate-200 rounded-xl text-xs text-slate-400 cursor-not-allowed' : inputCls + ' font-bold text-slate-700'} 
 												/>
 											</div>
 										</div>
@@ -3087,19 +3188,34 @@ const CopyIcon = (props) => (
 															onClick={() => {
 																const currentCfg = task.readingConfig || {};
 																const nextIsReading = !currentCfg.isReading;
-																updateTaskSetting(task.id, 'readingConfig', {
-																	...currentCfg,
-																	isReading: nextIsReading,
-																	bookTitle: currentCfg.bookTitle || task.name || '',
-																	period: currentCfg.period || 'weekly',
-																	mode: currentCfg.mode || 'pages',
-																	totalPages: currentCfg.totalPages || 180,
-																	totalChapters: currentCfg.totalChapters || 12,
-																	dailyTargetMinutes: currentCfg.dailyTargetMinutes || 20,
-																	targetCount: currentCfg.targetCount || 3,
-																	grandReward: currentCfg.grandReward ?? 30,
-																	coverEmoji: currentCfg.coverEmoji || '📖'
-																});
+																if (nextIsReading) {
+																	updateTaskSetting(task.id, {
+																		frequencyType: 'reading',
+																		isHabit: false,
+																		habitConfig: task.habitConfig ? { ...task.habitConfig, isHabit: false } : undefined,
+																		readingConfig: {
+																			...currentCfg,
+																			isReading: true,
+																			bookTitle: currentCfg.bookTitle || task.name || '',
+																			period: currentCfg.period || 'weekly',
+																			mode: currentCfg.mode || 'pages',
+																			totalPages: currentCfg.totalPages || 180,
+																			totalChapters: currentCfg.totalChapters || 12,
+																			dailyTargetMinutes: currentCfg.dailyTargetMinutes || 20,
+																			targetCount: currentCfg.targetCount || 3,
+																			grandReward: currentCfg.grandReward ?? 30,
+																			coverEmoji: currentCfg.coverEmoji || '📖'
+																		}
+																	});
+																} else {
+																	updateTaskSetting(task.id, {
+																		frequencyType: task.frequencyType === 'reading' ? 'count' : (task.frequencyType || 'count'),
+																		readingConfig: {
+																			...currentCfg,
+																			isReading: false
+																		}
+																	});
+																}
 															}}
 															className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
 																task.readingConfig?.isReading 
@@ -3428,12 +3544,16 @@ const CopyIcon = (props) => (
 												const isRope = name.includes('跳绳') || name.includes('跑');
 												const isTooth = name.includes('牙');
 												const isSleep = name.includes('睡');
+												const hasTarget = !isEye && (isWater || isRope || isTooth);
+												const targetCount = isWater ? 8 : isRope ? 500 : isTooth ? 2 : (isEye ? 0 : 1);
+												overrides.isHabit = true;
+												overrides.targetCount = hasTarget ? targetCount : 0;
 												overrides.habitConfig = {
 													isHabit: true,
 													icon: isWater ? '💧' : isEye ? '👀' : isRope ? '🏃' : isTooth ? '🪥' : isSleep ? '🛏️' : '🌱',
 													mode: (isWater || isRope || isTooth || isEye) ? 'count' : 'check',
-													hasTarget: !isEye && (isWater || isRope || isTooth),
-													targetCount: isWater ? 8 : isRope ? 500 : isTooth ? 2 : (isEye ? 0 : 1),
+													hasTarget,
+													targetCount,
 													unit: isWater ? '杯' : isRope ? '下' : '次',
 													color: isWater ? 'sky' : (isRope ? 'amber' : (isSleep ? 'purple' : 'emerald'))
 												};

@@ -24,9 +24,9 @@ export const HabitFloatingButton = ({
     return (habitTasks || []).map(t => {
       const cfg = t.habitConfig || {};
       const isCount = cfg.mode === 'count';
-      const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (t.targetCount || 0) > 1);
+      const hasTarget = isCount && cfg.hasTarget !== false && ((cfg.targetCount || 0) > 0);
       const isUnlimited = isCount && !hasTarget;
-      const target = hasTarget ? (cfg.targetCount || t.targetCount || 8) : 1;
+      const target = hasTarget ? Math.max(1, cfg.targetCount || 1) : 1;
       const rec = checkins[activeChild]?.[t.id] || {};
       const val = rec[todayStr];
       const cur = val === undefined || val === null || val === '' ? 0 : (typeof val === 'number' ? val : (Array.isArray(val) ? val.length : 1));

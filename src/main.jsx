@@ -625,7 +625,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             // 元气生活坊：筛选当前孩子的生活习惯规范任务
             const activeHabitTasks = useMemo(() => {
                 const childTasks = tasks[deferredActiveChild] || [];
-                return childTasks.filter(t => (t.frequencyType === 'habit' || !!t.isHabit || !!t.habitConfig?.isHabit) && !t.earlyCompleted);
+                return childTasks.filter(t => (t.frequencyType === 'habit' || (!t.frequencyType && (!!t.isHabit || !!t.habitConfig?.isHabit))) && !t.earlyCompleted);
             }, [tasks, deferredActiveChild]);
 
             const [showHabitPavilion, setShowHabitPavilion] = useState(false);
@@ -2659,6 +2659,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 						},
 						closeReadingCheckin: () => setShowReadingQuickCheckin(false)
 					};
+					window.__dakaApp = window.__tier7_debug;
 				}
 			
 			// --- 商店购买逻辑 (修复版：增加弹窗 + 强制状态更新) ---
@@ -6301,8 +6302,8 @@ ${context}
                     : (typeof curRaw === 'number' ? curRaw : (Array.isArray(curRaw) ? curRaw.length : 1));
                 const cfg = task.habitConfig || {};
                 const isCount = cfg.mode === 'count';
-                const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (task.targetCount || 0) > 1);
-                const target = hasTarget ? (cfg.targetCount || task.targetCount || 8) : 1;
+                const hasTarget = isCount && cfg.hasTarget !== false && ((cfg.targetCount || 0) > 0);
+                const target = hasTarget ? Math.max(1, cfg.targetCount || 1) : 1;
 
                 let nextVal = 0;
                 let rewardDelta = 0;
@@ -6903,7 +6904,16 @@ ${context}
             };
 
             const updateTaskSetting = (taskId, field, value) => {
-                setTasks(prev => ({ ...prev, [activeChild]: prev[activeChild].map(t => t.id === taskId ? { ...t, [field]: value } : t) }));
+                setTasks(prev => ({
+                    ...prev,
+                    [activeChild]: (prev[activeChild] || []).map(t => {
+                        if (t.id !== taskId) return t;
+                        if (typeof field === 'object' && field !== null) {
+                            return { ...t, ...field };
+                        }
+                        return { ...t, [field]: value };
+                    })
+                }));
                 triggerSyncUpload();
             };
 

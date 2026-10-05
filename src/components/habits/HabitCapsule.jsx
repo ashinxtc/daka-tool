@@ -102,8 +102,8 @@ export function getHabitStreak(task, taskRecord = {}, todayStr) {
   if (!task || !taskRecord) return 0;
   const cfg = task.habitConfig || {};
   const isCount = cfg.mode === 'count';
-  const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (task.targetCount || 0) > 1);
-  const target = hasTarget ? (cfg.targetCount || task.targetCount || 1) : 1;
+  const hasTarget = isCount && cfg.hasTarget !== false && ((cfg.targetCount || 0) > 0);
+  const target = hasTarget ? Math.max(1, cfg.targetCount || 1) : 1;
 
   const isDayDone = (dateKey) => {
     const val = taskRecord[dateKey];
@@ -158,9 +158,9 @@ export const HabitCapsule = ({
 
   const cfg = task.habitConfig || {};
   const isCount = cfg.mode === 'count';
-  const hasTarget = isCount && ((cfg.targetCount || 0) > 0 || (task.targetCount || 0) > 1);
+  const hasTarget = isCount && cfg.hasTarget !== false && ((cfg.targetCount || 0) > 0);
   const isUnlimited = isCount && !hasTarget;
-  const target = hasTarget ? (cfg.targetCount || task.targetCount || 8) : 1;
+  const target = hasTarget ? Math.max(1, cfg.targetCount || 1) : 1;
   const unit = cfg.unit || (cfg.icon === '💧' ? '杯' : '次');
   const icon = cfg.icon || '🌱';
   const reward = task.reward || 1;
