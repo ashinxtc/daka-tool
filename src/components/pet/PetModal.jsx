@@ -94,6 +94,41 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
             });
         };
 
+        // 具有 WebP 闲置帧动画的宠物及实际拥有的帧列表（避免盲目探测不存在的 .webp 导致浏览器报 404）
+        const PET_IDLE_FRAMES = {
+            'teddy': [
+                'pet_animations/teddy/teddy-idle.webp',
+                'pet_animations/teddy/teddy-idle2.webp',
+                'pet_animations/teddy/teddy-idle3.webp',
+                'pet_animations/teddy/teddy-idle4.webp',
+            ],
+            'husky': [
+                'pet_animations/husky/husky-idle.webp',
+                'pet_animations/husky/husky-idle2.webp',
+            ],
+            'angora-rabbit': [
+                'pet_animations/angora-rabbit/angora-rabbit-idle.webp',
+            ],
+            'lizard': [
+                'pet_animations/lizard/lizard-idle.webp',
+            ],
+            't-rex': [
+                'pet_animations/t-rex/t-rex-idle.webp',
+            ],
+            'whitecat': [
+                'pet_animations/whitecat/whitecat-idle.webp',
+            ],
+        };
+
+        // 具有 WebP 互动动作动画的宠物与对应后缀映射
+        const PET_ACTION_ANIMATIONS = {
+            'teddy': { feed: 'feed', bath: 'bath', sleep: 'sleep', click: 'click', pet: 'click' },
+            'angora-rabbit': { feed: 'feed', bath: 'bath', sleep: 'sleep', click: 'click', pet: 'click' },
+            'husky': { feed: 'feed', sleep: 'sleep', click: 'click', pet: 'click' },
+            'lizard': { feed: 'feed', bath: 'bath', sleep: 'sleep' },
+            'whitecat': { click: 'touch', pet: 'touch' },
+        };
+
         // 用户卡片内宠物 idle 动画组件（多帧循环 + 三级降级）
         const CardPetImage = ({ petId }) => {
             const [idleFrames, setIdleFrames] = React.useState([]);
@@ -103,8 +138,13 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
 
             React.useEffect(() => {
                 if (!petId) return;
-                const base = 'pet_animations/' + petId + '/' + petId + '-idle';
-                const frames = [base + '.webp', base + '2.webp', base + '3.webp', base + '4.webp'];
+                const frames = PET_IDLE_FRAMES[petId] || [];
+                if (frames.length === 0) {
+                    setIdleFrames([]);
+                    setAnimSrc(null);
+                    setFailStage(1);
+                    return;
+                }
                 let loaded = [];
                 let done = 0;
                 frames.forEach((src) => {
@@ -188,8 +228,12 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                 if (prevPetRef.current === petId) return;
                 prevPetRef.current = petId;
                 setAnimSrc(null);
-                const base = 'pet_animations/' + petId + '/' + petId + '-idle';
-                const frames = [base + '.webp', base + '2.webp', base + '3.webp', base + '4.webp'];
+                const frames = PET_IDLE_FRAMES[petId] || [];
+                if (frames.length === 0) {
+                    setIdleFrames([]);
+                    setAnimSrc(null);
+                    return;
+                }
                 let loaded = [];
                 let done = 0;
                 frames.forEach((src) => {
@@ -221,7 +265,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
             }, [idleFrames]);
 
             const playActionAnim = (actionKey) => {
-                const actionMap = { feed: 'feed', bath: 'bath', sleep: 'sleep', click: 'click', pet: 'click', play: 'play' };
+                const actionMap = PET_ACTION_ANIMATIONS[petId] || {};
                 const suffix = actionMap[actionKey];
                 if (!suffix) return;
                 actionAnimRef.current = true;

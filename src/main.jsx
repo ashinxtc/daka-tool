@@ -4155,6 +4155,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     //    （版本缺失视为 0 = "该设备未改过这个 key"）
                     //    首次同步（localTs === 0）的设备一律取云端，防止新设备的本地测试数据覆盖家庭真实数据
                     const lv = localVersions[key] || 0;
+                    const cv = cloudVersions[key] || 0;
                     const hasPulled = storage.getItem('_sync_has_pulled_v1') === '1';
                     let takeCloud;
                     if (localTs === 0 || !hasPulled) takeCloud = true;
