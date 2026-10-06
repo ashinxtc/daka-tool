@@ -680,8 +680,15 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             }, [activeChild]);
 
             // 自愈机制：若 tasks / checkins 中已有某孩子数据，但 profiles 列表中缺失，自动补全回 profiles
+            // 严格防护：已被主动除名的成员（app_deleted_profiles_v1）严禁自愈复活，并自动清理残留孤儿数据
             useEffect(() => {
                 if (!tasks && !checkins) return;
+                let deletedMap = {};
+                try {
+                    const raw = storage.getItem('app_deleted_profiles_v1');
+                    if (raw) deletedMap = JSON.parse(raw);
+                } catch (e) {}
+
                 const knownNames = new Set((profiles || []).map(p => p.name));
                 const allChildKeys = new Set([
                     ...Object.keys(tasks || {}),
@@ -691,6 +698,16 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 const missingKids = [];
                 allChildKeys.forEach(k => {
                     if (!ignoreKeys.has(k) && !knownNames.has(k)) {
+                        if (deletedMap[k]) {
+                            // 该成员已被除名，自动清理残留孤儿数据
+                            if (tasks && k in tasks) {
+                                setTasks(prev => { const n = { ...prev }; delete n[k]; storage.setItem('app_tasks_v2', JSON.stringify(n)); return n; });
+                            }
+                            if (checkins && k in checkins) {
+                                setCheckins(prev => { const n = { ...prev }; delete n[k]; storage.setItem('app_checkins_v2', JSON.stringify(n)); return n; });
+                            }
+                            return;
+                        }
                         missingKids.push(k);
                     }
                 });
@@ -704,7 +721,8 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                             theme: name === 'Henry' ? 'amber' : name === 'Yoly' ? 'celadon' : name === 'William' ? 'rose' : 'sky',
                             avatar: null,
                             grade: 1,
-                            createdDate: getLocalDateKey(0)
+                            createdDate: getLocalDateKey(0),
+                            createdAt: Date.now()
                         });
                     });
                     setProfiles(newProfiles);
@@ -1219,6 +1237,93 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 }).catch(() => {});
             }, [reportConfig.enabled, reportConfig.formspreeUrl, profiles, checkins, tasks, achievements, wheelHistory, activeBuffs, xpHistory, userCity, realWeather]);
 
+            // 彻底清理某成员在本地所有子系统中的数据，防止孤儿数据与被自愈复活
+            const purgeChildAllData = (childName, childId) => {
+                const keysToRemove = [childName, childId].filter(Boolean);
+                const purgeObj = (obj) => {
+                    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+                    let modified = false;
+                    const next = { ...obj };
+                    keysToRemove.forEach(k => {
+                        if (k in next) { delete next[k]; modified = true; }
+                    });
+                    return modified ? next : obj;
+                };
+                const purgeAndStore = (stateSetter, storageKey) => {
+                    stateSetter(prev => {
+                        const next = purgeObj(prev);
+                        if (next !== prev) {
+                            storage.setItem(storageKey, JSON.stringify(next));
+                            storage.markKeyVersion(storageKey);
+                        }
+                        return next;
+                    });
+                };
+
+                purgeAndStore(setTasks, 'app_tasks_v2');
+                purgeAndStore(setCheckins, 'app_checkins_v2');
+                purgeAndStore(setStats, 'app_stats_v1');
+                purgeAndStore(setInventory, 'app_inventory_v1');
+                purgeAndStore(setAchievements, 'app_achievements_v1');
+                purgeAndStore(setPetData, 'app_pet_data_v1');
+                purgeAndStore(setOwnedPets, 'app_owned_pets_v1');
+                purgeAndStore(setActivePet, 'app_active_pet_v1');
+                purgeAndStore(setPetStats, 'app_pet_stats_v1');
+                purgeAndStore(setPetCooldowns, 'app_pet_cooldowns_v1');
+                purgeAndStore(setPetSkillCooldowns, 'app_pet_skill_cd_v1');
+                purgeAndStore(setPetBuffs, 'app_pet_buffs_v1');
+                purgeAndStore(setPetAdventures, 'app_pet_adventures_v1');
+                purgeAndStore(setPetAdventureLog, 'app_pet_adventure_log_v1');
+                purgeAndStore(setPetAdventureStats, 'app_pet_adventure_stats_v1');
+                purgeAndStore(setPetSlots, 'app_pet_slots_v1');
+                purgeAndStore(setPetNotif, 'app_pet_notif_v1');
+                purgeAndStore(setReadingHistory, 'app_reading_history_v1');
+                purgeAndStore(setShelvedBooks, 'app_reading_shelved_v1');
+                purgeAndStore(setExemptedDays, 'app_exempted_days_v1');
+                purgeAndStore(setEquippedGear, 'app_equipped_gear_v1');
+                purgeAndStore(setActiveBuffs, 'app_active_buffs_v1');
+                purgeAndStore(setRedeemedCoupons, 'app_coupons_v1');
+                purgeAndStore(setHomeworkRecords, 'app_homework_records_v1');
+                purgeAndStore(setExamRecords, 'app_exam_records_v1');
+                purgeAndStore(setRepairedCheckins, 'app_repaired_checkins_v1');
+                purgeAndStore(setHistoricalEventProgress, 'app_historical_event_progress_v1');
+                purgeAndStore(setWeeklyPayroll, 'app_weekly_payroll_v1');
+                purgeAndStore(setActiveSilenceMutes, 'app_silence_mutes_v1');
+
+                // 清理带前缀的历史记录（wheelHistory 与 xpHistory）
+                const purgePrefixHistory = (stateSetter, storageKey) => {
+                    stateSetter(prev => {
+                        if (!prev || typeof prev !== 'object') return prev;
+                        let modified = false;
+                        const next = { ...prev };
+                        Object.keys(next).forEach(k => {
+                            if (keysToRemove.some(name => k.startsWith(`${name}-`))) {
+                                delete next[k];
+                                modified = true;
+                            }
+                        });
+                        if (modified) {
+                            storage.setItem(storageKey, JSON.stringify(next));
+                            storage.markKeyVersion(storageKey);
+                        }
+                        return next;
+                    });
+                };
+                purgePrefixHistory(setWheelHistory, 'app_wheel_history');
+                purgePrefixHistory(setXpHistory, 'app_xp_history');
+
+                // 清理 app_stars_v1
+                try {
+                    const rawStars = storage.getItem('app_stars_v1');
+                    if (rawStars) {
+                        const sObj = JSON.parse(rawStars);
+                        let m = false;
+                        keysToRemove.forEach(k => { if (k in sObj) { delete sObj[k]; m = true; } });
+                        if (m) { storage.setItem('app_stars_v1', JSON.stringify(sObj)); storage.markKeyVersion('app_stars_v1'); }
+                    }
+                } catch (e) {}
+            };
+
             // --- Effect: 处理测试账号的添加与移除 ---
             useEffect(() => {
                 if (isTestMode) {
@@ -1226,9 +1331,22 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                     if (syncCode && !storage.getItem('_sync_has_pulled_v1') && profiles.length === 0) {
                         return;
                     }
+                    // 如果开启测试模式，清除测试员除名墓碑
+                    try {
+                        const raw = storage.getItem('app_deleted_profiles_v1');
+                        if (raw) {
+                            const tombstones = JSON.parse(raw);
+                            if (tombstones['TESTER'] || tombstones['测试员']) {
+                                delete tombstones['TESTER'];
+                                delete tombstones['测试员'];
+                                storage.setItem('app_deleted_profiles_v1', JSON.stringify(tombstones));
+                                storage.markKeyVersion('app_deleted_profiles_v1');
+                            }
+                        }
+                    } catch (e) {}
                     // 如果开启测试模式，且没有测试员账号，则添加
-                    if (!profiles.find(p => p.id === 'TESTER')) {
-                        const tester = { id: 'TESTER', name: '测试员', theme: 'emerald', avatar: null };
+                    if (!profiles.find(p => p.id === 'TESTER' || p.name === '测试员')) {
+                        const tester = { id: 'TESTER', name: '测试员', theme: 'emerald', avatar: null, createdAt: Date.now() };
                         setProfiles(prev => [...prev, tester]);
                         setTasks(prev => ({ ...prev, '测试员': (prev['测试员'] && prev['测试员'].length > 0) ? prev['测试员'] : [] })); 
                         // 为测试员预填充所有道具（保留已有道具）
@@ -1237,13 +1355,30 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                         setInventory(prev => ({ ...prev, '测试员': prev['测试员'] || allItems }));
                     }
                 } else {
-                    // 如果关闭测试模式，且存在测试员账号，则移除
-                    if (profiles.find(p => p.id === 'TESTER')) {
-                        setProfiles(prev => prev.filter(p => p.id !== 'TESTER'));
+                    // 如果关闭测试模式，且存在测试员账号，则彻底除名并打墓碑
+                    const testerProfile = profiles.find(p => p.id === 'TESTER' || p.name === '测试员');
+                    if (testerProfile) {
+                        const now = Date.now();
+                        let currentDeleted = {};
+                        try { currentDeleted = JSON.parse(storage.getItem('app_deleted_profiles_v1') || '{}'); } catch (e) {}
+                        currentDeleted['TESTER'] = now;
+                        currentDeleted['测试员'] = now;
+                        storage.setItem('app_deleted_profiles_v1', JSON.stringify(currentDeleted));
+                        storage.markKeyVersion('app_deleted_profiles_v1');
+
+                        const nextProfiles = profiles.filter(p => p.id !== 'TESTER' && p.name !== '测试员');
+                        setProfiles(nextProfiles);
+                        storage.setItem('app_profiles_v1', JSON.stringify(nextProfiles));
+                        storage.markKeyVersion('app_profiles_v1');
+                        storage.setItem('_sync_cloud_profiles_count', String(nextProfiles.length));
+
+                        purgeChildAllData('测试员', 'TESTER');
+
                         // 如果当前正好选中了测试员，切回第一个人
-                        if (activeChild === '测试员' && profiles.length > 0) {
-                            startTransition(() => setActiveChild(profiles[0].name !== '测试员' ? profiles[0].name : (profiles[1] ? profiles[1].name : '')));
+                        if ((activeChild === '测试员' || activeChild === 'TESTER') && nextProfiles.length > 0) {
+                            startTransition(() => setActiveChild(nextProfiles[0].name));
                         }
+                        triggerSyncUpload();
                     }
                 }
             }, [isTestMode, profiles, activeChild]);
@@ -3505,6 +3640,22 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_repaired_checkins_v1',
             ]);
 
+            // 读取已除名成员墓碑集合 { nameOrId: timestamp }
+            const getDeletedProfileTombstones = () => {
+                try {
+                    const raw = storage.getItem('app_deleted_profiles_v1');
+                    return raw ? JSON.parse(raw) : {};
+                } catch (e) {
+                    return {};
+                }
+            };
+
+            const isChildOrProfileDeleted = (nameOrId, tombstones) => {
+                if (!nameOrId || nameOrId === '0' || nameOrId === '123' || nameOrId === 'undefined' || nameOrId === 'null') return false;
+                const ts = tombstones || getDeletedProfileTombstones();
+                return !!ts[nameOrId];
+            };
+
             // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方）
             const mergeFlatDict = (localObj, cloudObj) => {
                 const merged = { ...cloudObj };
@@ -3523,7 +3674,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
                 children.forEach(child => {
+                    if (isChildOrProfileDeleted(child, deletedTombstones)) {
+                        if (cloudObj[child] && Object.keys(cloudObj[child]).length > 0) cloudChanged = true;
+                        return;
+                    }
                     const lChild = localObj[child] || {}, cChild = cloudObj[child] || {};
                     merged[child] = {};
                     const taskIds = new Set([...Object.keys(lChild), ...Object.keys(cChild)]);
@@ -3558,7 +3714,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
                 children.forEach(child => {
+                    if (isChildOrProfileDeleted(child, deletedTombstones)) {
+                        if (cloudObj[child] && Object.keys(cloudObj[child]).length > 0) cloudChanged = true;
+                        return;
+                    }
                     const l = localObj[child] || {}, c = cloudObj[child] || {};
                     const r = mergeFlatDict(l, c);
                     merged[child] = r.merged;
@@ -3603,7 +3764,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
                 children.forEach(child => {
+                    if (isChildOrProfileDeleted(child, deletedTombstones)) {
+                        if (cloudObj[child] && cloudObj[child].length > 0) cloudChanged = true;
+                        return;
+                    }
                     const l = Array.isArray(localObj[child]) ? localObj[child] : [];
                     const c = Array.isArray(cloudObj[child]) ? cloudObj[child] : [];
                     const r = (entryMergeFn || mergeEntryArray)(l, c, sortFn, cap);
@@ -3717,7 +3883,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
                 children.forEach(child => {
+                    if (isChildOrProfileDeleted(child, deletedTombstones)) {
+                        if (cloudObj[child] && Object.keys(cloudObj[child]).length > 0) cloudChanged = true;
+                        return;
+                    }
                     const l = localObj[child] || {}, c = cloudObj[child] || {};
                     merged[child] = {};
                     const petIds = new Set([...Object.keys(l), ...Object.keys(c)]);
@@ -3740,18 +3911,34 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             // 成员档案合并：[ { id, name, theme, avatar, grade, createdDate } ]
             // 按 name / id 作为唯一身份键做并集合并，双向无损。
             // 冲突时：保留非空有效头像（避免被 null 覆盖）、保留较高年级、保留非空主题。
+            // 墓碑机制：已被主动除名的成员（app_deleted_profiles_v1）不复活，且驱动云端同步清除。
             const mergeProfiles = (localArr, cloudArr) => {
                 if (!Array.isArray(localArr) && !Array.isArray(cloudArr)) return null;
                 const l = Array.isArray(localArr) ? localArr : [];
                 const c = Array.isArray(cloudArr) ? cloudArr : [];
                 const map = new Map();
                 let cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
+
+                const isItemDeleted = (p) => {
+                    if (!p || typeof p !== 'object') return true;
+                    const key = p.name || p.id;
+                    const deletedAt = deletedTombstones[key] || (p.name && deletedTombstones[p.name]) || (p.id && deletedTombstones[p.id]);
+                    if (!deletedAt) return false;
+                    const createdAt = p.createdAt || (p.createdDate ? Date.parse(p.createdDate) : 0) || 0;
+                    return !createdAt || createdAt <= deletedAt;
+                };
 
                 // 先放入云端配置
                 c.forEach(cp => {
                     if (!cp || typeof cp !== 'object') return;
                     const key = cp.name || cp.id;
-                    if (key) map.set(key, { ...cp });
+                    if (!key) return;
+                    if (isItemDeleted(cp)) {
+                        cloudChanged = true;
+                        return;
+                    }
+                    map.set(key, { ...cp });
                 });
 
                 // 再合入本地配置
@@ -3759,6 +3946,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     if (!lp || typeof lp !== 'object') return;
                     const key = lp.name || lp.id;
                     if (!key) return;
+                    if (isItemDeleted(lp)) return;
                     if (!map.has(key)) {
                         map.set(key, { ...lp });
                         cloudChanged = true;
@@ -3808,9 +3996,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 } catch (e) {}
 
                 const now = Date.now();
+                const deletedProfileTombstones = getDeletedProfileTombstones();
 
                 allChildren.forEach(child => {
                     if (child === '0' || child === 'undefined' || child === 'null' || !child) return;
+                    if (isChildOrProfileDeleted(child, deletedProfileTombstones)) {
+                        if (cloudObj[child] && cloudObj[child].length > 0) cloudChanged = true;
+                        return;
+                    }
                     const lTasks = Array.isArray(localObj[child]) ? localObj[child] : null;
                     const cTasks = Array.isArray(cloudObj[child]) ? cloudObj[child] : null;
 
@@ -3886,8 +4079,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const allKeys = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
 
                 allKeys.forEach(k => {
+                    if (isChildOrProfileDeleted(k, deletedTombstones)) {
+                        if (cloudObj[k] !== undefined) cloudChanged = true;
+                        return;
+                    }
                     const lVal = localObj[k];
                     const cVal = cloudObj[k];
                     const isLObj = lVal && typeof lVal === 'object' && !Array.isArray(lVal);
@@ -3939,8 +4137,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const allKeys = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
 
                 allKeys.forEach(k => {
+                    if (isChildOrProfileDeleted(k, deletedTombstones)) {
+                        if (cloudObj[k] !== undefined) cloudChanged = true;
+                        return;
+                    }
                     const lVal = localObj[k];
                     const cVal = cloudObj[k];
                     const isLObj = lVal && typeof lVal === 'object' && !Array.isArray(lVal);
@@ -3972,8 +4175,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const merged = {};
                 const allChildren = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
 
                 allChildren.forEach(c => {
+                    if (isChildOrProfileDeleted(c, deletedTombstones)) {
+                        if (cloudObj[c] !== undefined) cloudChanged = true;
+                        return;
+                    }
                     const lv = localObj[c];
                     const cv = cloudObj[c];
                     if (lv === undefined) {
@@ -3999,6 +4207,33 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // 语义合并注册表：key → 处理函数(localObj, cloudObj) → { merged, localChanged, cloudChanged }
             const SEMANTIC_MERGERS = {
+                // 成员除名墓碑表：按成员身份取最新删除时间戳
+                'app_deleted_profiles_v1': (l, c) => {
+                    if (!l && !c) return null;
+                    const merged = { ...(c || {}) };
+                    let cloudChanged = false, localChanged = false;
+                    const now = Date.now();
+                    Object.entries(l || {}).forEach(([k, ts]) => {
+                        if (!merged[k] || ts > merged[k]) {
+                            merged[k] = ts;
+                            cloudChanged = true;
+                        }
+                    });
+                    Object.entries(c || {}).forEach(([k, ts]) => {
+                        if (!l || !l[k] || ts > l[k]) {
+                            localChanged = true;
+                        }
+                    });
+                    // 清理超过 90 天的旧墓碑
+                    Object.keys(merged).forEach(k => {
+                        if (now - merged[k] > 90 * 86400000) {
+                            delete merged[k];
+                            cloudChanged = true;
+                            localChanged = true;
+                        }
+                    });
+                    return { merged, localChanged, cloudChanged };
+                },
                 // 成员档案表：按成员身份（name/id）并集合并，属性互补，避免单设备覆盖导致其他小孩丢失
                 'app_profiles_v1': (l, c) => mergeProfiles(l, c),
                 // 任务定义表：按 child 并集；同 child 按 task.id 深度合并，永不覆盖冲掉
@@ -4132,8 +4367,24 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const adoptVersions = {};
                 let needUpload = false;
 
+                // 优先处理成员除名墓碑：确保后续所有表（档案、任务、打卡、背包、宠物等）合并时都能立即感知最新墓碑
+                if ('app_deleted_profiles_v1' in cloudData) {
+                    const localDelStr = ('app_deleted_profiles_v1' in localSnapshot) ? localSnapshot['app_deleted_profiles_v1'] : null;
+                    const delRes = tryMergeSyncKey('app_deleted_profiles_v1', localDelStr, cloudData['app_deleted_profiles_v1']);
+                    if (delRes) {
+                        if (delRes.localChanged) {
+                            writes['app_deleted_profiles_v1'] = delRes.value;
+                            try { storage.setItem('app_deleted_profiles_v1', delRes.value); } catch (e) {}
+                        }
+                        if (delRes.cloudChanged) needUpload = true;
+                    }
+                }
+                if (localSnapshot['app_deleted_profiles_v1'] && !('app_deleted_profiles_v1' in cloudData)) {
+                    needUpload = true;
+                }
+
                 Object.entries(cloudData).forEach(([key, cloudVal]) => {
-                    if (key === '_syncTs' || key === '_keyVersions') return;
+                    if (key === '_syncTs' || key === '_keyVersions' || key === 'app_deleted_profiles_v1') return;
                     const localVal = (key in localSnapshot) ? localSnapshot[key] : null;
 
                     // 1. 追加型字典：语义并集合并，双向无损
@@ -4241,8 +4492,15 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             const syncToCloud = async (force = false) => {
                 if (!syncCode) return;
+                // 优先从 storage 读取最新 profiles 镜像，防止 React 闭包陈旧
+                let currentProfiles = profiles;
+                try {
+                    const sp = JSON.parse(storage.getItem('app_profiles_v1') || '[]');
+                    if (Array.isArray(sp) && sp.length > 0) currentProfiles = sp;
+                } catch (e) {}
+
                 // 严格保护1：如果本地 profiles 列表为空，绝对禁止上传，防止新设备空数据覆盖云端
-                if (!profiles || profiles.length === 0) {
+                if (!currentProfiles || currentProfiles.length === 0) {
                     console.warn('[Sync Safety] syncToCloud skipped: profiles is empty, refusing to overwrite cloud');
                     return;
                 }
@@ -4256,18 +4514,20 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
 
                 // 严格保护3：成员数量防减员熔断
-                // 若云端上次已知有 N 个成员，而本地成员数量 < N，坚决拦截上传，并自动触发重新拉取
+                // 若云端上次已知有 N 个成员，而本地有效成员数 + 主动除名墓碑数 < N，坚决拦截上传，并自动触发重新拉取
                 const cloudProfilesCount = parseInt(storage.getItem('_sync_cloud_profiles_count') || '0', 10);
-                if (cloudProfilesCount > 0 && profiles.length < cloudProfilesCount) {
-                    console.warn(`[Sync Safety] Local profiles count (${profiles.length}) < cloud (${cloudProfilesCount}). Refusing upload to prevent child wipeout!`);
-                    showToast('warning', '检测到本地家庭成员数量少于云端，已自动拦截上传并重新合并云端数据！');
+                const deletedTombstones = getDeletedProfileTombstones();
+                const validDeletedCount = Object.keys(deletedTombstones).length;
+                if (cloudProfilesCount > 0 && (currentProfiles.length + validDeletedCount) < cloudProfilesCount) {
+                    console.warn(`[Sync Safety] Local profiles count (${currentProfiles.length}) + deleted (${validDeletedCount}) < cloud (${cloudProfilesCount}). Refusing upload to prevent child wipeout!`);
+                    showToast('warning', '检测到本地家庭成员数量异常减少，已自动拦截上传并重新合并云端数据！');
                     syncFromCloud();
                     return;
                 }
 
                 // 严格保护4：单测试员防御
-                // 若本地仅有 1 个成员且为"测试员"，但云端曾有多个成员，禁止上传
-                if (profiles.length === 1 && profiles[0].name === '测试员' && cloudProfilesCount > 1) {
+                // 若本地仅有 1 个成员且为"测试员"，但云端曾有多个成员且没有主动除名墓碑，禁止上传
+                if (currentProfiles.length === 1 && currentProfiles[0].name === '测试员' && cloudProfilesCount > 1 && validDeletedCount === 0) {
                     console.warn('[Sync Safety] Blocked upload: device only has "测试员" while cloud has multi-child family');
                     syncFromCloud();
                     return;
@@ -4311,6 +4571,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const newHash = hashSyncPayload(data);
                     storage.setItem('_sync_last_hash', newHash);
                     storage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
+                    storage.setItem('_sync_cloud_profiles_count', String(currentProfiles.length)); // 更新云端已知成员数
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
@@ -4361,8 +4622,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     // 记录云端特征指标（用于后续上传前的安全门禁对比）
                     try {
                         const cp = JSON.parse(cloudData.app_profiles_v1 || '[]');
+                        const dt = JSON.parse(cloudData.app_deleted_profiles_v1 || storage.getItem('app_deleted_profiles_v1') || '{}');
                         if (Array.isArray(cp) && cp.length > 0) {
-                            storage.setItem('_sync_cloud_profiles_count', String(cp.length));
+                            const validProfiles = cp.filter(p => {
+                                if (!p) return false;
+                                const k = p.name || p.id;
+                                return !dt[k] && !(p.name && dt[p.name]) && !(p.id && dt[p.id]);
+                            });
+                            storage.setItem('_sync_cloud_profiles_count', String(validProfiles.length));
                         }
                         const ct = JSON.parse(cloudData.app_tasks_v2 || '{}');
                         if (typeof ct === 'object' && ct !== null) {
@@ -7441,7 +7708,24 @@ ${context}
             const handleAddProfile = () => {
 				const name = prompt("请输入新孩子的名字：");
 				if (name && !profiles.find(p => p.name === name)) {
-					setProfiles([...profiles, { id: name, name, theme: 'sky', avatar: null, grade: 1, createdDate: getLocalDateKey(0) }]);
+                    // 如果曾经被除名过，清除该成员墓碑
+                    try {
+                        const raw = storage.getItem('app_deleted_profiles_v1');
+                        if (raw) {
+                            const tombstones = JSON.parse(raw);
+                            if (tombstones[name]) {
+                                delete tombstones[name];
+                                storage.setItem('app_deleted_profiles_v1', JSON.stringify(tombstones));
+                                storage.markKeyVersion('app_deleted_profiles_v1');
+                            }
+                        }
+                    } catch (e) {}
+
+					const newProfiles = [...profiles, { id: name, name, theme: 'sky', avatar: null, grade: 1, createdDate: getLocalDateKey(0), createdAt: Date.now() }];
+					setProfiles(newProfiles);
+                    storage.setItem('app_profiles_v1', JSON.stringify(newProfiles));
+                    storage.markKeyVersion('app_profiles_v1');
+                    storage.setItem('_sync_cloud_profiles_count', String(newProfiles.length));
 					setTasks(prev => ({...prev, [name]: []}));
 					if (!activeChild) startTransition(() => setActiveChild(name)); // 如果是第一个账户，自动选中
 					triggerSyncUpload();
@@ -7454,15 +7738,37 @@ ${context}
                     showToast('warning', '至少保留一名成员，无法删除！');
                     return;
                 }
+
+                const targetProfile = profiles.find(p => p.id === profileId || p.name === profileId);
+                const targetName = targetProfile ? targetProfile.name : profileId;
+                const targetId = targetProfile ? targetProfile.id : profileId;
                 
-                if (confirm("🚨 警告：删除不可恢复！\n\n确定要删除这位成员吗？\n删除后，该成员的所有数据（成就、等级、背包、进度）都将永久丢失。")) {
-                    const newProfiles = profiles.filter(p => p.id !== profileId);
+                if (confirm(`🚨 警告：删除不可恢复！\n\n确定要除名成员【${targetName}】吗？\n除名后，该成员的所有数据（打卡、任务、成就、等级、背包、进度）都将被彻底清理并同步至所有设备。`)) {
+                    const now = Date.now();
+                    // 1. 记录除名墓碑
+                    let currentDeleted = {};
+                    try { currentDeleted = JSON.parse(storage.getItem('app_deleted_profiles_v1') || '{}'); } catch (e) {}
+                    currentDeleted[targetName] = now;
+                    currentDeleted[targetId] = now;
+                    storage.setItem('app_deleted_profiles_v1', JSON.stringify(currentDeleted));
+                    storage.markKeyVersion('app_deleted_profiles_v1');
+
+                    // 2. 清理所有 28+ 个系统该成员的数据
+                    purgeChildAllData(targetName, targetId);
+
+                    // 3. 更新 profiles 列表
+                    const newProfiles = profiles.filter(p => p.id !== targetId && p.name !== targetName);
                     setProfiles(newProfiles);
+                    storage.setItem('app_profiles_v1', JSON.stringify(newProfiles));
+                    storage.markKeyVersion('app_profiles_v1');
+                    storage.setItem('_sync_cloud_profiles_count', String(newProfiles.length));
                     
-                    // 如果删除的是当前选中的孩子，自动切换到第一个
-                    if (activeChild === profileId) {
-                        startTransition(() => setActiveChild(newProfiles[0].id));
+                    // 4. 如果删除的是当前选中的孩子，自动切换到剩余第一个
+                    if (activeChild === targetId || activeChild === targetName) {
+                        const nextChild = newProfiles[0] ? (newProfiles[0].name || newProfiles[0].id) : '';
+                        startTransition(() => setActiveChild(nextChild));
                     }
+                    showToast('success', `已成功除名成员【${targetName}】`);
                     triggerSyncUpload();
                 }
             };
@@ -7649,8 +7955,14 @@ ${context}
 														storage.setItem('_sync_has_pulled_v1', '1');
 														try {
 															const cp = JSON.parse(cloudData.app_profiles_v1 || '[]');
+															const dt = JSON.parse(cloudData.app_deleted_profiles_v1 || storage.getItem('app_deleted_profiles_v1') || '{}');
 															if (Array.isArray(cp) && cp.length > 0) {
-																storage.setItem('_sync_cloud_profiles_count', String(cp.length));
+																const validProfiles = cp.filter(p => {
+																	if (!p) return false;
+																	const k = p.name || p.id;
+																	return !dt[k] && !(p.name && dt[p.name]) && !(p.id && dt[p.id]);
+																});
+																storage.setItem('_sync_cloud_profiles_count', String(validProfiles.length));
 															}
 															const ct = JSON.parse(cloudData.app_tasks_v2 || '{}');
 															if (typeof ct === 'object' && ct !== null) {

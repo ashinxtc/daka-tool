@@ -8,6 +8,7 @@ const DB_VERSION = 1;
 // 开屏秒开必需的极简配置（保留在 localStorage 作为镜像）
 export const FAST_BOOT_KEYS = new Set([
     'app_profiles_v1',
+    'app_deleted_profiles_v1',
     'app_theme',
     'app_active_child',
     'app_sync_code',
