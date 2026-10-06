@@ -25,8 +25,21 @@ export default defineConfig({
       }
     }
   },
+  css: {
+    transformer: 'lightningcss',
+    lightningcss: {
+      targets: {
+        chrome: 80 << 16,
+        safari: 13 << 16,
+        edge: 80 << 16,
+        firefox: 78 << 16
+      }
+    }
+  },
   build: {
     outDir: 'dist',
+    target: ['es2020', 'chrome80', 'safari13', 'edge80', 'firefox78'],
+    cssTarget: ['chrome80', 'safari13', 'edge80', 'firefox78'],
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       input: {

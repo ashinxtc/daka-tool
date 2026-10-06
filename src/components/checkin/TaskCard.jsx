@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { Trophy, Flag, FileText, Clock, Target, CheckCircle2, BookOpen } from '../icons.jsx';
+import { PerformanceContext } from '../../context/PerformanceContext';
 import { getLocalDateKey } from '../../utils/date.js';
 import {
   getTaskTotalSessions,
@@ -117,11 +118,15 @@ export const TaskCardInner = (({
             const hasSkipCard = (inventory['item_skip'] || 0) > 0;
             const isCheckedToday = !!record[today];
 			
-			// 特殊背景下的卡片样式逻辑
+			// 特殊背景或低性能模式下的卡片样式逻辑：
+			// 只要装备了任何特效背景（银河、极光、上元灯火、萤火虫、万象字阵等）或处于低性能模式，
+			// 均保证采用高不透明度、高对比度的扎实卡片底色与清晰边框，杜绝背景反光穿透导致文字和框体看不清
+			const { isLowPerf } = useContext(PerformanceContext);
 			const activeBg = equippedGear?.[activeChild]?.background;
-			const isSolidBgNeeded = ['bg_oraclesands', 'bg_matrix'].includes(activeBg);
-			const bgStyle = isSolidBgNeeded ? 'bg-white/90' : 'bg-amber-50/30';
-			const completedBgStyle = isSolidBgNeeded ? 'bg-yellow-50/90' : 'bg-yellow-50/30';
+			const hasActiveBg = !!activeBg;
+			const isSolidBgNeeded = hasActiveBg || isLowPerf;
+			const bgStyle = isSolidBgNeeded ? 'bg-white/95 shadow-xs border-slate-200/90' : 'bg-amber-50/60 border-amber-200/80';
+			const completedBgStyle = isSolidBgNeeded ? 'bg-amber-50/95 shadow-xs border-amber-300' : 'bg-yellow-50/50 border-yellow-200';
 
             // 周末选做冲刺提醒 (周五、周六、周日)
             const dayOfWeek = new Date().getDay();

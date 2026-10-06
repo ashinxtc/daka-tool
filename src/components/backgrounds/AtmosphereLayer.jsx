@@ -357,9 +357,10 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         };
 
 		// --- 新增：上元灯火·祈愿 CSS 特效组件 ---
-        const LanternFestival = () => {
-            // 生成孔明灯数据
-            const lanterns = useMemo(() => Array.from({ length: 35 }).map((_, i) => ({
+        const LanternFestival = ({ isLowPerf = false }) => {
+            // 生成孔明灯数据（低性能模式下轻量化为 12 盏，确保老旧设备流畅运行）
+            const count = isLowPerf ? 12 : 35;
+            const lanterns = useMemo(() => Array.from({ length: count }).map((_, i) => ({
                 id: i,
                 left: Math.random() * 100 + '%',
                 // 大小不一，模拟远近景深
@@ -369,7 +370,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 delay: Math.random() * 15 + 's',
                 // 颜色微调：有的偏红，有的偏黄
                 hue: Math.random() * 30 + 15 // Orange to Yellow
-            })), []);
+            })), [count]);
 
             return (
                 <div className="absolute inset-0 bg-lantern-gradient overflow-hidden animate-in fade-in duration-1000">
@@ -407,15 +408,16 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         };
 		
 		// --- 终极复刻版：萤火之森 (原生效果) ---
-        const FireflyForest = () => {
-            // 生成萤火虫数据 (数量适中，因为每个萤火虫的运动范围都很大)
-            const fireflies = useMemo(() => Array.from({ length: 50 }).map((_, i) => ({
+        const FireflyForest = ({ isLowPerf = false }) => {
+            // 生成萤火虫数据（低性能模式下精简为 16 只，保证灵动微光的同时节省 CPU）
+            const count = isLowPerf ? 16 : 50;
+            const fireflies = useMemo(() => Array.from({ length: count }).map((_, i) => ({
                 id: i,
                 // 随机延迟，打散运动和闪烁节奏
                 moveDelay: Math.random() * -200 + 's',
                 flashDelay: Math.random() * -10 + 's',
                 driftDelay: Math.random() * -10 + 's'
-            })), []);
+            })), [count]);
 
             return (
                 <div className="absolute inset-0 bg-night-forest animate-in fade-in duration-1000">
@@ -462,10 +464,10 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		
 		// --- 夫子庙前·银杏雨 CSS 特效组件 ---
         // --- 优化版：夫子庙前·银杏雨 CSS 特效组件 ---
-        const GinkgoRain = () => {
-            // 生成银杏叶数据
-            // 【修改】数量增加到 50 片，营造更密集的落叶雨
-            const leaves = useMemo(() => Array.from({ length: 50 }).map((_, i) => ({
+        const GinkgoRain = ({ isLowPerf = false }) => {
+            // 生成银杏叶数据（低性能模式下精简为 16 片，保证飘落诗意的同时降低渲染负载）
+            const count = isLowPerf ? 16 : 50;
+            const leaves = useMemo(() => Array.from({ length: count }).map((_, i) => ({
                 id: i,
                 left: Math.random() * 100 + '%',
                 size: Math.random() * 20 + 15 + 'px', // 15-35px 大小
@@ -474,7 +476,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 flipDuration: Math.random() * 4 + 2 + 's', // 翻滚速度
                 // 【修改】颜色微调：加入一点点橙色，增加层次感
                 color: Math.random() > 0.6 ? '#fbbf24' : (Math.random() > 0.5 ? '#f59e0b' : '#fcd34d') 
-            })), []);
+            })), [count]);
 
             return (
                 <div className="absolute inset-0 bg-ginkgo-gradient overflow-hidden animate-in fade-in duration-1000">
@@ -2111,31 +2113,78 @@ import { PerformanceContext } from '../../context/PerformanceContext';
             );
         };
 		
+        // 低性能模式下轻量化 CSS 特效组件（零 WebGL 压力，保留生动视觉层次，告别死黑一片）
+        const LowPerfGalaxy = () => (
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0b0c2a] via-[#16123f] to-[#050515] overflow-hidden">
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500 via-purple-900 to-transparent blur-xl pointer-events-none" />
+                <div className="absolute inset-0 opacity-70 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 100px 150px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1px 1px at 200px 80px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 320px 220px, #fbcfe8, rgba(0,0,0,0)), radial-gradient(1px 1px at 450px 120px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2px 2px at 580px 300px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 700px 180px, #fae8ff, rgba(0,0,0,0))',
+                    backgroundSize: '800px 400px'
+                }} />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none" />
+            </div>
+        );
+
+        const LowPerfAurora = () => (
+            <div className="absolute inset-0 bg-gradient-to-b from-[#021b18] via-[#092237] to-[#040d1a] overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-[60%] opacity-45 bg-gradient-to-r from-emerald-500/30 via-teal-400/40 via-purple-500/30 to-emerald-600/20 blur-2xl pointer-events-none" />
+                <div className="absolute top-10 left-[10%] right-[10%] h-[40%] opacity-35 bg-gradient-to-r from-green-400/30 via-cyan-300/40 to-indigo-500/30 blur-xl pointer-events-none" />
+                <div className="absolute inset-0 opacity-60 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(1.5px 1.5px at 50px 70px, #d1fae5, rgba(0,0,0,0)), radial-gradient(1px 1px at 180px 120px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 340px 90px, #cffafe, rgba(0,0,0,0)), radial-gradient(2px 2px at 520px 160px, #ffffff, rgba(0,0,0,0))',
+                    backgroundSize: '650px 350px'
+                }} />
+            </div>
+        );
+
+        const LowPerfPrismatic = () => (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#2e1065] via-[#4c0519] to-[#0f172a] overflow-hidden">
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-fuchsia-500/40 via-rose-500/20 to-transparent blur-xl pointer-events-none" />
+                <div className="absolute inset-0 opacity-50 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(2px 2px at 80px 60px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 250px 180px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 450px 100px, #a855f7, rgba(0,0,0,0))',
+                    backgroundSize: '600px 300px'
+                }} />
+            </div>
+        );
+
+        const LowPerfTimeWarp = () => (
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] via-[#1e1b4b] to-[#020617] overflow-hidden">
+                <div className="absolute inset-0 opacity-50 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-500/30 via-purple-600/20 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 opacity-40 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(circle at center, transparent 40px, rgba(99,102,241,0.2) 41px, transparent 43px, transparent 90px, rgba(168,85,247,0.15) 91px, transparent 93px, transparent 150px, rgba(236,72,153,0.12) 151px, transparent 153px)'
+                }} />
+            </div>
+        );
+
+        const LowPerfHyperspeed = () => (
+            <div className="absolute inset-0 bg-gradient-to-b from-[#030712] via-[#0c1a36] to-[#020617] overflow-hidden">
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-500/20 via-blue-600/15 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 opacity-40 pointer-events-none" style={{
+                    backgroundImage: 'linear-gradient(90deg, transparent 49%, rgba(56,189,248,0.25) 50%, transparent 51%)',
+                    backgroundSize: '120px 100%'
+                }} />
+            </div>
+        );
+
         // --- 新增：通用气氛背景层管理器 ---
         // 后续新增商品只需在这里添加 case 即可
         // 优化：所有特效组件始终挂载，通过CSS控制显示/隐藏，避免切换用户时重新创建canvas导致的卡顿
         const AtmosphereLayer = ({ type }) => {
             const { isLowPerf } = useContext(PerformanceContext);
             if (!type) return null;
-            // 性能优化：仅渲染当前激活的特效，未激活的不创建 DOM/canvas/WebGL 上下文
-            // 低性能模式：WebGL 特效替换为纯 CSS 渐变
-            const WebGLFallback = ({ gradient }) => isLowPerf
-                ? <div className={`absolute inset-0 bg-gradient-to-br ${gradient} animate-pulse`} />
-                : null;
             return (
                 <div className="atmosphere-layer">
-                    {type === 'bg_galaxy' && (isLowPerf ? <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-black" /> : <div className="absolute inset-0"><GalaxyEffect isActive={true} /></div>)}
+                    {type === 'bg_galaxy' && (isLowPerf ? <LowPerfGalaxy /> : <div className="absolute inset-0"><GalaxyEffect isActive={true} /></div>)}
                     {type === 'bg_meteor' && <div className="absolute inset-0"><MeteorShower isActive={true} /></div>}
-                    {type === 'bg_aurora' && (isLowPerf ? <div className="absolute inset-0 bg-gradient-to-br from-green-900 via-purple-900 to-indigo-900" /> : <div className="absolute inset-0"><AuroraBorealis isActive={true} /></div>)}
-                    {type === 'bg_lantern' && <div className="absolute inset-0"><LanternFestival isActive={!isLowPerf} /></div>}
-                    {type === 'bg_firefly' && <div className="absolute inset-0"><FireflyForest isActive={!isLowPerf} /></div>}
-                    {type === 'bg_ginkgo' && <div className="absolute inset-0"><GinkgoRain isActive={!isLowPerf} /></div>}
+                    {type === 'bg_aurora' && (isLowPerf ? <LowPerfAurora /> : <div className="absolute inset-0"><AuroraBorealis isActive={true} /></div>)}
+                    {type === 'bg_lantern' && <div className="absolute inset-0"><LanternFestival isLowPerf={isLowPerf} /></div>}
+                    {type === 'bg_firefly' && <div className="absolute inset-0"><FireflyForest isLowPerf={isLowPerf} /></div>}
+                    {type === 'bg_ginkgo' && <div className="absolute inset-0"><GinkgoRain isLowPerf={isLowPerf} /></div>}
                     {type === 'bg_matrix' && <div className="absolute inset-0"><MatrixCivilization isActive={true} /></div>}
                     {type === 'bg_oraclesands' && <div className="absolute inset-0"><MatrixOracleSands isActive={true} /></div>}
                     {type === 'bg_firework' && <div className="absolute inset-0"><LunarFireworks isActive={true} /></div>}
-                    {type === 'bg_prismatic' && (isLowPerf ? <div className="absolute inset-0 bg-gradient-to-br from-violet-900 via-fuchsia-900 to-indigo-900" /> : <div className="absolute inset-0"><PrismaticBackground isActive={true} /></div>)}
-                    {type === 'bg_timewarp' && (isLowPerf ? <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-800" /> : <div className="absolute inset-0"><TimeWarpBackground isActive={true} /></div>)}
-                    {type === 'bg_hyperspeed' && (isLowPerf ? <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-indigo-900 to-black" /> : <div className="absolute inset-0"><HyperspeedBackground isActive={true} /></div>)}
+                    {type === 'bg_prismatic' && (isLowPerf ? <LowPerfPrismatic /> : <div className="absolute inset-0"><PrismaticBackground isActive={true} /></div>)}
+                    {type === 'bg_timewarp' && (isLowPerf ? <LowPerfTimeWarp /> : <div className="absolute inset-0"><TimeWarpBackground isActive={true} /></div>)}
+                    {type === 'bg_hyperspeed' && (isLowPerf ? <LowPerfHyperspeed /> : <div className="absolute inset-0"><HyperspeedBackground isActive={true} /></div>)}
                 </div>
             );
         };

@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useContext } from 'react';
 import { TaskCard } from './TaskCard.jsx';
+import { PerformanceContext } from '../../context/PerformanceContext';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -42,6 +43,7 @@ const CategoryTrack = ({
   hasBgEffect,
   todayStr
 }) => {
+  const { isLowPerf } = useContext(PerformanceContext);
   const trackRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -309,8 +311,8 @@ const CategoryTrack = ({
   return (
     <div className={`rounded-2xl transition-all duration-300 border ${
       hasBgEffect 
-        ? 'bg-white/20 backdrop-blur-md border-white/20 shadow-sm' 
-        : 'bg-white/70 backdrop-blur-sm border-gray-100 shadow-sm hover:shadow-md'
+        ? (isLowPerf ? 'bg-slate-900/85 border-slate-700/70 shadow-md' : 'bg-slate-900/50 backdrop-blur-md border-white/20 shadow-sm') 
+        : 'bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm hover:shadow-md'
     }`}>
       {/* 头部手风琴控制条（平时展现的高密度数据看板，彻底无气泡框空气感设计） */}
       <div 
@@ -633,6 +635,7 @@ export const TaskDashboardTrack = ({
   setSortBy,
   viewMode
 }) => {
+  const { isLowPerf } = useContext(PerformanceContext);
   const todayStr = useMemo(() => getLocalDateKey(0), []);
 
   // 习惯类任务定义（通过独立元气悬浮按钮与生活坊面板管理，彻底移出学业长卡片跑道）
@@ -734,7 +737,7 @@ export const TaskDashboardTrack = ({
       {/* 顶部工具栏：看板指示、排序切换、一键全开全关 */}
       <div className={`flex flex-wrap items-center justify-between gap-2.5 text-xs font-bold transition-all duration-300 ${
         hasBgEffect 
-          ? 'bg-slate-900/40 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-lg shadow-black/20 text-white' 
+          ? (isLowPerf ? 'bg-slate-900/90 border border-slate-700/70 rounded-2xl px-3.5 py-2 shadow-lg text-white' : 'bg-slate-900/40 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-lg shadow-black/20 text-white') 
           : 'text-gray-500 px-1'
       }`}>
         {/* 左侧：纯净标题与宏观概览（无独立气泡框，极简自然融合） */}

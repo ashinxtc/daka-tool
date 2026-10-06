@@ -16,24 +16,82 @@ import { HABIT_ICON_PRESETS } from '../habits/index';
 // 确保 AchievementSystem 兼容访问
 const CURRICULUM_CONFIG = ((typeof window !== 'undefined' && window.AchievementSystem) ? window.AchievementSystem.CURRICULUM_CONFIG : ((typeof AchievementSystem !== 'undefined') ? AchievementSystem.CURRICULUM_CONFIG : {})) || {};
 
-// 低性能模式开关组件
+// 低性能模式与视觉保真配置组件
 export const LowPerfToggle = () => {
-    const { isLowPerf, setIsLowPerf } = useContext(PerformanceContext);
-    const [autoDetected] = useState(() => (typeof window !== 'undefined' && window.__lowPerf) || false);
-    const toggle = () => {
-        const next = !isLowPerf;
-        setIsLowPerf(next);
-        try { localStorage.setItem('low_perf_manual', String(next)); } catch(e) {}
-    };
+    const { isLowPerf, perfMode, setPerfMode, autoDetected } = useContext(PerformanceContext);
+
+    const MODES = [
+        { id: 'auto', label: '智能自适应', sub: autoDetected ? '推荐 · 已检测硬件并启用轻量优化' : '推荐 · 当前硬件流畅无需减负' },
+        { id: 'enabled', label: '始终开启', sub: '老旧平板 / 省电首选 · 降低渲染开销' },
+        { id: 'disabled', label: '满血特效', sub: '强制启用全部 WebGL 与完整粒子' }
+    ];
+
     return (
-        <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-amber-800">低性能模式</span>
-                {autoDetected && <span className="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full">自动检测已启用</span>}
+        <div className="space-y-3">
+            {/* 模式分段选择器 */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-amber-100/40 p-1.5 rounded-2xl border border-amber-200/60">
+                {MODES.map(m => {
+                    const active = perfMode === m.id;
+                    return (
+                        <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setPerfMode(m.id)}
+                            className={`p-2.5 rounded-xl text-left transition-all cursor-pointer ${
+                                active 
+                                    ? 'bg-white shadow-xs border border-amber-300 ring-2 ring-amber-400/30' 
+                                    : 'hover:bg-white/50 text-slate-600'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <span className={`text-xs font-bold ${active ? 'text-amber-950' : 'text-slate-700'}`}>
+                                    {m.label}
+                                </span>
+                                {active && <span className="w-2 h-2 rounded-full bg-amber-500" />}
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                                {m.sub}
+                            </p>
+                        </button>
+                    );
+                })}
             </div>
-            <button type="button" onClick={toggle} className={`relative w-11 h-6 rounded-full transition-colors ${isLowPerf ? 'bg-amber-500' : 'bg-gray-300'}`}>
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isLowPerf ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
+
+            {/* 当前运行状态徽标与保真提示 */}
+            <div className="bg-white/80 rounded-xl p-3 border border-amber-200/80 text-xs text-slate-700 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                    <span className="font-bold flex items-center gap-1.5">
+                        <span>当前渲染状态：</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            isLowPerf 
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        }`}>
+                            {isLowPerf ? '⚡ 轻量保真模式生效中' : '✨ 满血完整特效渲染中'}
+                        </span>
+                    </span>
+                    {perfMode === 'auto' && (
+                        <span className="text-[10px] text-amber-700 font-medium">
+                            (系统根据硬件智能决策)
+                        </span>
+                    )}
+                </div>
+
+                <div className="text-[11px] text-slate-500 space-y-1.5 pt-1.5 border-t border-slate-100 leading-relaxed">
+                    <p className="flex items-start gap-1">
+                        <span className="text-amber-500 shrink-0">🎨</span>
+                        <span><strong>色彩保真杜绝黑白：</strong>低性能模式已接入标准兼容色彩引擎，老旧平板不再丢失按钮色彩或变黑白。</span>
+                    </p>
+                    <p className="flex items-start gap-1">
+                        <span className="text-amber-500 shrink-0">🛡️</span>
+                        <span><strong>装备背景高对比防穿透：</strong>首页在装备银河、极光、万象字阵等深邃特效背景时，任务卡片自动强化高对比底色，保证文字、目标与按钮 100% 清晰可见。</span>
+                    </p>
+                    <p className="flex items-start gap-1">
+                        <span className="text-amber-500 shrink-0">🏮</span>
+                        <span><strong>诗意氛围自适应：</strong>孔明灯、萤火虫、银杏雨等氛围特效自动调优为轻量粒子，兼顾老旧设备丝滑帧率与视觉美感。</span>
+                    </p>
+                </div>
+            </div>
         </div>
     );
 };
@@ -1902,12 +1960,12 @@ const CopyIcon = (props) => (
                             </section>
 
                             {/* 低性能模式开关 */}
-                            <section className="bg-amber-50/60 rounded-2xl border border-amber-200/80 p-5 space-y-2">
+                            <section className="bg-amber-50/60 rounded-2xl border border-amber-200/80 p-5 space-y-3">
                                 <h4 className="font-bold text-amber-900 text-sm flex items-center gap-2">
-                                    <span>⚡</span> 极致流畅模式与性能优化
+                                    <span>⚡</span> 极致流畅模式与视觉保真适配
                                 </h4>
-                                <p className="text-xs text-amber-700/80">在老旧设备或轻薄本上开启此模式，将关闭高开销模糊与动画滤镜，大幅提升滑动流畅度。</p>
-                                <div className="pt-2">
+                                <p className="text-xs text-amber-700/80">专为老旧平板、低配轻薄本及长续航场景优化。既保障老旧硬件不卡顿，又完整保留中国古典美学视觉效果与文字清晰度。</p>
+                                <div className="pt-1">
                                     <LowPerfToggle />
                                 </div>
                             </section>
