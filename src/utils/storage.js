@@ -147,6 +147,15 @@ const scheduleDbFlush = () => {
     }, 150);
 };
 
+// 过滤因历史迁移或变量未定义残留的垃圾脏键（如 app_undefined_*, app_2047* 等）
+export const isJunkKey = (k) => {
+    if (!k || typeof k !== 'string') return true;
+    if (k.includes('undefined') || k.includes('null')) return true;
+    if (/^app_\d+_app_/.test(k)) return true;
+    if (k === '_sync_last_hash' || k === '_sync_local_ts') return true;
+    return false;
+};
+
 // --- 2. 核心 Storage 接口 ---
 export const storage = {
     // 同步读取：先查内存缓存，再查 localStorage 兜底
@@ -196,9 +205,9 @@ export const storage = {
     // 获取所有需要云同步的数据（格式：{ key: jsonString }）
     getAllSyncData() {
         const result = {};
-        // 遍历内存缓存中所有以 app_ 开头的键
+        // 遍历内存缓存中所有以 app_ 开头的键（排除脏键与元数据）
         memoryCache.forEach((val, key) => {
-            if (key.startsWith('app_') && key !== '_sync_last_hash' && key !== '_sync_local_ts') {
+            if (key.startsWith('app_') && !isJunkKey(key)) {
                 result[key] = val;
             }
         });
@@ -206,7 +215,7 @@ export const storage = {
         if (typeof window !== 'undefined' && window.localStorage) {
             for (let i = 0; i < window.localStorage.length; i++) {
                 const k = window.localStorage.key(i);
-                if (k && k.startsWith('app_') && k !== '_sync_last_hash' && k !== '_sync_local_ts' && !(k in result)) {
+                if (k && k.startsWith('app_') && !isJunkKey(k) && !(k in result)) {
                     result[k] = window.localStorage.getItem(k);
                 }
             }
@@ -312,6 +321,24 @@ export const initStorage = async () => {
                 });
                 console.log(`[Storage] Migrated ${keysToMigrate.length} keys to IndexedDB successfully, localStorage pruned!`);
             }
+
+            // 4. 清理内存和磁盘上的历史残留垃圾脏键（如 app_undefined_*, app_2047* 等）
+            const junkKeysToPrune = [];
+            memoryCache.forEach((_, k) => {
+                if (isJunkKey(k)) junkKeysToPrune.push(k);
+            });
+            if (junkKeysToPrune.length > 0) {
+                junkKeysToPrune.forEach(k => {
+                    memoryCache.delete(k);
+                    pendingDbWrites.delete(k);
+                    pendingDbDeletes.add(k);
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                        try { window.localStorage.removeItem(k); } catch (e) {}
+                    }
+                });
+                scheduleDbFlush();
+            }
+
             return true;
         } catch (err) {
             console.error('[Storage] Init IndexedDB error:', err);

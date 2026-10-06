@@ -3917,7 +3917,7 @@ const CopyIcon = (props) => (
                                                   const el = document.getElementById('parent_sync_code_quick_input');
                                                   if (el && el.value.trim()) {
                                                       setSyncCode(el.value.trim());
-                                                      if (triggerSyncUpload) triggerSyncUpload();
+                                                      if (syncFromCloud) syncFromCloud();
                                                   }
                                               }}
                                               className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"

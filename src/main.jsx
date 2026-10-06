@@ -629,6 +629,9 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             }, [tasks, deferredActiveChild]);
 
             const [showHabitPavilion, setShowHabitPavilion] = useState(false);
+            const [welcomeSyncCodeInput, setWelcomeSyncCodeInput] = useState('');
+            const [showWelcomeSyncInput, setShowWelcomeSyncInput] = useState(false);
+            const [welcomeSyncLoading, setWelcomeSyncLoading] = useState(false);
             const [wheelConfig, setWheelConfig] = useStickyState(DEFAULT_WHEEL_CONFIG, 'app_wheel_config');
             const [wheelSettings, setWheelSettings] = useStickyState(DEFAULT_WHEEL_SETTINGS, 'app_wheel_settings');
             const [wheelHistory, setWheelHistory] = useStickyState({}, 'app_wheel_history');
@@ -637,6 +640,76 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [profiles, setProfiles] = useStickyState(DEFAULT_PROFILES, 'app_profiles_v1');
             const [achievements, setAchievements] = useStickyState({}, 'app_achievements_v1');
             const [stats, setStats] = useStickyState({}, 'app_stats_v1');
+
+            // 自动同步与保全当前活跃孩子（确保 activeChild 始终为 profiles 中有效成员）
+            useEffect(() => {
+                if (!profiles || profiles.length === 0) return;
+                if (!activeChild || !profiles.some(p => p.name === activeChild)) {
+                    const saved = storage.getItem('app_active_child');
+                    const target = (saved && profiles.some(p => p.name === saved))
+                        ? saved
+                        : (profiles.find(p => p.name !== '测试员')?.name || profiles[0].name);
+                    startTransition(() => setActiveChild(target));
+                }
+            }, [profiles, activeChild]);
+
+            useEffect(() => {
+                if (activeChild) {
+                    storage.setItem('app_active_child', activeChild);
+                }
+            }, [activeChild]);
+
+            // 监听云端同步合并事件，及时刷新活跃孩子
+            useEffect(() => {
+                const handleMerged = () => {
+                    try {
+                        const freshProfiles = JSON.parse(storage.getItem('app_profiles_v1') || '[]');
+                        if (freshProfiles.length > 0) {
+                            if (!activeChild || !freshProfiles.some(p => p.name === activeChild)) {
+                                const target = freshProfiles.find(p => p.name !== '测试员')?.name || freshProfiles[0].name;
+                                startTransition(() => setActiveChild(target));
+                            }
+                        }
+                    } catch (e) {}
+                };
+                window.addEventListener('_syncDataMerged', handleMerged);
+                return () => window.removeEventListener('_syncDataMerged', handleMerged);
+            }, [activeChild]);
+
+            // 自愈机制：若 tasks / checkins / stars 中已有某孩子数据，但 profiles 列表中缺失，自动补全回 profiles
+            useEffect(() => {
+                if (!tasks && !checkins && !stars) return;
+                const knownNames = new Set((profiles || []).map(p => p.name));
+                const allChildKeys = new Set([
+                    ...Object.keys(tasks || {}),
+                    ...Object.keys(checkins || {}),
+                    ...Object.keys(stars || {})
+                ]);
+                const ignoreKeys = new Set(['0', '123', '', 'undefined', 'null']);
+                const missingKids = [];
+                allChildKeys.forEach(k => {
+                    if (!ignoreKeys.has(k) && !knownNames.has(k)) {
+                        missingKids.push(k);
+                    }
+                });
+                if (missingKids.length > 0) {
+                    console.warn('Self-healing: Rehydrating missing profiles for kids with existing data:', missingKids);
+                    const newProfiles = [...(profiles || [])];
+                    missingKids.forEach(name => {
+                        newProfiles.push({
+                            id: name,
+                            name: name,
+                            theme: name === 'Henry' ? 'amber' : name === 'Yoly' ? 'celadon' : name === 'William' ? 'rose' : 'sky',
+                            avatar: null,
+                            grade: 1,
+                            createdDate: getLocalDateKey(0)
+                        });
+                    });
+                    setProfiles(newProfiles);
+                    storage.setItem('app_profiles_v1', JSON.stringify(newProfiles));
+                    storage.markKeyVersion('app_profiles_v1');
+                }
+            }, [tasks, checkins, stars, profiles]);
 
 			
 			
@@ -3632,8 +3705,64 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return { merged, localChanged, cloudChanged };
             };
 
+            // 成员档案合并：[ { id, name, theme, avatar, grade, createdDate } ]
+            // 按 name / id 作为唯一身份键做并集合并，双向无损。
+            // 冲突时：保留非空有效头像（避免被 null 覆盖）、保留较高年级、保留非空主题。
+            const mergeProfiles = (localArr, cloudArr) => {
+                if (!Array.isArray(localArr) && !Array.isArray(cloudArr)) return null;
+                const l = Array.isArray(localArr) ? localArr : [];
+                const c = Array.isArray(cloudArr) ? cloudArr : [];
+                const map = new Map();
+                let cloudChanged = false;
+
+                // 先放入云端配置
+                c.forEach(cp => {
+                    if (!cp || typeof cp !== 'object') return;
+                    const key = cp.name || cp.id;
+                    if (key) map.set(key, { ...cp });
+                });
+
+                // 再合入本地配置
+                l.forEach(lp => {
+                    if (!lp || typeof lp !== 'object') return;
+                    const key = lp.name || lp.id;
+                    if (!key) return;
+                    if (!map.has(key)) {
+                        map.set(key, { ...lp });
+                        cloudChanged = true;
+                    } else {
+                        const existing = map.get(key);
+                        // 头像：优先取有效 base64 或外部图片，防止 null 冲刷已有法相
+                        const hasValidAvatar = (av) => typeof av === 'string' && av.length > 20;
+                        const avatar = hasValidAvatar(lp.avatar) ? lp.avatar : (hasValidAvatar(existing.avatar) ? existing.avatar : (lp.avatar || existing.avatar || null));
+                        const grade = Math.max(Number(lp.grade) || 1, Number(existing.grade) || 1);
+                        const theme = lp.theme || existing.theme || 'sky';
+                        const mergedItem = {
+                            ...existing,
+                            ...lp,
+                            id: lp.id || existing.id || key,
+                            name: lp.name || existing.name || key,
+                            avatar,
+                            grade,
+                            theme
+                        };
+                        if (JSON.stringify(mergedItem) !== JSON.stringify(existing)) {
+                            cloudChanged = true;
+                        }
+                        map.set(key, mergedItem);
+                    }
+                });
+
+                const merged = Array.from(map.values());
+                const localChanged = JSON.stringify(merged) !== JSON.stringify(l);
+                if (!cloudChanged) cloudChanged = JSON.stringify(merged) !== JSON.stringify(c);
+                return { merged, localChanged, cloudChanged };
+            };
+
             // 语义合并注册表：key → 处理函数(localObj, cloudObj) → { merged, localChanged, cloudChanged }
             const SEMANTIC_MERGERS = {
+                // 成员档案表：按成员身份（name/id）并集合并，属性互补，避免单设备覆盖导致其他小孩丢失
+                'app_profiles_v1': (l, c) => mergeProfiles(l, c),
                 // 大事纪：顶层数组，按 id 并集，时间倒序
                 'app_milestones_v1': (l, c) => mergeTopLevelArray(l, c, (a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
                 // 兑换券：{ child: [记录] }，按 id/指纹并集
@@ -3859,6 +3988,11 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             const syncToCloud = async (force = false) => {
                 if (!syncCode) return;
+                // 严格保护：如果本地 profiles 列表为空，绝对禁止上传，防止新设备空数据覆盖云端
+                if (!profiles || profiles.length === 0) {
+                    console.warn('syncToCloud skipped: profiles is empty, refusing to overwrite cloud');
+                    return;
+                }
                 const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
                 // 自动上传时，如果本地从未同步过（localTs === 0），禁止上传，防止新设备空数据覆盖云端
                 if (!force && localTs === 0) {
@@ -7130,16 +7264,144 @@ ${context}
 			if (profiles.length === 0) {
 				return (
 					<div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
-						<div className="bg-white/70 backdrop-blur-lg p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center border border-white">
-							<div className="text-6xl mb-4 animate-bounce">✨</div>
-							<h1 className="text-2xl font-bold text-slate-800 mb-2">欢迎来到进化之路 ——超强学习打卡大计划</h1>
-							<p className="text-slate-500 mb-8 text-sm font-medium">当前设备暂无记录，请先创建第一个成员开启你们的打卡之旅！</p>
-							<button 
-								onClick={handleAddProfile} 
-								className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-blue-500/30 transform transition active:scale-95"
-							>
-								+ 新建第一个成员
-							</button>
+						<div className="bg-white/80 backdrop-blur-lg p-7 sm:p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center border border-white">
+							<div className="text-5xl mb-3 animate-bounce">✨</div>
+							<h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2">欢迎来到进化之路 ——超强学习打卡大计划</h1>
+							<p className="text-slate-500 mb-6 text-xs sm:text-sm font-medium">当前设备暂无记录，可新建成员开启打卡，或直接连接已有云端数据！</p>
+							
+							<div className="space-y-3">
+								<button 
+									onClick={handleAddProfile} 
+									className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-2xl font-bold text-base shadow-lg shadow-blue-500/30 transform transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+								>
+									<span>➕</span> 新建第一个成员
+								</button>
+
+								{!showWelcomeSyncInput ? (
+									<button 
+										onClick={() => setShowWelcomeSyncInput(true)} 
+										className="w-full py-3 bg-white hover:bg-slate-50 text-indigo-700 border-2 border-indigo-200/80 rounded-2xl font-bold text-sm shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+									>
+										<span>☁️</span> 已有同步码？从云端同步
+									</button>
+								) : (
+									<div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200 text-left space-y-2 animate-in fade-in">
+										<label className="text-xs font-bold text-indigo-900 block">输入家庭私密同步码：</label>
+										<div className="flex gap-2">
+											<input 
+												type="text" 
+												value={welcomeSyncCodeInput} 
+												onChange={e => setWelcomeSyncCodeInput(e.target.value)} 
+												placeholder="例如: yolyhenry" 
+												className="flex-1 bg-white border border-indigo-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400"
+											/>
+											<button 
+												type="button" 
+												disabled={welcomeSyncLoading || !welcomeSyncCodeInput.trim()} 
+												onClick={async () => {
+													const code = welcomeSyncCodeInput.trim();
+													if (!code) return;
+													setWelcomeSyncLoading(true);
+													try {
+														storage.setItem('app_sync_code', code);
+														setSyncCode(code);
+														const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
+														if (resp.status === 404) throw new Error('云端暂无该同步码对应的数据，请核对拼写');
+														if (!resp.ok) throw new Error(`云端服务响应异常 (${resp.status})`);
+														const cloudData = await resp.json();
+														const { snapshot, versions } = buildLocalSnapshot(cloudData);
+														const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, 0);
+														applySyncMerge(mergeResult);
+														storage.setItem('_sync_local_ts', String(cloudData._syncTs || Date.now()));
+														storage.setItem('_sync_last_hash', hashSyncPayload(cloudData));
+														window.dispatchEvent(new CustomEvent('_syncDataMerged'));
+														showToast('success', '云端数据同步成功！已载入所有家庭成员！');
+													} catch (err) {
+														showToast('error', err.message || '同步失败，请检查网络');
+													} finally {
+														setWelcomeSyncLoading(false);
+													}
+												}}
+												className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer transition-all shrink-0"
+											>
+												{welcomeSyncLoading ? '拉取中…' : '拉取数据'}
+											</button>
+										</div>
+										<button 
+											type="button" 
+											onClick={() => setShowWelcomeSyncInput(false)} 
+											className="text-[11px] text-slate-400 hover:text-slate-600 font-medium"
+										>
+											收起
+										</button>
+									</div>
+								)}
+
+								<button 
+									onClick={() => {
+										const input = document.createElement('input');
+										input.type = 'file';
+										input.accept = '.json';
+										input.onchange = (e) => {
+											const file = e.target.files[0];
+											if (!file) return;
+											const reader = new FileReader();
+											reader.onload = (event) => {
+												try {
+													const data = JSON.parse(event.target.result);
+													if (!data.version) {
+														showToast('warning', '无效的备份文件：缺少版本声明！');
+														return;
+													}
+													const keyMapping = {
+														tasks: 'app_tasks_v2', checkins: 'app_checkins_v2', profiles: 'app_profiles_v1',
+														achievements: 'app_achievements_v1', stats: 'app_stats_v1', inventory: 'app_inventory_v1',
+														activeBuffs: 'app_active_buffs_v1', redeemedCoupons: 'app_coupons_v1', equippedGear: 'app_equipped_gear_v1',
+														milestones: 'app_milestones_v1', globalMessages: 'app_global_messages_v2', globalDates: 'app_global_dates',
+														wheelConfig: 'app_wheel_config', wheelSettings: 'app_wheel_settings', wheelHistory: 'app_wheel_history',
+														xpHistory: 'app_xp_history', evilWheelConfig: 'app_evil_wheel_config', randomEventHistory: 'app_random_event_history',
+														dailyRandomCounts: 'app_daily_random_counts', historicalEventProgress: 'app_historical_event_progress_v1',
+														dailyEventTypeCounts: 'app_daily_event_type_counts_v1', userCity: 'app_user_city_v1',
+														curriculumProgress: 'app_curriculum_progress_v1', xpWheelConfig: 'app_xp_wheel_config',
+														settingsPassword: 'app_settings_password', testMode: 'app_test_mode', weekendSettings: 'app_weekend_settings',
+														notifiedLevels: 'app_notified_levels', exemptedDays: 'app_exempted_days_v1', silenceMutes: 'app_silence_mutes_v1',
+														homeworkExamConfig: 'app_homework_exam_config_v1', homeworkRecords: 'app_homework_records_v1',
+														examRecords: 'app_exam_records_v1', repairedCheckins: 'app_repaired_checkins_v1',
+														weeklyPayroll: 'app_weekly_payroll_v1', reportConfig: 'app_report_config_v1', stars: 'app_stars_v1',
+														starHistory: 'app_star_history_v1', petData: 'app_pet_data_v1', ownedPets: 'app_owned_pets_v1',
+														activePet: 'app_active_pet_v1', petCooldowns: 'app_pet_cooldowns_v1', petStats: 'app_pet_stats_v1',
+														petSkillCooldowns: 'app_pet_skill_cd_v1', petBuffs: 'app_pet_buffs_v1', petAdventures: 'app_pet_adventures_v1',
+														petAdventureLog: 'app_pet_adventure_log_v1', petAdventureStats: 'app_pet_adventure_stats_v1',
+														petSlots: 'app_pet_slots_v1', petMusic: 'app_pet_music_v1', petNotif: 'app_pet_notif_v1',
+														evilPenaltyLog: 'app_evil_penalty_log_v1', evilAutoTrigger: 'app_evil_auto_trigger',
+														pendingEvilPenalty: 'app_pending_evil_penalty_v1', aiEnabled: 'app_ai_enabled',
+														deepseekApiKey: 'app_deepseek_api_key', aiPetEnabled: 'app_ai_pet_enabled',
+														aiChatEnabled: 'app_ai_chat_enabled', aiDailyLimit: 'app_ai_daily_limit',
+														aiDailyUsage: 'app_ai_daily_usage', aiChatHistory: 'app_ai_chat_history',
+														aiReminderLog: 'app_ai_reminder_log_v1', syncCode: 'app_sync_code',
+														syncLastTime: 'app_sync_last_time', authorizedParents: 'app_authorized_parents_v1',
+														parentActions: 'app_parent_actions_v1'
+													};
+													Object.entries(keyMapping).forEach(([bk, sk]) => {
+														if (data[bk] !== undefined && data[bk] !== null) {
+															storage.setItem(sk, data[bk]);
+														}
+													});
+													showToast('success', '数据恢复成功！正在重新载入...');
+													setTimeout(() => window.location.reload(), 1000);
+												} catch (err) {
+													showToast('error', '备份解析失败：' + err.message);
+												}
+											};
+											reader.readAsText(file);
+										};
+										input.click();
+									}} 
+									className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+								>
+									<span>📂</span> 从本地备份文件还原 (.json)
+								</button>
+							</div>
 						</div>
 						<div className="absolute bottom-10 text-xs text-slate-400">
 							Copyright ©2026 张恒与&张又兮&nbsp; &nbsp; &nbsp;  All right reserved 
