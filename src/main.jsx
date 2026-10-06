@@ -640,6 +640,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [profiles, setProfiles] = useStickyState(DEFAULT_PROFILES, 'app_profiles_v1');
             const [achievements, setAchievements] = useStickyState({}, 'app_achievements_v1');
             const [stats, setStats] = useStickyState({}, 'app_stats_v1');
+            const [isTestMode, setIsTestMode] = useStickyState(false, 'app_test_mode');
 
             // 自动同步与保全当前活跃孩子（确保 activeChild 始终为 profiles 中有效成员，且优先真实儿童）
             useEffect(() => {
@@ -678,14 +679,13 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 return () => window.removeEventListener('_syncDataMerged', handleMerged);
             }, [activeChild]);
 
-            // 自愈机制：若 tasks / checkins / stars 中已有某孩子数据，但 profiles 列表中缺失，自动补全回 profiles
+            // 自愈机制：若 tasks / checkins 中已有某孩子数据，但 profiles 列表中缺失，自动补全回 profiles
             useEffect(() => {
-                if (!tasks && !checkins && !stars) return;
+                if (!tasks && !checkins) return;
                 const knownNames = new Set((profiles || []).map(p => p.name));
                 const allChildKeys = new Set([
                     ...Object.keys(tasks || {}),
-                    ...Object.keys(checkins || {}),
-                    ...Object.keys(stars || {})
+                    ...Object.keys(checkins || {})
                 ]);
                 const ignoreKeys = new Set(['0', '123', '', 'undefined', 'null']);
                 const missingKids = [];
@@ -711,7 +711,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                     storage.setItem('app_profiles_v1', JSON.stringify(newProfiles));
                     storage.markKeyVersion('app_profiles_v1');
                 }
-            }, [tasks, checkins, stars, profiles]);
+            }, [tasks, checkins, profiles]);
 
 			
 			
@@ -1027,9 +1027,8 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 if (petNotifDot) showPetNotifBubble();
             }, [petNotifDot, showPetNotifBubble]);
 
-            // --- 新增：密码与测试模式状态 ---
+            // --- 新增：密码状态 ---
             const [settingsPassword, setSettingsPassword] = useStickyState('', 'app_settings_password');
-            const [isTestMode, setIsTestMode] = useStickyState(false, 'app_test_mode');
 
             // --- 家长手机看板与多端绑定授权状态 ---
             const [authorizedParents, setAuthorizedParents] = useStickyState({ pairToken: '', devices: [] }, 'app_authorized_parents_v1');
