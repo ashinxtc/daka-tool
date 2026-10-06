@@ -641,17 +641,19 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [achievements, setAchievements] = useStickyState({}, 'app_achievements_v1');
             const [stats, setStats] = useStickyState({}, 'app_stats_v1');
 
-            // 自动同步与保全当前活跃孩子（确保 activeChild 始终为 profiles 中有效成员）
+            // 自动同步与保全当前活跃孩子（确保 activeChild 始终为 profiles 中有效成员，且优先真实儿童）
             useEffect(() => {
                 if (!profiles || profiles.length === 0) return;
-                if (!activeChild || !profiles.some(p => p.name === activeChild)) {
+                if (!activeChild || (!isTestMode && activeChild === '测试员') || !profiles.some(p => p.name === activeChild)) {
                     const saved = storage.getItem('app_active_child');
-                    const target = (saved && profiles.some(p => p.name === saved))
+                    const target = (saved && profiles.some(p => p.name === saved && (isTestMode || saved !== '测试员')))
                         ? saved
                         : (profiles.find(p => p.name !== '测试员')?.name || profiles[0].name);
-                    startTransition(() => setActiveChild(target));
+                    if (target && target !== activeChild) {
+                        startTransition(() => setActiveChild(target));
+                    }
                 }
-            }, [profiles, activeChild]);
+            }, [profiles, activeChild, isTestMode]);
 
             useEffect(() => {
                 if (activeChild) {
@@ -659,15 +661,15 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 }
             }, [activeChild]);
 
-            // 监听云端同步合并事件，及时刷新活跃孩子
+            // 监听云端同步合并事件，及时刷新活跃孩子（若此前停留在测试员，优先切回真实儿童）
             useEffect(() => {
                 const handleMerged = () => {
                     try {
                         const freshProfiles = JSON.parse(storage.getItem('app_profiles_v1') || '[]');
                         if (freshProfiles.length > 0) {
-                            if (!activeChild || !freshProfiles.some(p => p.name === activeChild)) {
+                            if (!activeChild || activeChild === '测试员' || !freshProfiles.some(p => p.name === activeChild)) {
                                 const target = freshProfiles.find(p => p.name !== '测试员')?.name || freshProfiles[0].name;
-                                startTransition(() => setActiveChild(target));
+                                if (target) startTransition(() => setActiveChild(target));
                             }
                         }
                     } catch (e) {}
@@ -1221,15 +1223,19 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             // --- Effect: 处理测试账号的添加与移除 ---
             useEffect(() => {
                 if (isTestMode) {
+                    // 如果有同步码但设备尚未拉取云端，且当前成员列表为空，暂不提前插入孤立测试员，等待云端家庭档案就位
+                    if (syncCode && !storage.getItem('_sync_has_pulled_v1') && profiles.length === 0) {
+                        return;
+                    }
                     // 如果开启测试模式，且没有测试员账号，则添加
                     if (!profiles.find(p => p.id === 'TESTER')) {
                         const tester = { id: 'TESTER', name: '测试员', theme: 'emerald', avatar: null };
                         setProfiles(prev => [...prev, tester]);
-                        setTasks(prev => ({ ...prev, '测试员': [] })); 
-                        // 为测试员预填充所有道具
+                        setTasks(prev => ({ ...prev, '测试员': (prev['测试员'] && prev['测试员'].length > 0) ? prev['测试员'] : [] })); 
+                        // 为测试员预填充所有道具（保留已有道具）
                         const allItems = {};
                         SHOP_ITEMS.forEach(item => { allItems[item.id] = 1; });
-                        setInventory(prev => ({ ...prev, '测试员': allItems }));
+                        setInventory(prev => ({ ...prev, '测试员': prev['测试员'] || allItems }));
                     }
                 } else {
                     // 如果关闭测试模式，且存在测试员账号，则移除
@@ -1366,6 +1372,24 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const totalStars = useMemo(() => {
                 return calculateTotalStars(deferredActiveChild);
             }, [calculateTotalStars, deferredActiveChild]);
+
+            // 自动同步所有孩子的星星总额到 app_stars_v1（供家长端与跨端无损同步）
+            useEffect(() => {
+                if (!profiles || profiles.length === 0) return;
+                try {
+                    const starsMap = {};
+                    profiles.forEach(p => {
+                        if (p && p.name) {
+                            starsMap[p.name] = calculateTotalStars(p.name);
+                        }
+                    });
+                    const currentStr = storage.getItem('app_stars_v1');
+                    const newStr = JSON.stringify(starsMap);
+                    if (currentStr !== newStr) {
+                        storage.setItem('app_stars_v1', newStr);
+                    }
+                } catch (e) {}
+            }, [profiles, starHistory, calculateTotalStars]);
 
             // --- 星星明细数据 ---
             const starTransactions = useMemo(() => {
@@ -3460,12 +3484,21 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_evil_penalty_log_v1',
                 'app_daily_random_counts',
                 'app_daily_event_type_counts_v1',
+                'app_active_pet_v1',      // 孩子出战宠物 { child: petId }
+                'app_pet_slots_v1',       // 孩子宠物槽位 { child: count }
+                'app_notified_levels',    // 等级通知记录 { child: level }
             ]);
             // 两层字典结构 { child: { key: value } }，按 child 分别做扁平合并
             const MERGEABLE_TWO_LEVEL_KEYS = new Set([
                 'app_achievements_v1',
                 'app_curriculum_progress_v1',
                 'app_weekly_payroll_v1',
+                'app_active_buffs_v1',        // 增益状态 { child: { investMultiplier: 4, ... } }
+                'app_equipped_gear_v1',       // 装备特效 { child: { background: ..., frame: ... } }
+                'app_pet_stats_v1',           // 宠物属性 { child: { ... } }
+                'app_pet_cooldowns_v1',       // 宠物冷却 { child: { ... } }
+                'app_pet_skill_cd_v1',        // 宠物技能CD { child: { ... } }
+                'app_deleted_tasks_v1',       // 任务删除墓碑 { child: { taskId: timestamp } }
             ]);
             // checkins 是三层嵌套 { child: { taskId: { date: value } } }，需要深合并
             const MERGEABLE_NESTED_KEYS = new Set([
@@ -3759,10 +3792,230 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return { merged, localChanged, cloudChanged };
             };
 
+            // 任务列表深度合并：{ child: [Task] }
+            // 1. 按 child 并集；若某端某个 child 任务为空数组而另一端有任务，保留非空端（防新设备/未初始化空列表覆盖原有任务）
+            // 2. 双方都有任务时，按 task.id 并集深度合并；同 id 冲突时以本地最新配置为准
+            // 3. 支持删除墓碑（app_deleted_tasks_v1）：若任务在 30 天内被本地主动删除，不从云端复活
+            const mergeTasks = (localObj, cloudObj) => {
+                if (!localObj || typeof localObj !== 'object' || !cloudObj || typeof cloudObj !== 'object') return null;
+                const merged = {};
+                const allChildren = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+
+                let deletedTombstones = {};
+                try {
+                    const raw = storage.getItem('app_deleted_tasks_v1');
+                    if (raw) deletedTombstones = JSON.parse(raw);
+                } catch (e) {}
+
+                const now = Date.now();
+
+                allChildren.forEach(child => {
+                    if (child === '0' || child === 'undefined' || child === 'null' || !child) return;
+                    const lTasks = Array.isArray(localObj[child]) ? localObj[child] : null;
+                    const cTasks = Array.isArray(cloudObj[child]) ? cloudObj[child] : null;
+
+                    if (!lTasks && !cTasks) {
+                        merged[child] = [];
+                        return;
+                    }
+
+                    // 本地无此小孩或任务列表为空，云端有任务 → 必须完全接纳云端任务
+                    if (!lTasks || lTasks.length === 0) {
+                        if (cTasks && cTasks.length > 0) {
+                            merged[child] = [...cTasks];
+                            localChanged = true;
+                            return;
+                        }
+                    }
+
+                    // 云端无此小孩或任务列表为空，本地有任务 → 保留本地任务并标记云端需回传
+                    if (!cTasks || cTasks.length === 0) {
+                        if (lTasks && lTasks.length > 0) {
+                            merged[child] = [...lTasks];
+                            cloudChanged = true;
+                            return;
+                        }
+                    }
+
+                    // 双方皆有任务：按 task.id 并集深度合并
+                    const childTombstones = (deletedTombstones && typeof deletedTombstones === 'object') ? (deletedTombstones[child] || {}) : {};
+                    const taskMap = new Map();
+
+                    // 1. 云端任务预载入（检查删除墓碑，30天内被删者不复活）
+                    (cTasks || []).forEach(ct => {
+                        if (!ct || !ct.id) return;
+                        const idStr = String(ct.id);
+                        const deletedAt = childTombstones[idStr];
+                        if (deletedAt && (now - deletedAt < 30 * 86400000)) {
+                            cloudChanged = true;
+                            return;
+                        }
+                        taskMap.set(idStr, { ...ct });
+                    });
+
+                    // 2. 本地任务合入（新增任务加入，同 id 任务属性融合，本地字段优先）
+                    (lTasks || []).forEach(lt => {
+                        if (!lt || !lt.id) return;
+                        const idStr = String(lt.id);
+                        if (!taskMap.has(idStr)) {
+                            taskMap.set(idStr, { ...lt });
+                            cloudChanged = true;
+                        } else {
+                            const existing = taskMap.get(idStr);
+                            const mergedItem = { ...existing, ...lt };
+                            if (JSON.stringify(mergedItem) !== JSON.stringify(existing)) {
+                                cloudChanged = true;
+                            }
+                            taskMap.set(idStr, mergedItem);
+                        }
+                    });
+
+                    const mergedArr = Array.from(taskMap.values());
+                    merged[child] = mergedArr;
+
+                    if (JSON.stringify(mergedArr) !== JSON.stringify(lTasks)) localChanged = true;
+                    if (JSON.stringify(mergedArr) !== JSON.stringify(cTasks)) cloudChanged = true;
+                });
+
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 道具背包深度合并：{ child: { itemId: count } } + 根层兼容
+            const mergeInventory = (localObj, cloudObj) => {
+                if (!localObj || typeof localObj !== 'object' || !cloudObj || typeof cloudObj !== 'object') return null;
+                const merged = {};
+                const allKeys = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+
+                allKeys.forEach(k => {
+                    const lVal = localObj[k];
+                    const cVal = cloudObj[k];
+                    const isLObj = lVal && typeof lVal === 'object' && !Array.isArray(lVal);
+                    const isCObj = cVal && typeof cVal === 'object' && !Array.isArray(cVal);
+
+                    if (isLObj || isCObj) {
+                        const lDict = isLObj ? lVal : {};
+                        const cDict = isCObj ? cVal : {};
+                        merged[k] = {};
+                        const itemKeys = new Set([...Object.keys(lDict), ...Object.keys(cDict)]);
+
+                        itemKeys.forEach(itemId => {
+                            const lv = lDict[itemId];
+                            const cv = cDict[itemId];
+                            if (lv === undefined) {
+                                merged[k][itemId] = cv;
+                                localChanged = true;
+                            } else if (cv === undefined) {
+                                merged[k][itemId] = lv;
+                                cloudChanged = true;
+                            } else {
+                                merged[k][itemId] = lv;
+                                if (lv !== cv) cloudChanged = true;
+                            }
+                        });
+
+                        if (!isLObj && isCObj) localChanged = true;
+                        if (isLObj && !isCObj) cloudChanged = true;
+                    } else {
+                        if (lVal === undefined) {
+                            merged[k] = cVal;
+                            localChanged = true;
+                        } else if (cVal === undefined) {
+                            merged[k] = lVal;
+                            cloudChanged = true;
+                        } else {
+                            merged[k] = lVal;
+                            if (lVal !== cVal) cloudChanged = true;
+                        }
+                    }
+                });
+
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 统计与挑战状态合并：{ child: { statKey: value }, activeChallenge: {...}, globalMessage: {...} }
+            const mergeStats = (localObj, cloudObj) => {
+                if (!localObj || typeof localObj !== 'object' || !cloudObj || typeof cloudObj !== 'object') return null;
+                const merged = {};
+                const allKeys = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+
+                allKeys.forEach(k => {
+                    const lVal = localObj[k];
+                    const cVal = cloudObj[k];
+                    const isLObj = lVal && typeof lVal === 'object' && !Array.isArray(lVal);
+                    const isCObj = cVal && typeof cVal === 'object' && !Array.isArray(cVal);
+
+                    if (isLObj || isCObj) {
+                        const lDict = isLObj ? lVal : {};
+                        const cDict = isCObj ? cVal : {};
+                        const r = mergeFlatDict(lDict, cDict);
+                        merged[k] = r.merged;
+                        if (r.localChanged) localChanged = true;
+                        if (r.cloudChanged) cloudChanged = true;
+                    } else {
+                        if (lVal === undefined) { merged[k] = cVal; localChanged = true; }
+                        else if (cVal === undefined) { merged[k] = lVal; cloudChanged = true; }
+                        else {
+                            merged[k] = lVal;
+                            if (lVal !== cVal) cloudChanged = true;
+                        }
+                    }
+                });
+
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 星星余额合并：{ child: number }
+            const mergeStars = (localObj, cloudObj) => {
+                if (!localObj || typeof localObj !== 'object' || !cloudObj || typeof cloudObj !== 'object') return null;
+                const merged = {};
+                const allChildren = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+
+                allChildren.forEach(c => {
+                    const lv = localObj[c];
+                    const cv = cloudObj[c];
+                    if (lv === undefined) {
+                        merged[c] = cv;
+                        localChanged = true;
+                    } else if (cv === undefined) {
+                        merged[c] = lv;
+                        cloudChanged = true;
+                    } else {
+                        // 双方都有：若本地为0而云端>0（典型的新设备未初始化状态），优先保留云端星星
+                        if (lv === 0 && cv > 0) {
+                            merged[c] = cv;
+                            localChanged = true;
+                        } else {
+                            merged[c] = lv;
+                            if (lv !== cv) cloudChanged = true;
+                        }
+                    }
+                });
+
+                return { merged, localChanged, cloudChanged };
+            };
+
             // 语义合并注册表：key → 处理函数(localObj, cloudObj) → { merged, localChanged, cloudChanged }
             const SEMANTIC_MERGERS = {
                 // 成员档案表：按成员身份（name/id）并集合并，属性互补，避免单设备覆盖导致其他小孩丢失
                 'app_profiles_v1': (l, c) => mergeProfiles(l, c),
+                // 任务定义表：按 child 并集；同 child 按 task.id 深度合并，永不覆盖冲掉
+                'app_tasks_v2': (l, c) => mergeTasks(l, c),
+                // 道具背包表：按 child 粒度并集合并
+                'app_inventory_v1': (l, c) => mergeInventory(l, c),
+                // 统计与事件状态：按 child 与子属性并集合并
+                'app_stats_v1': (l, c) => mergeStats(l, c),
+                // 星星余额表：按 child 并集，防 0 冲刷
+                'app_stars_v1': (l, c) => mergeStars(l, c),
+                // 宠物增益数组：{ child: [buff] }
+                'app_pet_buffs_v1': (l, c) => mergeChildArrays(l, c),
+                // 天工书阁暂存书架：{ child: [book] }
+                'app_reading_shelved_v1': (l, c) => mergeChildArrays(l, c),
+                // AI 对话历史：{ child: [chat] }
+                'app_ai_chat_history': (l, c) => mergeChildArrays(l, c),
                 // 大事纪：顶层数组，按 id 并集，时间倒序
                 'app_milestones_v1': (l, c) => mergeTopLevelArray(l, c, (a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
                 // 兑换券：{ child: [记录] }，按 id/指纹并集
@@ -3903,9 +4156,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     //    （版本缺失视为 0 = "该设备未改过这个 key"）
                     //    首次同步（localTs === 0）的设备一律取云端，防止新设备的本地测试数据覆盖家庭真实数据
                     const lv = localVersions[key] || 0;
-                    const cv = cloudVersions[key] || 0;
+                    const hasPulled = storage.getItem('_sync_has_pulled_v1') === '1';
                     let takeCloud;
-                    if (localTs === 0) takeCloud = true;
+                    if (localTs === 0 || !hasPulled) takeCloud = true;
                     else if (lv === 0 && cv === 0) takeCloud = defaultTakeCloud;
                     else takeCloud = cv > lv;
                     if (takeCloud) {
@@ -3988,11 +4241,51 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             const syncToCloud = async (force = false) => {
                 if (!syncCode) return;
-                // 严格保护：如果本地 profiles 列表为空，绝对禁止上传，防止新设备空数据覆盖云端
+                // 严格保护1：如果本地 profiles 列表为空，绝对禁止上传，防止新设备空数据覆盖云端
                 if (!profiles || profiles.length === 0) {
-                    console.warn('syncToCloud skipped: profiles is empty, refusing to overwrite cloud');
+                    console.warn('[Sync Safety] syncToCloud skipped: profiles is empty, refusing to overwrite cloud');
                     return;
                 }
+
+                // 严格保护2：新设备未完成至少一次有效云端拉取前，禁止上传
+                const hasPulled = storage.getItem('_sync_has_pulled_v1') === '1';
+                if (!hasPulled) {
+                    console.warn('[Sync Safety] syncToCloud blocked: device has not pulled from cloud yet, triggering syncFromCloud first');
+                    syncFromCloud();
+                    return;
+                }
+
+                // 严格保护3：成员数量防减员熔断
+                // 若云端上次已知有 N 个成员，而本地成员数量 < N，坚决拦截上传，并自动触发重新拉取
+                const cloudProfilesCount = parseInt(storage.getItem('_sync_cloud_profiles_count') || '0', 10);
+                if (cloudProfilesCount > 0 && profiles.length < cloudProfilesCount) {
+                    console.warn(`[Sync Safety] Local profiles count (${profiles.length}) < cloud (${cloudProfilesCount}). Refusing upload to prevent child wipeout!`);
+                    showToast('warning', '检测到本地家庭成员数量少于云端，已自动拦截上传并重新合并云端数据！');
+                    syncFromCloud();
+                    return;
+                }
+
+                // 严格保护4：单测试员防御
+                // 若本地仅有 1 个成员且为"测试员"，但云端曾有多个成员，禁止上传
+                if (profiles.length === 1 && profiles[0].name === '测试员' && cloudProfilesCount > 1) {
+                    console.warn('[Sync Safety] Blocked upload: device only has "测试员" while cloud has multi-child family');
+                    syncFromCloud();
+                    return;
+                }
+
+                // 严格保护5：任务总数断崖式下跌熔断（防止整表意外清空）
+                const cloudTasksCount = parseInt(storage.getItem('_sync_cloud_tasks_count') || '0', 10);
+                let localTasksCount = 0;
+                try {
+                    Object.values(tasks || {}).forEach(arr => { if (Array.isArray(arr)) localTasksCount += arr.length; });
+                } catch (e) {}
+                if (cloudTasksCount >= 8 && localTasksCount < Math.floor(cloudTasksCount * 0.4)) {
+                    console.warn(`[Sync Safety] Local tasks count (${localTasksCount}) dropped drastically from cloud (${cloudTasksCount}). Refusing upload!`);
+                    showToast('warning', '检测到任务数据异常减少，已阻止上传并保护云端！');
+                    syncFromCloud();
+                    return;
+                }
+
                 const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
                 // 自动上传时，如果本地从未同步过（localTs === 0），禁止上传，防止新设备空数据覆盖云端
                 if (!force && localTs === 0) {
@@ -4044,6 +4337,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
                     if (resp.status === 404) {
                         // 云端无数据，直接上传（不释放锁，内联执行）
+                        storage.setItem('_sync_has_pulled_v1', '1');
                         const data = collectSyncData();
                         try {
                             const resp2 = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
@@ -4062,6 +4356,22 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                     if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
                     const cloudData = await resp.json();
+                    storage.setItem('_sync_has_pulled_v1', '1');
+
+                    // 记录云端特征指标（用于后续上传前的安全门禁对比）
+                    try {
+                        const cp = JSON.parse(cloudData.app_profiles_v1 || '[]');
+                        if (Array.isArray(cp) && cp.length > 0) {
+                            storage.setItem('_sync_cloud_profiles_count', String(cp.length));
+                        }
+                        const ct = JSON.parse(cloudData.app_tasks_v2 || '{}');
+                        if (typeof ct === 'object' && ct !== null) {
+                            let totalT = 0;
+                            Object.values(ct).forEach(arr => { if (Array.isArray(arr)) totalT += arr.length; });
+                            storage.setItem('_sync_cloud_tasks_count', String(totalT));
+                        }
+                    } catch (e) {}
+
                     const cloudHash = hashSyncPayload(cloudData);
                     const lastHash = storage.getItem('_sync_last_hash');
 
@@ -6992,6 +7302,18 @@ ${context}
                     ...safeOverrides,
                 };
                 setTasks(prev => ({ ...prev, [activeChild]: [...(prev[activeChild]||[]), newTask] }));
+                // 清理此任务可能存在的删除墓碑
+                try {
+                    const rawTombstones = storage.getItem('app_deleted_tasks_v1');
+                    if (rawTombstones) {
+                        const tombstones = JSON.parse(rawTombstones);
+                        if (tombstones[activeChild] && tombstones[activeChild][String(newTask.id)]) {
+                            delete tombstones[activeChild][String(newTask.id)];
+                            storage.setItem('app_deleted_tasks_v1', JSON.stringify(tombstones));
+                            storage.markKeyVersion('app_deleted_tasks_v1');
+                        }
+                    }
+                } catch (e) {}
                 triggerSyncUpload();
                 return newTask.id;
             };
@@ -7006,6 +7328,16 @@ ${context}
             const handleDeleteTask = (taskId) => {
                 if (!window.confirm('确定要删除这个任务吗？')) return;
                 setTasks(prev => ({ ...prev, [activeChild]: prev[activeChild].filter(t => t.id !== taskId) }));
+                
+                // 记录删除墓碑（防云端同步时误复活）
+                try {
+                    const rawTombstones = storage.getItem('app_deleted_tasks_v1');
+                    const tombstones = rawTombstones ? JSON.parse(rawTombstones) : {};
+                    if (!tombstones[activeChild]) tombstones[activeChild] = {};
+                    tombstones[activeChild][String(taskId)] = Date.now();
+                    storage.setItem('app_deleted_tasks_v1', JSON.stringify(tombstones));
+                    storage.markKeyVersion('app_deleted_tasks_v1');
+                } catch (e) {}
                 // 清理关联数据：checkins
                 setCheckins(prev => {
                     const child = prev[activeChild];
@@ -7314,6 +7646,19 @@ ${context}
 														applySyncMerge(mergeResult);
 														storage.setItem('_sync_local_ts', String(cloudData._syncTs || Date.now()));
 														storage.setItem('_sync_last_hash', hashSyncPayload(cloudData));
+														storage.setItem('_sync_has_pulled_v1', '1');
+														try {
+															const cp = JSON.parse(cloudData.app_profiles_v1 || '[]');
+															if (Array.isArray(cp) && cp.length > 0) {
+																storage.setItem('_sync_cloud_profiles_count', String(cp.length));
+															}
+															const ct = JSON.parse(cloudData.app_tasks_v2 || '{}');
+															if (typeof ct === 'object' && ct !== null) {
+																let totalT = 0;
+																Object.values(ct).forEach(arr => { if (Array.isArray(arr)) totalT += arr.length; });
+																storage.setItem('_sync_cloud_tasks_count', String(totalT));
+															}
+														} catch (e) {}
 														window.dispatchEvent(new CustomEvent('_syncDataMerged'));
 														showToast('success', '云端数据同步成功！已载入所有家庭成员！');
 													} catch (err) {

@@ -63,13 +63,28 @@ export default {
                 );
             }
 
+            // GET /bak — 获取上一版自动快照（防灾应急用）
+            if (request.method === 'GET' && url.pathname === '/bak') {
+                const bakData = await env.DAKA_SYNC.get(`sync:${code}:bak`);
+                if (!bakData) {
+                    return new Response(
+                        JSON.stringify({ error: '未找到快照备份数据' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+                return new Response(bakData, {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
             // POST — 上传数据
             if (request.method === 'POST') {
                 const body = await request.text();
                 // 验证是合法 JSON，并提取时间戳写入 metadata
                 let ts = Date.now();
+                let parsed = null;
                 try {
-                    const parsed = JSON.parse(body);
+                    parsed = JSON.parse(body);
                     if (parsed && typeof parsed._syncTs === 'number') ts = parsed._syncTs;
                 } catch (e) {
                     return new Response(
@@ -77,6 +92,33 @@ export default {
                         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                     );
                 }
+
+                // 读旧数据进行防御性比对与自动快照备份
+                const oldRaw = await env.DAKA_SYNC.get(`sync:${code}`);
+                if (oldRaw) {
+                    // 1. 自动留存快照备份（双保险）
+                    try {
+                        await env.DAKA_SYNC.put(`sync:${code}:bak`, oldRaw, {
+                            expirationTtl: 90 * 86400,
+                        });
+                    } catch (e) {}
+
+                    // 2. 检查是否有恶性减员倾向（如原有多个孩子，新上传被削减为仅测试员或空）
+                    try {
+                        const oldParsed = JSON.parse(oldRaw);
+                        const oldProfiles = JSON.parse(oldParsed.app_profiles_v1 || '[]');
+                        const newProfiles = JSON.parse(parsed.app_profiles_v1 || '[]');
+                        if (Array.isArray(oldProfiles) && oldProfiles.length >= 2) {
+                            if (Array.isArray(newProfiles) && newProfiles.length < 2 && !url.searchParams.get('forceWipe')) {
+                                return new Response(
+                                    JSON.stringify({ error: '云端安全拦截：上传的成员数量少于现有家庭数据，已拒绝覆盖！请在客户端先拉取合并。' }),
+                                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                                );
+                            }
+                        }
+                    } catch (e) {}
+                }
+
                 // 存储，90 天过期；metadata 与主数据同一次写入，不额外计费
                 await env.DAKA_SYNC.put(`sync:${code}`, body, {
                     expirationTtl: 90 * 86400,
