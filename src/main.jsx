@@ -629,9 +629,17 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             }, [tasks, deferredActiveChild]);
 
             const [showHabitPavilion, setShowHabitPavilion] = useState(false);
-            const [welcomeSyncCodeInput, setWelcomeSyncCodeInput] = useState('');
-            const [showWelcomeSyncInput, setShowWelcomeSyncInput] = useState(false);
+            const [welcomeTab, setWelcomeTab] = useState('sync'); // 'sync' | 'create'
+            const [welcomeSyncCodeInput, setWelcomeSyncCodeInput] = useState(() => {
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    return urlParams.get('code') || storage.getItem('app_sync_code') || '';
+                } catch { return ''; }
+            });
             const [welcomeSyncLoading, setWelcomeSyncLoading] = useState(false);
+            const [welcomeSyncError, setWelcomeSyncError] = useState('');
+            const [welcomeNewChildName, setWelcomeNewChildName] = useState('');
+            const [welcomeNewChildTheme, setWelcomeNewChildTheme] = useState('sky');
             const [wheelConfig, setWheelConfig] = useStickyState(DEFAULT_WHEEL_CONFIG, 'app_wheel_config');
             const [wheelSettings, setWheelSettings] = useStickyState(DEFAULT_WHEEL_SETTINGS, 'app_wheel_settings');
             const [wheelHistory, setWheelHistory] = useStickyState({}, 'app_wheel_history');
@@ -3594,10 +3602,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // 内容哈希：遍历每个字符，而非仅比较字符串长度（修复 Bug4）
             const hashSyncPayload = (data) => {
-                const keys = Object.keys(data).filter(k => k !== '_syncTs').sort();
+                const keys = Object.keys(data).filter(k => k !== '_syncTs' && k !== '_keyVersions').sort();
                 let h = keys.length * 31;
                 for (const k of keys) {
-                    const v = String(data[k] || '');
+                    const v = (typeof data[k] === 'object' && data[k] !== null) ? JSON.stringify(data[k]) : String(data[k] || '');
                     for (let i = 0; i < v.length; i++) {
                         h = ((h << 5) - h + v.charCodeAt(i)) | 0;
                     }
@@ -3656,17 +3664,34 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return !!ts[nameOrId];
             };
 
-            // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方）
+            // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方），自动过滤已除名成员数据
             const mergeFlatDict = (localObj, cloudObj) => {
                 const merged = { ...cloudObj };
-                let changed = false;
-                Object.keys(localObj).forEach(k => {
-                    if (!(k in merged)) { merged[k] = localObj[k]; changed = true; }
-                    else if (merged[k] !== localObj[k]) { merged[k] = localObj[k]; changed = true; }
+                let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedProfileTombstones();
+                const isKeyDeleted = (k) => {
+                    if (isChildOrProfileDeleted(k, deletedTombstones)) return true;
+                    for (const dName of Object.keys(deletedTombstones)) {
+                        if (k.startsWith(`${dName}-`)) return true;
+                    }
+                    return false;
+                };
+
+                // 清理云端已除名成员残留
+                Object.keys(merged).forEach(k => {
+                    if (isKeyDeleted(k)) {
+                        delete merged[k];
+                        cloudChanged = true;
+                    }
                 });
-                // 检测云端独有 key（本地缺失即视为有变化，需要写回本地）
-                const cloudOnly = Object.keys(cloudObj).some(k => !(k in localObj));
-                return { merged, localChanged: cloudOnly, cloudChanged: changed };
+
+                Object.keys(localObj).forEach(k => {
+                    if (isKeyDeleted(k)) return;
+                    if (!(k in merged)) { merged[k] = localObj[k]; cloudChanged = true; }
+                    else if (merged[k] !== localObj[k]) { merged[k] = localObj[k]; cloudChanged = true; }
+                });
+                localChanged = Object.keys(merged).some(k => !(k in localObj));
+                return { merged, localChanged, cloudChanged };
             };
 
             // checkins 深合并：child → taskId → dateKey 三层，叶子（数字或数组）双方都有时保留条目更多的一方
@@ -4572,6 +4597,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     storage.setItem('_sync_last_hash', newHash);
                     storage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
                     storage.setItem('_sync_cloud_profiles_count', String(currentProfiles.length)); // 更新云端已知成员数
+                    storage.setItem('_sync_cloud_tasks_count', String(localTasksCount)); // 更新云端已知任务数
                     setSyncLastTime(Date.now());
                     setSyncStatus('success');
                     setTimeout(() => setSyncStatus(''), 3000);
@@ -4695,9 +4721,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
             };
 
-            // 防抖上传：操作后 10 秒自动上传（修复 Bug3：不再提前清除 hash）
+            // 防抖上传：操作后 2 秒自动上传（修复 Bug3：不再提前清除 hash）
             const triggerSyncUpload = React.useCallback(() => {
-                if (!syncCode || syncLockRef.current) return;
+                if (!syncCode) return;
                 if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
                 syncDebounceRef.current = setTimeout(() => syncToCloud(), 2000);
             }, [syncCode]);
@@ -7760,8 +7786,16 @@ ${context}
                     const newProfiles = profiles.filter(p => p.id !== targetId && p.name !== targetName);
                     setProfiles(newProfiles);
                     storage.setItem('app_profiles_v1', JSON.stringify(newProfiles));
-                    storage.markKeyVersion('app_profiles_v1');
                     storage.setItem('_sync_cloud_profiles_count', String(newProfiles.length));
+                    try {
+                        const rawT = storage.getItem('app_tasks_v2');
+                        let remainingTasks = 0;
+                        if (rawT) {
+                            const tObj = JSON.parse(rawT);
+                            Object.values(tObj || {}).forEach(arr => { if (Array.isArray(arr)) remainingTasks += arr.length; });
+                        }
+                        storage.setItem('_sync_cloud_tasks_count', String(remainingTasks));
+                    } catch (e) {}
                     
                     // 4. 如果删除的是当前选中的孩子，自动切换到剩余第一个
                     if (activeChild === targetId || activeChild === targetName) {
@@ -7900,99 +7934,265 @@ ${context}
 			
 			// 如果当前设备没有任何账户记录，直接拦截并全屏显示初始引导页，防止任何误操作触发底层数据
 			if (profiles.length === 0) {
-				return (
-					<div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
-						<div className="bg-white/80 backdrop-blur-lg p-7 sm:p-8 rounded-[2rem] shadow-xl w-full max-w-sm text-center border border-white">
-							<div className="text-5xl mb-3 animate-bounce">✨</div>
-							<h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2">欢迎来到进化之路 ——超强学习打卡大计划</h1>
-							<p className="text-slate-500 mb-6 text-xs sm:text-sm font-medium">当前设备暂无记录，可新建成员开启打卡，或直接连接已有云端数据！</p>
-							
-							<div className="space-y-3">
-								<button 
-									onClick={handleAddProfile} 
-									className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-2xl font-bold text-base shadow-lg shadow-blue-500/30 transform transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-								>
-									<span>➕</span> 新建第一个成员
-								</button>
+				const handleWelcomeSync = async () => {
+					const code = welcomeSyncCodeInput.trim();
+					if (!code) {
+						setWelcomeSyncError('请输入家庭私密同步码');
+						return;
+					}
+					setWelcomeSyncLoading(true);
+					setWelcomeSyncError('');
+					try {
+						const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
+						if (resp.status === 404) {
+							setWelcomeSyncError(`云端未找到同步码【${code}】的数据。请核对大小写与拼写；若这是您第一次使用，请直接切换到【创建新家庭】新建成员进入系统！`);
+							return;
+						}
+						if (!resp.ok) throw new Error(`云端服务响应异常 (${resp.status})`);
+						const cloudData = await resp.json();
+						if (!cloudData || typeof cloudData !== 'object') {
+							setWelcomeSyncError(`同步码【${code}】的数据格式异常，请核对`);
+							return;
+						}
 
-								{!showWelcomeSyncInput ? (
-									<button 
-										onClick={() => setShowWelcomeSyncInput(true)} 
-										className="w-full py-3 bg-white hover:bg-slate-50 text-indigo-700 border-2 border-indigo-200/80 rounded-2xl font-bold text-sm shadow-xs transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-									>
-										<span>☁️</span> 已有同步码？从云端同步
-									</button>
-								) : (
-									<div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200 text-left space-y-2 animate-in fade-in">
-										<label className="text-xs font-bold text-indigo-900 block">输入家庭私密同步码：</label>
-										<div className="flex gap-2">
-											<input 
-												type="text" 
-												value={welcomeSyncCodeInput} 
-												onChange={e => setWelcomeSyncCodeInput(e.target.value)} 
-												placeholder="例如: yolyhenry" 
-												className="flex-1 bg-white border border-indigo-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400"
-											/>
-											<button 
-												type="button" 
-												disabled={welcomeSyncLoading || !welcomeSyncCodeInput.trim()} 
-												onClick={async () => {
-													const code = welcomeSyncCodeInput.trim();
-													if (!code) return;
-													setWelcomeSyncLoading(true);
-													try {
-														storage.setItem('app_sync_code', code);
-														setSyncCode(code);
-														const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
-														if (resp.status === 404) throw new Error('云端暂无该同步码对应的数据，请核对拼写');
-														if (!resp.ok) throw new Error(`云端服务响应异常 (${resp.status})`);
-														const cloudData = await resp.json();
-														const { snapshot, versions } = buildLocalSnapshot(cloudData);
-														const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, 0);
-														applySyncMerge(mergeResult);
-														storage.setItem('_sync_local_ts', String(cloudData._syncTs || Date.now()));
-														storage.setItem('_sync_last_hash', hashSyncPayload(cloudData));
-														storage.setItem('_sync_has_pulled_v1', '1');
-														try {
-															const cp = JSON.parse(cloudData.app_profiles_v1 || '[]');
-															const dt = JSON.parse(cloudData.app_deleted_profiles_v1 || storage.getItem('app_deleted_profiles_v1') || '{}');
-															if (Array.isArray(cp) && cp.length > 0) {
-																const validProfiles = cp.filter(p => {
-																	if (!p) return false;
-																	const k = p.name || p.id;
-																	return !dt[k] && !(p.name && dt[p.name]) && !(p.id && dt[p.id]);
-																});
-																storage.setItem('_sync_cloud_profiles_count', String(validProfiles.length));
-															}
-															const ct = JSON.parse(cloudData.app_tasks_v2 || '{}');
-															if (typeof ct === 'object' && ct !== null) {
-																let totalT = 0;
-																Object.values(ct).forEach(arr => { if (Array.isArray(arr)) totalT += arr.length; });
-																storage.setItem('_sync_cloud_tasks_count', String(totalT));
-															}
-														} catch (e) {}
-														window.dispatchEvent(new CustomEvent('_syncDataMerged'));
-														showToast('success', '云端数据同步成功！已载入所有家庭成员！');
-													} catch (err) {
-														showToast('error', err.message || '同步失败，请检查网络');
-													} finally {
-														setWelcomeSyncLoading(false);
-													}
-												}}
-												className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer transition-all shrink-0"
+						storage.setItem('app_sync_code', code);
+						setSyncCode(code);
+						const { snapshot, versions } = buildLocalSnapshot(cloudData);
+						const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, 0);
+						applySyncMerge(mergeResult);
+						storage.setItem('_sync_local_ts', String(cloudData._syncTs || Date.now()));
+						storage.setItem('_sync_last_hash', hashSyncPayload(cloudData));
+						storage.setItem('_sync_has_pulled_v1', '1');
+
+						let validProfiles = [];
+						try {
+							const cp = JSON.parse(cloudData.app_profiles_v1 || '[]');
+							const dt = JSON.parse(cloudData.app_deleted_profiles_v1 || storage.getItem('app_deleted_profiles_v1') || '{}');
+							if (Array.isArray(cp) && cp.length > 0) {
+								validProfiles = cp.filter(p => {
+									if (!p) return false;
+									const k = p.name || p.id;
+									return !dt[k] && !(p.name && dt[p.name]) && !(p.id && dt[p.id]);
+								});
+								storage.setItem('_sync_cloud_profiles_count', String(validProfiles.length));
+							}
+							const ct = JSON.parse(cloudData.app_tasks_v2 || '{}');
+							if (typeof ct === 'object' && ct !== null) {
+								let totalT = 0;
+								Object.values(ct).forEach(arr => { if (Array.isArray(arr)) totalT += arr.length; });
+								storage.setItem('_sync_cloud_tasks_count', String(totalT));
+							}
+						} catch (e) {}
+
+						if (validProfiles.length === 0) {
+							setWelcomeSyncError(`同步码【${code}】下暂无可用的家庭成员记录，请切换到【创建新家庭】添加成员。`);
+							return;
+						}
+
+						// 直接更新 React 状态，瞬间无缝进入主界面
+						setProfiles(validProfiles);
+						const targetChild = validProfiles.find(p => p.name !== '测试员')?.name || validProfiles[0].name;
+						if (targetChild) {
+							startTransition(() => setActiveChild(targetChild));
+						}
+
+						window.dispatchEvent(new CustomEvent('_syncDataMerged'));
+						showToast('success', `云端数据同步成功！已载入 ${validProfiles.length} 位家庭成员！`);
+					} catch (err) {
+						setWelcomeSyncError(err.message || '网络连接异常，请检查网络后重试');
+					} finally {
+						setWelcomeSyncLoading(false);
+					}
+				};
+
+				const handleWelcomeCreate = (e) => {
+					if (e) e.preventDefault();
+					const name = welcomeNewChildName.trim();
+					if (!name) {
+						showToast('warning', '请输入孩子名字');
+						return;
+					}
+					// 清除该名字可能的历史墓碑
+					try {
+						const raw = storage.getItem('app_deleted_profiles_v1');
+						if (raw) {
+							const tombstones = JSON.parse(raw);
+							if (tombstones[name]) {
+								delete tombstones[name];
+								storage.setItem('app_deleted_profiles_v1', JSON.stringify(tombstones));
+								storage.markKeyVersion('app_deleted_profiles_v1');
+							}
+						}
+					} catch (e) {}
+
+					const newProfile = {
+						id: name,
+						name,
+						theme: welcomeNewChildTheme || 'sky',
+						avatar: null,
+						grade: 1,
+						createdDate: getLocalDateKey(0),
+						createdAt: Date.now()
+					};
+					const newProfiles = [newProfile];
+					setProfiles(newProfiles);
+					storage.setItem('app_profiles_v1', JSON.stringify(newProfiles));
+					storage.markKeyVersion('app_profiles_v1');
+					storage.setItem('_sync_cloud_profiles_count', '1');
+					storage.setItem('_sync_cloud_tasks_count', '0');
+					setTasks(prev => ({ ...(prev || {}), [name]: [] }));
+					startTransition(() => setActiveChild(name));
+					showToast('success', `欢迎【${name}】开启打卡成长之旅！`);
+				};
+
+				return (
+					<div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-indigo-50 via-sky-50 to-blue-100 p-4 sm:p-6">
+						<div className="bg-white/95 backdrop-blur-xl p-6 sm:p-8 rounded-[2rem] shadow-2xl w-full max-w-md text-center border border-white/80 animate-in fade-in zoom-in-95 duration-200">
+							<div className="text-5xl mb-2 animate-bounce">✨</div>
+							<h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight mb-1">进化之路 · 打卡计划</h1>
+							<p className="text-slate-500 mb-6 text-xs sm:text-sm font-medium">多端实时互通 · 智能修仙打卡 · 习惯养成</p>
+							
+							{/* 顶部双模式分段切换器 */}
+							<div className="flex bg-slate-100/90 p-1 rounded-2xl mb-5 border border-slate-200/60 shadow-inner">
+								<button
+									type="button"
+									onClick={() => { setWelcomeTab('sync'); setWelcomeSyncError(''); }}
+									className={`flex-1 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+										welcomeTab === 'sync' 
+											? 'bg-white text-indigo-700 shadow-sm' 
+											: 'text-slate-500 hover:text-slate-800'
+									}`}
+								>
+									<span>☁️</span> 同步已有家庭
+								</button>
+								<button
+									type="button"
+									onClick={() => { setWelcomeTab('create'); setWelcomeSyncError(''); }}
+									className={`flex-1 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+										welcomeTab === 'create' 
+											? 'bg-white text-indigo-700 shadow-sm' 
+											: 'text-slate-500 hover:text-slate-800'
+									}`}
+								>
+									<span>🌟</span> 创建新家庭
+								</button>
+							</div>
+
+							{/* 模式1：同步已有云端数据 */}
+							{welcomeTab === 'sync' && (
+								<div className="space-y-4 text-left animate-in fade-in">
+									<div>
+										<label className="text-xs font-bold text-slate-700 block mb-1.5">家庭私密同步码：</label>
+										<input 
+											type="text" 
+											value={welcomeSyncCodeInput} 
+											onChange={e => { setWelcomeSyncCodeInput(e.target.value); setWelcomeSyncError(''); }} 
+											onKeyDown={e => { if (e.key === 'Enter') handleWelcomeSync(); }}
+											placeholder="例如: yolyhenry 或 family_xxxx" 
+											className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-mono font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-slate-400 placeholder:font-normal"
+											autoFocus
+										/>
+										<p className="text-[11px] text-slate-400 mt-1.5">
+											💡 在其他已设置好的手机或平板右上角【设置】中查看同步码，输入后一键载入所有数据。
+										</p>
+									</div>
+
+									{/* 错误提示卡片（重点：当同步码不存在时，友好提示并提供一键切换） */}
+									{welcomeSyncError && (
+										<div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-2xl text-left space-y-2.5 animate-in fade-in">
+											<div className="flex items-start gap-2 text-xs text-amber-900 font-medium leading-relaxed">
+												<span className="text-base shrink-0">⚠️</span>
+												<span>{welcomeSyncError}</span>
+											</div>
+											<button
+												type="button"
+												onClick={() => { setWelcomeTab('create'); setWelcomeSyncError(''); }}
+												className="w-full py-2 bg-white hover:bg-amber-100/60 border border-amber-300 text-amber-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
 											>
-												{welcomeSyncLoading ? '拉取中…' : '拉取数据'}
+												<span>👉</span> 切换到【创建新家庭】新建成员进入
 											</button>
 										</div>
-										<button 
-											type="button" 
-											onClick={() => setShowWelcomeSyncInput(false)} 
-											className="text-[11px] text-slate-400 hover:text-slate-600 font-medium"
-										>
-											收起
-										</button>
+									)}
+
+									<button 
+										type="button" 
+										disabled={welcomeSyncLoading || !welcomeSyncCodeInput.trim()} 
+										onClick={handleWelcomeSync}
+										className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm sm:text-base shadow-lg shadow-indigo-500/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+									>
+										{welcomeSyncLoading ? (
+											<>
+												<span className="animate-spin text-base">🔄</span>
+												<span>正在连接云端并拉取数据…</span>
+											</>
+										) : (
+											<>
+												<span>🚀</span>
+												<span>立即同步已有数据并进入</span>
+											</>
+										)}
+									</button>
+								</div>
+							)}
+
+							{/* 模式2：创建新家庭（首次使用） */}
+							{welcomeTab === 'create' && (
+								<form onSubmit={handleWelcomeCreate} className="space-y-4 text-left animate-in fade-in">
+									<div>
+										<label className="text-xs font-bold text-slate-700 block mb-1.5">孩子名字：</label>
+										<input 
+											type="text" 
+											maxLength={12}
+											value={welcomeNewChildName} 
+											onChange={e => setWelcomeNewChildName(e.target.value)} 
+											placeholder="例如: Henry、大宝、小明" 
+											className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-slate-400 placeholder:font-normal"
+											autoFocus
+										/>
+										<p className="text-[11px] text-slate-400 mt-1.5">
+											创建后可随时在设置中添加更多孩子，或生成家庭同步码连接其它平板设备。
+										</p>
 									</div>
-								)}
+
+									<div>
+										<label className="text-xs font-bold text-slate-700 block mb-2">选择灵力主题：</label>
+										<div className="flex gap-2">
+											{[
+												{ id: 'sky', label: '天空蓝', color: 'bg-sky-500' },
+												{ id: 'emerald', label: '翡翠绿', color: 'bg-emerald-500' },
+												{ id: 'amber', label: '琥珀金', color: 'bg-amber-500' },
+												{ id: 'rose', label: '蔷薇粉', color: 'bg-rose-500' },
+												{ id: 'celadon', label: '青花瓷', color: 'bg-teal-500' },
+											].map(th => (
+												<button
+													key={th.id}
+													type="button"
+													onClick={() => setWelcomeNewChildTheme(th.id)}
+													className={`flex-1 py-1.5 px-1 rounded-xl border text-[11px] font-bold flex flex-col items-center gap-1 transition-all cursor-pointer ${
+														welcomeNewChildTheme === th.id 
+															? 'border-indigo-500 bg-indigo-50/60 text-indigo-700 shadow-xs' 
+															: 'border-slate-200 text-slate-500 hover:border-slate-300'
+													}`}
+												>
+													<span className={`w-3.5 h-3.5 rounded-full ${th.color} shadow-xs`}></span>
+													<span>{th.label}</span>
+												</button>
+											))}
+										</div>
+									</div>
+
+									<button 
+										type="submit" 
+										disabled={!welcomeNewChildName.trim()} 
+										className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 text-white rounded-2xl font-bold text-sm sm:text-base shadow-lg shadow-blue-500/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+									>
+										<span>🌟</span>
+										<span>创建成员并开启打卡之旅</span>
+									</button>
+								</form>
+							)}
+
+							<div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-center">
 
 								<button 
 									onClick={() => {

@@ -103,15 +103,28 @@ export default {
                         });
                     } catch (e) {}
 
-                    // 2. 检查是否有恶性减员倾向（如原有多个孩子，新上传被削减为仅测试员或空）
+                    // 2. 检查是否有恶性减员倾向（如原有多个孩子，新上传被削减为空或仅默认测试员冲刷）
                     try {
                         const oldParsed = JSON.parse(oldRaw);
                         const oldProfiles = JSON.parse(oldParsed.app_profiles_v1 || '[]');
                         const newProfiles = JSON.parse(parsed.app_profiles_v1 || '[]');
-                        if (Array.isArray(oldProfiles) && oldProfiles.length >= 2) {
-                            if (Array.isArray(newProfiles) && newProfiles.length < 2 && !url.searchParams.get('forceWipe')) {
+                        const newTombstones = JSON.parse(parsed.app_deleted_profiles_v1 || '{}');
+                        const tombstoneCount = Object.keys(newTombstones).length;
+
+                        // 拦截1：严禁空成员覆盖非空云端家庭档案
+                        if (Array.isArray(oldProfiles) && oldProfiles.length > 0 && (!Array.isArray(newProfiles) || newProfiles.length === 0)) {
+                            return new Response(
+                                JSON.stringify({ error: '云端安全拦截：上传的成员列表为空，已拒绝覆盖现有家庭数据！' }),
+                                { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                            );
+                        }
+
+                        // 拦截2：严禁空设备默认单一「测试员」冲刷已有真实多孩家庭
+                        if (Array.isArray(oldProfiles) && oldProfiles.length >= 1 && oldProfiles.some(p => p.name !== '测试员')) {
+                            const isSingleTester = Array.isArray(newProfiles) && newProfiles.length === 1 && newProfiles[0].name === '测试员';
+                            if (isSingleTester && tombstoneCount === 0 && !url.searchParams.get('forceWipe')) {
                                 return new Response(
-                                    JSON.stringify({ error: '云端安全拦截：上传的成员数量少于现有家庭数据，已拒绝覆盖！请在客户端先拉取合并。' }),
+                                    JSON.stringify({ error: '云端安全拦截：新设备默认测试员试图覆盖现有真实家庭档案！请先拉取云端数据。' }),
                                     { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                                 );
                             }
