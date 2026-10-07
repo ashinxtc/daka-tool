@@ -54,7 +54,8 @@ export const TesterDashboard = ({
     setPetAdventures,           // 宠物探险
     setPetAdventureLog,         // 探险日志
     setPetAdventureStats,       // 探险统计
-    updateStats: propUpdateStats
+    updateStats: propUpdateStats,
+    onResetTesterData           // 全局彻底重置测试员数据
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const updateStats = propUpdateStats || (typeof window !== 'undefined' && window.updateStats) || (() => {});
@@ -130,9 +131,13 @@ export const TesterDashboard = ({
         setInventory(prev => ({ ...prev, '测试员': allItems }));
     };
 
-    // 5. 【升级版】彻底清空所有数据（含豁免、周工资等持久化项）
+    // 5. 【升级版】彻底清空所有数据（含任务列表、书阁、宠物槽位、星星余额等全系统）
     const handleClearData = () => {
-        if(confirm('⚠️ 警告：确定要重置测试员的所有数据吗？\n\n将清空：\n- 经验值/等级\n- 金元宝/账单\n- 背包道具\n- 打卡记录\n- 已解锁成就\n- 大事纪记录\n- 豁免记录\n- 周学习工资记录\n- 普罗米修斯之火补签记录\n- 作业与考试成绩登记\n- 每日奇遇次数\n- 静音/禁言状态\n- 历史事件进度\n- 每日分类事件计数\n- 星星余额/收支记录\n- 宠物数据/拥有/统计\n- 宠物互动冷却/增益\n- 探险状态/日志/统计')) {
+        if(confirm('⚠️ 警告：确定要彻底重置测试员的所有数据吗？\n\n将清空：\n- 任务列表/打卡记录/补签记录\n- 经验值/等级/档案初始复位\n- 金元宝/账单/星星余额\n- 背包道具/已装备外观/Buff\n- 已解锁成就/大事纪记录\n- 宠物运行时数据/槽位/探险/日志\n- 天工书阁阅读历史/书架\n- 作业与考试成绩登记\n- 豁免记录/周工资结算\n- 每日奇遇/历史事件进度\n- 静音禁言/AI对话历史等\n\n测试员将彻底恢复为初始测试状态！')) {
+            if (typeof onResetTesterData === 'function') {
+                onResetTesterData();
+            }
+
             const clearFilter = (prev) => { 
                 const n={...prev}; 
                 Object.keys(n).forEach(k => {
