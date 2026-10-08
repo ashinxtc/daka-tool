@@ -77,7 +77,21 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
             syncCode: storage.getItem('app_sync_code'),
             syncLastTime: storage.getItem('app_sync_last_time'),
             authorizedParents: storage.getItem('app_authorized_parents_v1'),
-            parentActions: storage.getItem('app_parent_actions_v1')
+            parentActions: storage.getItem('app_parent_actions_v1'),
+            // 现实基准折算汇率与外汇物价设置
+            exchangeBaseCents: storage.getItem('app_exchange_base_cents'),
+            exchangeVolatility: storage.getItem('app_exchange_volatility'),
+            exchangeMinGold: storage.getItem('app_exchange_min_gold'),
+            exchangeMaxSingle: storage.getItem('app_exchange_max_single'),
+            exchangeMaxWeekly: storage.getItem('app_exchange_max_weekly'),
+            // 天工书阁与任务删除墓碑
+            readingShelved: storage.getItem('app_reading_shelved_v1'),
+            readingHistory: storage.getItem('app_reading_history_v1'),
+            deletedTasks: storage.getItem('app_deleted_tasks_v1'),
+            deletedProfiles: storage.getItem('app_deleted_profiles_v1'),
+            parentQrLanHost: storage.getItem('app_parent_qr_lan_host'),
+            // 全量快照兜底（包含各孩子累计兑换 app_exchange_total_* 及所有动态项）
+            _allSyncData: storage.getAllSyncData()
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -181,11 +195,40 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
                                 key === 'syncCode' ? 'app_sync_code' :
                                 key === 'syncLastTime' ? 'app_sync_last_time' :
                                 key === 'authorizedParents' ? 'app_authorized_parents_v1' :
-                                key === 'parentActions' ? 'app_parent_actions_v1' : null;
+                                key === 'parentActions' ? 'app_parent_actions_v1' :
+                                key === 'exchangeBaseCents' ? 'app_exchange_base_cents' :
+                                key === 'exchangeVolatility' ? 'app_exchange_volatility' :
+                                key === 'exchangeMinGold' ? 'app_exchange_min_gold' :
+                                key === 'exchangeMaxSingle' ? 'app_exchange_max_single' :
+                                key === 'exchangeMaxWeekly' ? 'app_exchange_max_weekly' :
+                                key === 'readingShelved' ? 'app_reading_shelved_v1' :
+                                key === 'readingHistory' ? 'app_reading_history_v1' :
+                                key === 'deletedTasks' ? 'app_deleted_tasks_v1' :
+                                key === 'deletedProfiles' ? 'app_deleted_profiles_v1' :
+                                key === 'parentQrLanHost' ? 'app_parent_qr_lan_host' : null;
 
                             if (storageKey) {
                                 storage.setItem(storageKey, data[key]);
+                                storage.markKeyVersion(storageKey);
                             }
+                        }
+                    });
+
+                    // 恢复全量快照兜底（如各孩子累计兑换 app_exchange_total_* 及所有动态键）
+                    if (data._allSyncData && typeof data._allSyncData === 'object') {
+                        Object.entries(data._allSyncData).forEach(([k, v]) => {
+                            if (k && k.startsWith('app_') && v !== undefined && v !== null) {
+                                storage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+                                storage.markKeyVersion(k);
+                            }
+                        });
+                    }
+
+                    // 恢复直接以 app_ 存储的原始键
+                    Object.keys(data).forEach(k => {
+                        if (k.startsWith('app_') && data[k] !== undefined && data[k] !== null) {
+                            storage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
+                            storage.markKeyVersion(k);
                         }
                     });
 

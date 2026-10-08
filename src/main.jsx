@@ -3780,9 +3780,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 // 1. 彻底移除本地测试模式开关，绝不同步
                 delete clean['app_test_mode'];
 
-                // 2. 移除任何以 测试员 或 TESTER 命名的 key
+                // 2. 移除任何以 测试员 或 TESTER 命名的 key 及测试员兑换总额
                 Object.keys(clean).forEach(k => {
-                    if (k.startsWith('测试员') || k.startsWith('TESTER')) {
+                    if (k.startsWith('测试员') || k.startsWith('TESTER') || k.startsWith('app_exchange_total_测试员') || k.startsWith('app_exchange_total_TESTER')) {
                         delete clean[k];
                     }
                 });
@@ -4746,6 +4746,19 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         if (mergeResult.localChanged) writes[key] = mergeResult.value;
                         if (mergeResult.cloudChanged) needUpload = true;
                         return;
+                    }
+
+                    // 1.1 零花钱累计核销总额：数值单调递增取最大值，绝不因多端覆盖而倒退
+                    if (key.startsWith('app_exchange_total_')) {
+                        const lNum = parseFloat(localVal || '0');
+                        const cNum = parseFloat(cloudVal || '0');
+                        if (!isNaN(lNum) && !isNaN(cNum)) {
+                            const maxVal = Math.max(lNum, cNum);
+                            const maxStr = String(maxVal);
+                            if (localVal !== maxStr) writes[key] = maxStr;
+                            if (cloudVal !== maxStr) needUpload = true;
+                            return;
+                        }
                     }
                     // 2. 本地没有此 key：直接取云端
                     if (localVal === null) {
@@ -8581,11 +8594,40 @@ ${context}
 														aiDailyUsage: 'app_ai_daily_usage', aiChatHistory: 'app_ai_chat_history',
 														aiReminderLog: 'app_ai_reminder_log_v1', syncCode: 'app_sync_code',
 														syncLastTime: 'app_sync_last_time', authorizedParents: 'app_authorized_parents_v1',
-														parentActions: 'app_parent_actions_v1'
+														parentActions: 'app_parent_actions_v1',
+														exchangeBaseCents: 'app_exchange_base_cents',
+														exchangeVolatility: 'app_exchange_volatility',
+														exchangeMinGold: 'app_exchange_min_gold',
+														exchangeMaxSingle: 'app_exchange_max_single',
+														exchangeMaxWeekly: 'app_exchange_max_weekly',
+														readingShelved: 'app_reading_shelved_v1',
+														readingHistory: 'app_reading_history_v1',
+														deletedTasks: 'app_deleted_tasks_v1',
+														deletedProfiles: 'app_deleted_profiles_v1',
+														parentQrLanHost: 'app_parent_qr_lan_host'
 													};
 													Object.entries(keyMapping).forEach(([bk, sk]) => {
 														if (data[bk] !== undefined && data[bk] !== null) {
 															storage.setItem(sk, data[bk]);
+															storage.markKeyVersion(sk);
+														}
+													});
+
+													// 恢复全量快照兜底（如各孩子累计兑换 app_exchange_total_* 及所有动态项）
+													if (data._allSyncData && typeof data._allSyncData === 'object') {
+														Object.entries(data._allSyncData).forEach(([k, v]) => {
+															if (k && k.startsWith('app_') && v !== undefined && v !== null) {
+																storage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+																storage.markKeyVersion(k);
+															}
+														});
+													}
+
+													// 恢复直接以 app_ 存储的原始键
+													Object.keys(data).forEach(k => {
+														if (k.startsWith('app_') && data[k] !== undefined && data[k] !== null) {
+															storage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
+															storage.markKeyVersion(k);
 														}
 													});
 													showToast('success', '数据恢复成功！正在重新载入...');

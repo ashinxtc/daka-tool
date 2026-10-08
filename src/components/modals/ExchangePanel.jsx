@@ -82,8 +82,12 @@ export const ExchangePanel = ({
     const [walletExplainExpanded, setWalletExplainExpanded] = React.useState(false);
     const [exchangeTab, setExchangeTab] = React.useState('exchange'); // 默认进入兑换 Tab，符合操作直觉
     
+    // 兑换输入模式：'cny' (按零花钱金额) | 'gold' (按金元宝数量)
+    const [exchangeMode, setExchangeMode] = React.useState('cny');
     // 输入要兑换的人民币金额（字符串形式，方便输入编辑）
     const [cnyInput, setCnyInput] = React.useState('5');
+    // 输入要兑换的金元宝数量（字符串形式，方便输入编辑）
+    const [goldInput, setGoldInput] = React.useState('500');
 
     // 本地持久化与缓存汇率
     const [history, setHistory] = React.useState(() => {
@@ -363,15 +367,44 @@ export const ExchangePanel = ({
                        todayRate < 0.98 ? '📉 当前汇率微跌，建议暂时积攒，等升值后再兑换。' :
                        '➡️ 汇率平稳如常，可按需随时兑换。';
 
-    // 4. 输入值与换算推导
-    const targetCny = Math.max(0, parseFloat(cnyInput) || 0);
-    // 向上取整所需金元宝
-    const neededGold = targetCny > 0 ? Math.ceil(targetCny / cnyPerGold) : 0;
+    // 4. 输入值与换算推导（双模式无缝协同）
+    let targetCny = 0;
+    let neededGold = 0;
+
+    if (exchangeMode === 'gold') {
+        const rawGold = parseInt(goldInput, 10);
+        neededGold = (Number.isFinite(rawGold) && rawGold > 0) ? rawGold : 0;
+        targetCny = neededGold > 0 ? parseFloat((neededGold * cnyPerGold).toFixed(2)) : 0;
+    } else {
+        const rawCny = parseFloat(cnyInput);
+        targetCny = (Number.isFinite(rawCny) && rawCny > 0) ? Math.max(0, rawCny) : 0;
+        neededGold = targetCny > 0 ? Math.ceil(targetCny / cnyPerGold) : 0;
+    }
+
     const remainingGold = totalGold - neededGold;
-    const isZero = targetCny <= 0;
+    const isZero = exchangeMode === 'gold' ? (neededGold <= 0) : (targetCny <= 0);
     const isExceeding = neededGold > totalGold;
     const isBelowMin = neededGold < minGoldLimit;
     const canSubmit = !isZero && !isExceeding && !isBelowMin && !applying;
+
+    // 模式切换联动函数：切换时将另一侧的换算值作为初始值，平滑衔接
+    const handleSwitchMode = (mode) => {
+        if (mode === exchangeMode) return;
+        if (mode === 'gold') {
+            if (neededGold > 0) {
+                setGoldInput(String(neededGold));
+            } else {
+                setGoldInput(String(minGoldLimit || 500));
+            }
+        } else {
+            if (targetCny > 0) {
+                setCnyInput(String(targetCny));
+            } else {
+                setCnyInput(String(Math.ceil(parseFloat(minCny) || 5)));
+            }
+        }
+        setExchangeMode(mode);
+    };
 
     // 5. 纯离线高性能生成核销二维码 Data URL（彻底告别外部失效第三方服务）
     React.useEffect(() => {
@@ -428,9 +461,9 @@ export const ExchangePanel = ({
 
     // 7. 提交兑换申请
     const handleApply = async () => {
-        if (isZero) return showToast('warning', '请输入要兑换的现金金额');
+        if (isZero) return showToast('warning', exchangeMode === 'gold' ? '请输入要兑换的金元宝数量' : '请输入要兑换的现金金额');
         if (isBelowMin) return showToast('warning', `最低起兑门槛为 ${minGoldLimit} 金元宝（约合 ¥${minCny} 元）`);
-        if (isExceeding) return showToast('warning', `金元宝储蓄不足！您当前最多可兑换 ¥${maxCny} 元`);
+        if (isExceeding) return showToast('warning', `金元宝储蓄不足！您当前最多可兑换 ¥${maxCny} 元（现有 ${totalGold.toLocaleString()} 金元宝）`);
 
         const maxSingle = (() => { try { return parseInt(storage.getItem('app_exchange_max_single') || '0', 10); } catch(e) { return 0; } })();
         const maxWeekly = (() => { try { return parseInt(storage.getItem('app_exchange_max_weekly') || '0', 10); } catch(e) { return 0; } })();
@@ -841,9 +874,9 @@ export const ExchangePanel = ({
                                     </div>
                                 </div>
                             ) : (
-                                /* 核心兑换表单：输入人民币金额 + 实时联动换算 */
+                                /* 核心兑换表单：支持【按零花钱金额】与【按金元宝数量】双模式 */
                                 <div className="bg-white rounded-3xl p-4 sm:p-5 border border-amber-200/90 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
                                         <h3 className="text-sm font-black text-gray-800 flex items-center gap-1.5">
                                             <span>💰 想要兑换多少零花钱？</span>
                                         </h3>
@@ -852,68 +885,166 @@ export const ExchangePanel = ({
                                         </span>
                                     </div>
 
-                                    {/* 人民币大字号输入框（标准微信/支付宝转账风格：大¥符号，无右侧多余文字错乱） */}
-                                    <div className="bg-gradient-to-r from-amber-50/70 via-orange-50/30 to-amber-50/70 p-4 rounded-2xl border-2 border-amber-300 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-400/20 transition-all">
-                                        <div className="text-xs text-amber-900/80 font-bold mb-1.5 flex justify-between items-center">
-                                            <span>兑现金额 (元人民币)</span>
-                                            <span className="text-[11px] text-gray-500 font-normal">
-                                                最多可兑 <b className="text-emerald-600 font-mono">¥{maxCny}</b> 元
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-3xl sm:text-4xl font-black text-amber-600 font-mono select-none">
-                                                ¥
-                                            </span>
-                                            <input 
-                                                type="number"
-                                                inputMode="decimal"
-                                                min="0.1"
-                                                step="any"
-                                                value={cnyInput}
-                                                onChange={e => setCnyInput(e.target.value)}
-                                                placeholder="0.00"
-                                                className="flex-1 bg-transparent text-3xl sm:text-4xl font-black text-gray-800 font-mono outline-none placeholder:text-gray-300 placeholder:text-2xl"
-                                            />
-                                        </div>
+                                    {/* 兑换方式选择切换 Segmented Control */}
+                                    <div className="bg-slate-100/90 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSwitchMode('cny')}
+                                            className={`flex-1 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                exchangeMode === 'cny'
+                                                    ? 'bg-white text-amber-800 shadow-sm border border-amber-200/60'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+                                            }`}
+                                        >
+                                            <span>💵 按零花钱金额 (元)</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSwitchMode('gold')}
+                                            className={`flex-1 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                exchangeMode === 'gold'
+                                                    ? 'bg-white text-amber-800 shadow-sm border border-amber-200/60'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50 border border-transparent'
+                                            }`}
+                                        >
+                                            <span>🪙 按金元宝数量 (个)</span>
+                                        </button>
                                     </div>
 
-                                    {/* 快捷筹码按钮（面额全覆盖起兑门槛，杜绝过小面额报错） */}
-                                    <div className="space-y-1.5">
-                                        <div className="text-[11px] font-bold text-gray-400">快捷面额选择：</div>
-                                        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-                                            {[5, 10, 20, 50, 100].map(val => (
-                                                <button
-                                                    key={val}
-                                                    type="button"
-                                                    onClick={() => setCnyInput(String(val))}
-                                                    className={`py-2 rounded-xl text-xs font-black transition-all border ${
-                                                        targetCny === val
-                                                            ? 'bg-amber-500 text-white border-amber-600 shadow-sm scale-102'
-                                                            : 'bg-amber-50/80 text-amber-800 hover:bg-amber-100 border-amber-200/80'
-                                                    }`}
-                                                >
-                                                    ¥{val}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <div className="flex gap-2 pt-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => setCnyInput(String(Math.ceil(parseFloat(minCny) || 5)))}
-                                                className="flex-1 py-1.5 rounded-xl text-[11px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors border border-gray-200"
-                                            >
-                                                🎯 起兑档 (¥{Math.ceil(parseFloat(minCny) || 5)})
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setCnyInput(maxCny)}
-                                                disabled={parseFloat(maxCny) <= 0}
-                                                className="flex-1 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100/80 hover:bg-amber-200/80 text-amber-800 transition-colors border border-amber-200 disabled:opacity-50"
-                                            >
-                                                ⚡ 全部换完 (¥{maxCny})
-                                            </button>
-                                        </div>
-                                    </div>
+                                    {/* 方式一：输入人民币金额 */}
+                                    {exchangeMode === 'cny' ? (
+                                        <>
+                                            <div className="bg-gradient-to-r from-amber-50/70 via-orange-50/30 to-amber-50/70 p-4 rounded-2xl border-2 border-amber-300 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-400/20 transition-all">
+                                                <div className="text-xs text-amber-900/80 font-bold mb-1.5 flex justify-between items-center">
+                                                    <span>兑现金额 (元人民币)</span>
+                                                    <span className="text-[11px] text-gray-500 font-normal">
+                                                        最多可兑 <b className="text-emerald-600 font-mono">¥{maxCny}</b> 元
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-3xl sm:text-4xl font-black text-amber-600 font-mono select-none">
+                                                        ¥
+                                                    </span>
+                                                    <input 
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        min="0.1"
+                                                        step="any"
+                                                        value={cnyInput}
+                                                        onChange={e => setCnyInput(e.target.value)}
+                                                        placeholder="0.00"
+                                                        className="flex-1 bg-transparent text-3xl sm:text-4xl font-black text-gray-800 font-mono outline-none placeholder:text-gray-300 placeholder:text-2xl"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* 快捷面额按钮 */}
+                                            <div className="space-y-1.5">
+                                                <div className="text-[11px] font-bold text-gray-400">快捷面额选择：</div>
+                                                <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                                                    {[5, 10, 20, 50, 100].map(val => (
+                                                        <button
+                                                            key={val}
+                                                            type="button"
+                                                            onClick={() => setCnyInput(String(val))}
+                                                            className={`py-2 rounded-xl text-xs font-black transition-all border cursor-pointer ${
+                                                                targetCny === val
+                                                                    ? 'bg-amber-500 text-white border-amber-600 shadow-sm scale-102'
+                                                                    : 'bg-amber-50/80 text-amber-800 hover:bg-amber-100 border-amber-200/80'
+                                                            }`}
+                                                        >
+                                                            ¥{val}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCnyInput(String(Math.ceil(parseFloat(minCny) || 5)))}
+                                                        className="flex-1 py-1.5 rounded-xl text-[11px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors border border-gray-200 cursor-pointer"
+                                                    >
+                                                        🎯 起兑档 (¥{Math.ceil(parseFloat(minCny) || 5)})
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCnyInput(maxCny)}
+                                                        disabled={parseFloat(maxCny) <= 0}
+                                                        className="flex-1 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100/80 hover:bg-amber-200/80 text-amber-800 transition-colors border border-amber-200 disabled:opacity-50 cursor-pointer"
+                                                    >
+                                                        ⚡ 全部换完 (¥{maxCny})
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        /* 方式二：输入金元宝数量 */
+                                        <>
+                                            <div className="bg-gradient-to-r from-amber-50/70 via-orange-50/30 to-amber-50/70 p-4 rounded-2xl border-2 border-amber-300 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-400/20 transition-all">
+                                                <div className="text-xs text-amber-900/80 font-bold mb-1.5 flex justify-between items-center">
+                                                    <span>兑换数量 (金元宝)</span>
+                                                    <span className="text-[11px] text-gray-500 font-normal">
+                                                        现有储蓄 <b className="text-amber-600 font-mono">{totalGold.toLocaleString()}</b> 元宝
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-2xl sm:text-3xl select-none">
+                                                        🪙
+                                                    </span>
+                                                    <input 
+                                                        type="number"
+                                                        inputMode="numeric"
+                                                        min="1"
+                                                        step="100"
+                                                        value={goldInput}
+                                                        onChange={e => setGoldInput(e.target.value.replace(/[^0-9]/g, ''))}
+                                                        placeholder={String(minGoldLimit || 500)}
+                                                        className="flex-1 bg-transparent text-3xl sm:text-4xl font-black text-gray-800 font-mono outline-none placeholder:text-gray-300 placeholder:text-2xl"
+                                                    />
+                                                    <span className="text-xs sm:text-sm font-bold text-amber-800/80 select-none shrink-0">
+                                                        个元宝
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* 快捷金元宝选择 */}
+                                            <div className="space-y-1.5">
+                                                <div className="text-[11px] font-bold text-gray-400">快捷元宝选择：</div>
+                                                <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+                                                    {[500, 1000, 2000, 5000, 10000].map(val => (
+                                                        <button
+                                                            key={val}
+                                                            type="button"
+                                                            onClick={() => setGoldInput(String(val))}
+                                                            className={`py-2 rounded-xl text-xs font-black transition-all border cursor-pointer ${
+                                                                neededGold === val
+                                                                    ? 'bg-amber-500 text-white border-amber-600 shadow-sm scale-102'
+                                                                    : 'bg-amber-50/80 text-amber-800 hover:bg-amber-100 border-amber-200/80'
+                                                            }`}
+                                                        >
+                                                            {val >= 10000 ? `${val / 10000}万` : val}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setGoldInput(String(minGoldLimit || 500))}
+                                                        className="flex-1 py-1.5 rounded-xl text-[11px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors border border-gray-200 cursor-pointer"
+                                                    >
+                                                        🎯 最低起兑 ({minGoldLimit}元宝)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setGoldInput(String(totalGold))}
+                                                        disabled={totalGold <= 0}
+                                                        className="flex-1 py-1.5 rounded-xl text-[11px] font-bold bg-amber-100/80 hover:bg-amber-200/80 text-amber-800 transition-colors border border-amber-200 disabled:opacity-50 cursor-pointer"
+                                                    >
+                                                        ⚡ 全部元宝 ({totalGold.toLocaleString()})
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
 
                                     {/* 实时双向换算账单卡片 */}
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-gray-200/80 space-y-2.5 text-xs">
@@ -954,10 +1085,10 @@ export const ExchangePanel = ({
                                     {/* 校验提示 */}
                                     {isExceeding && (
                                         <div className="text-xs text-rose-700 bg-rose-50 p-3 rounded-xl border border-rose-200 font-bold flex items-center gap-2 animate-in fade-in">
-                                            <span>⚠️</span> 金元宝储蓄不足！您当前最多可兑换 ¥{maxCny} 元现金。
+                                            <span>⚠️</span> 金元宝储蓄不足！您当前最多可兑换 ¥{maxCny} 元现金（现有 {totalGold.toLocaleString()} 金元宝）。
                                         </div>
                                     )}
-                                    {!isExceeding && isBelowMin && targetCny > 0 && (
+                                    {!isExceeding && isBelowMin && neededGold > 0 && (
                                         <div className="text-xs text-amber-800 bg-amber-50 p-3 rounded-xl border border-amber-200 font-bold flex items-center justify-between animate-in fade-in">
                                             <div className="flex items-center gap-1.5">
                                                 <span>💡</span>
@@ -965,8 +1096,14 @@ export const ExchangePanel = ({
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => setCnyInput(String(Math.ceil(parseFloat(minCny) || 5)))}
-                                                className="text-[11px] underline text-amber-900 font-black hover:text-amber-700"
+                                                onClick={() => {
+                                                    if (exchangeMode === 'gold') {
+                                                        setGoldInput(String(minGoldLimit || 500));
+                                                    } else {
+                                                        setCnyInput(String(Math.ceil(parseFloat(minCny) || 5)));
+                                                    }
+                                                }}
+                                                className="text-[11px] underline text-amber-900 font-black hover:text-amber-700 cursor-pointer"
                                             >
                                                 设为最低门槛
                                             </button>
@@ -978,7 +1115,7 @@ export const ExchangePanel = ({
                                         type="button"
                                         onClick={handleApply} 
                                         disabled={!canSubmit}
-                                        className={`w-full py-4 rounded-2xl font-black text-base text-white transition-all shadow-md flex items-center justify-center gap-2 ${
+                                        className={`w-full py-4 rounded-2xl font-black text-base text-white transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
                                             canSubmit 
                                                 ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:shadow-lg active:scale-98' 
                                                 : 'bg-gray-300 cursor-not-allowed opacity-70'
@@ -991,10 +1128,10 @@ export const ExchangePanel = ({
                                             </>
                                         ) : canSubmit ? (
                                             <>
-                                                <span>申请兑换 ¥{targetCny.toFixed(2)} 元零花钱 💰</span>
+                                                <span>申请兑换 ¥{targetCny.toFixed(2)} 元零花钱 (扣 {neededGold.toLocaleString()} 元宝) 💰</span>
                                             </>
                                         ) : isZero ? (
-                                            '请输入要兑换的现金金额'
+                                            exchangeMode === 'gold' ? '请输入要兑换的金元宝数量' : '请输入要兑换的现金金额'
                                         ) : isExceeding ? (
                                             '金元宝储蓄不足'
                                         ) : isBelowMin ? (

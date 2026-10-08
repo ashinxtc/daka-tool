@@ -5,6 +5,7 @@ import { COLOR_PALETTES, BASE_THEME_IDS } from '../../data/themes';
 import { getLocalDateKey, dateObjToLocalKey } from '../../utils/date';
 import { getTaskTotalSessions } from '../../utils/checkin';
 import { isIOSSafari, isPWAStandalone } from '../../utils/platform';
+import { storage } from '../../utils/storage';
 import { WECOM_API_URL, EXCHANGE_WORKER_URL } from '../../constants/api';
 import {
     Beaker, CalendarIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Coins, Gift, Key, Play, Plus,
@@ -1611,11 +1612,13 @@ const CopyIcon = (props) => (
                                 <div className="flex items-center gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 max-w-sm">
                                     <input 
                                         type="number" min="1" max="10000" step="1"
-                                        defaultValue={(() => { try { const cents = parseFloat(localStorage.getItem('app_exchange_base_cents') || '1'); return Math.round(100 / cents); } catch(e) { return 100; } })()}
+                                        defaultValue={(() => { try { const cents = parseFloat(storage.getItem('app_exchange_base_cents') || '1'); return Math.round(100 / cents); } catch(e) { return 100; } })()}
                                         onBlur={e => {
                                             const goldPerYuan = Math.max(1, parseInt(e.target.value) || 100);
                                             const centsPerGold = (100 / goldPerYuan).toFixed(4);
-                                            localStorage.setItem('app_exchange_base_cents', centsPerGold);
+                                            storage.setItem('app_exchange_base_cents', centsPerGold);
+                                            storage.markKeyVersion('app_exchange_base_cents');
+                                            if (typeof window !== 'undefined' && window._triggerSync) window._triggerSync();
                                             e.target.value = goldPerYuan;
                                         }}
                                         onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
@@ -1641,19 +1644,21 @@ const CopyIcon = (props) => (
                                     <div className="flex items-center gap-3">
                                         <input 
                                             type="range" min="0" max="50" step="1"
-                                            defaultValue={(() => { try { return JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })()}
+                                            defaultValue={(() => { try { return JSON.parse(storage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })()}
                                             onChange={e => {
                                                 const val = parseInt(e.target.value);
                                                 try {
-                                                    const existing = JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}');
+                                                    const existing = JSON.parse(storage.getItem('app_exchange_volatility') || '{}');
                                                     existing.amplifier = val;
-                                                    localStorage.setItem('app_exchange_volatility', JSON.stringify(existing));
+                                                    storage.setItem('app_exchange_volatility', JSON.stringify(existing));
+                                                    storage.markKeyVersion('app_exchange_volatility');
+                                                    if (typeof window !== 'undefined' && window._triggerSync) window._triggerSync();
                                                 } catch(e) {}
                                             }}
                                             className="flex-1 h-2 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                                         />
                                         <span className="text-base font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md min-w-[50px] text-center">
-                                            {(() => { try { return JSON.parse(localStorage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })()}x
+                                            {(() => { try { return JSON.parse(storage.getItem('app_exchange_volatility') || '{}').amplifier || 10; } catch(e) { return 10; } })()}x
                                         </span>
                                     </div>
                                     <div className="flex justify-between text-[10px] text-slate-400">
@@ -1766,10 +1771,14 @@ const CopyIcon = (props) => (
                                     const saveLimitsToServer = () => {
                                         const effectiveCode = syncCode || 'local_' + activeChild;
                                         const limits = {
-                                            minGold: (() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })(),
-                                            maxSingle: (() => { try { return parseInt(localStorage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })(),
-                                            maxWeekly: (() => { try { return parseInt(localStorage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })(),
+                                            minGold: (() => { try { return parseInt(storage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })(),
+                                            maxSingle: (() => { try { return parseInt(storage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })(),
+                                            maxWeekly: (() => { try { return parseInt(storage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })(),
                                         };
+                                        storage.markKeyVersion('app_exchange_min_gold');
+                                        storage.markKeyVersion('app_exchange_max_single');
+                                        storage.markKeyVersion('app_exchange_max_weekly');
+                                        if (typeof window !== 'undefined' && window._triggerSync) window._triggerSync();
                                         fetch(`${EXCHANGE_WORKER_URL}/api/limits`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
@@ -1786,8 +1795,8 @@ const CopyIcon = (props) => (
                                                 <div className="flex items-center gap-1">
                                                     <input 
                                                         type="number" min="1" max="10000" step="100"
-                                                        defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()}
-                                                        onBlur={e => { localStorage.setItem('app_exchange_min_gold', String(Math.max(1, parseInt(e.target.value) || 500))); saveLimitsToServer(); }}
+                                                        defaultValue={(() => { try { return parseInt(storage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })()}
+                                                        onBlur={e => { storage.setItem('app_exchange_min_gold', String(Math.max(1, parseInt(e.target.value) || 500))); saveLimitsToServer(); }}
                                                         className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800"
                                                     />
                                                     <span className="text-xs text-slate-500 font-bold shrink-0">元宝</span>
@@ -1798,8 +1807,8 @@ const CopyIcon = (props) => (
                                                 <div className="flex items-center gap-1">
                                                     <input 
                                                         type="number" min="0" max="100000" step="100"
-                                                        defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })()}
-                                                        onBlur={e => { localStorage.setItem('app_exchange_max_single', String(Math.max(0, parseInt(e.target.value) || 0))); saveLimitsToServer(); }}
+                                                        defaultValue={(() => { try { return parseInt(storage.getItem('app_exchange_max_single') || '0'); } catch(e) { return 0; } })()}
+                                                        onBlur={e => { storage.setItem('app_exchange_max_single', String(Math.max(0, parseInt(e.target.value) || 0))); saveLimitsToServer(); }}
                                                         className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800"
                                                     />
                                                     <span className="text-xs text-slate-500 font-bold shrink-0">元宝</span>
@@ -1810,8 +1819,8 @@ const CopyIcon = (props) => (
                                                 <div className="flex items-center gap-1">
                                                     <input 
                                                         type="number" min="0" max="100000" step="100"
-                                                        defaultValue={(() => { try { return parseInt(localStorage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })()}
-                                                        onBlur={e => { localStorage.setItem('app_exchange_max_weekly', String(Math.max(0, parseInt(e.target.value) || 0))); saveLimitsToServer(); }}
+                                                        defaultValue={(() => { try { return parseInt(storage.getItem('app_exchange_max_weekly') || '0'); } catch(e) { return 0; } })()}
+                                                        onBlur={e => { storage.setItem('app_exchange_max_weekly', String(Math.max(0, parseInt(e.target.value) || 0))); saveLimitsToServer(); }}
                                                         className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800"
                                                     />
                                                     <span className="text-xs text-slate-500 font-bold shrink-0">元宝</span>
