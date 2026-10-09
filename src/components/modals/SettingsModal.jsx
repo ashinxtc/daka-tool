@@ -555,12 +555,25 @@ const CopyIcon = (props) => (
                                                         type="button"
                                                         onClick={() => {
                                                             if (window.confirm(`确定要解除【${dev.role}】的设备绑定吗？解绑后该手机将失去操作权限。`)) {
+                                                                const updatedRevoked = {
+                                                                    ...(authorizedParents?.revokedDevices || {}),
+                                                                    [dev.deviceId]: Date.now()
+                                                                };
                                                                 const updated = {
                                                                     ...authorizedParents,
-                                                                    devices: (authorizedParents.devices || []).filter(d => d.deviceId !== dev.deviceId)
+                                                                    devices: (authorizedParents?.devices || []).filter(d => d.deviceId !== dev.deviceId),
+                                                                    revokedDevices: updatedRevoked
                                                                 };
                                                                 setAuthorizedParents(updated);
-                                                                if (typeof triggerSyncUpload === 'function') triggerSyncUpload();
+                                                                try {
+                                                                    storage.setItem('app_authorized_parents_v1', JSON.stringify(updated));
+                                                                    storage.markKeyVersion('app_authorized_parents_v1');
+                                                                } catch (e) {}
+                                                                if (typeof syncToCloud === 'function') {
+                                                                    syncToCloud(true);
+                                                                } else if (typeof triggerSyncUpload === 'function') {
+                                                                    triggerSyncUpload();
+                                                                }
                                                                 showToast('info', `已成功解除【${dev.role}】设备的授权。`);
                                                             }
                                                         }}

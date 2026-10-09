@@ -4654,17 +4654,37 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const localChanged = merged.length !== l.length || JSON.stringify(merged) !== JSON.stringify(l);
                     return { merged, localChanged, cloudChanged };
                 },
-                // 家长已授权设备表
+                // 家长已授权设备表 (支持 revokedDevices 解绑墓碑，防止解绑设备被并集复活)
                 'app_authorized_parents_v1': (l, c) => {
                     if (!l || !c || typeof l !== 'object' || typeof c !== 'object') return null;
                     const pairToken = l.pairToken || c.pairToken || '';
                     const lDevs = Array.isArray(l.devices) ? l.devices : [];
                     const cDevs = Array.isArray(c.devices) ? c.devices : [];
+
+                    // 合并解绑设备黑名单墓碑 { [deviceId]: timestamp }
+                    const lRevoked = (l.revokedDevices && typeof l.revokedDevices === 'object') ? l.revokedDevices : {};
+                    const cRevoked = (c.revokedDevices && typeof c.revokedDevices === 'object') ? c.revokedDevices : {};
+                    const mergedRevoked = { ...cRevoked, ...lRevoked };
+
                     const devMap = new Map();
-                    cDevs.forEach(d => { if (d && d.deviceId) devMap.set(d.deviceId, d); });
                     let cloudChanged = false;
+
+                    // 1. 云端设备过滤已解绑后入表
+                    cDevs.forEach(d => {
+                        if (!d || !d.deviceId) return;
+                        const revokedTs = mergedRevoked[d.deviceId];
+                        if (revokedTs && (d.boundAt || 0) <= revokedTs) {
+                            cloudChanged = true; // 云端含有已解绑的陈旧设备，需刷新清理云端
+                            return;
+                        }
+                        devMap.set(d.deviceId, d);
+                    });
+
+                    // 2. 本地设备合并
                     lDevs.forEach(d => {
                         if (!d || !d.deviceId) return;
+                        const revokedTs = mergedRevoked[d.deviceId];
+                        if (revokedTs && (d.boundAt || 0) <= revokedTs) return;
                         if (!devMap.has(d.deviceId)) {
                             devMap.set(d.deviceId, d);
                             cloudChanged = true;
@@ -4675,7 +4695,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             }
                         }
                     });
-                    const merged = { pairToken, devices: [...devMap.values()] };
+
+                    if (JSON.stringify(mergedRevoked) !== JSON.stringify(cRevoked)) {
+                        cloudChanged = true;
+                    }
+
+                    const merged = { pairToken, devices: [...devMap.values()], revokedDevices: mergedRevoked };
                     const localChanged = JSON.stringify(merged) !== JSON.stringify(l);
                     return { merged, localChanged, cloudChanged };
                 },

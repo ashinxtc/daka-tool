@@ -223,14 +223,28 @@ export const ParentApp = () => {
             setIsBound(true);
             localStorage.setItem('parent_is_bound', 'true');
 
-            // 检查当前设备是否已被登记授权
+            // 检查当前设备是否已被登记授权或已解绑
             const authConfigStr = data.app_authorized_parents_v1;
-            let authConfig = { pairToken: '', devices: [] };
+            let authConfig = { pairToken: '', devices: [], revokedDevices: {} };
             if (authConfigStr) {
                 try { authConfig = JSON.parse(authConfigStr); } catch (e) {}
             }
 
             const currentDevId = deviceId;
+            const revokedMap = (authConfig && typeof authConfig.revokedDevices === 'object') ? authConfig.revokedDevices : {};
+            const isRevoked = Boolean(revokedMap[currentDevId]);
+
+            // 核心防护：若电脑主程序已将本设备解除绑定，立即清空本地授权并退出，绝不自愈重登
+            if (isRevoked) {
+                localStorage.removeItem('parent_is_bound');
+                localStorage.removeItem('parent_pair_token');
+                localStorage.removeItem('parent_sync_code');
+                setSyncCode('');
+                setIsBound(false);
+                if (!silent) showToast('warning', '本手机已被电脑主程序解除绑定，如需使用请重新扫码。');
+                return data;
+            }
+
             const existingDev = (authConfig.devices || []).find(d => d.deviceId === currentDevId);
             const activeRole = roleOverride || operatorRole;
             const localToken = tokenOverride || pairToken || localStorage.getItem('parent_pair_token');
@@ -288,9 +302,14 @@ export const ParentApp = () => {
             };
             const updatedDevices = [...(authConfig.devices || []).filter(d => d.deviceId !== devId), newDevice];
             const updatedPairToken = authConfig.pairToken || pairToken || localStorage.getItem('parent_pair_token') || ('token_' + Math.random().toString(36).slice(2, 10));
+            // 重新绑定时从解绑黑名单中移出
+            const updatedRevoked = { ...(authConfig.revokedDevices || {}) };
+            delete updatedRevoked[devId];
+
             const updatedAuthConfig = {
                 pairToken: updatedPairToken,
-                devices: updatedDevices
+                devices: updatedDevices,
+                revokedDevices: updatedRevoked
             };
 
             const payload = {
@@ -1655,14 +1674,54 @@ export const ParentApp = () => {
 
                         <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                                 if (window.confirm('确定要解除本手机的绑定吗？解除后需重新扫码或输入密码登录。')) {
+                                    const currentCode = syncCode || localStorage.getItem('parent_sync_code');
+                                    const currentDevId = deviceId;
+
                                     localStorage.removeItem('parent_sync_code');
                                     localStorage.removeItem('parent_pair_token');
                                     localStorage.removeItem('parent_is_bound');
                                     setSyncCode('');
                                     setIsBound(false);
                                     setShowDeviceDrawer(false);
+
+                                    // 同步通知云端注销本设备，防止主程序刷新后又恢复
+                                    if (currentCode) {
+                                        try {
+                                            const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(currentCode)}`);
+                                            if (resp.ok) {
+                                                const cloudJson = await resp.json();
+                                                let authConfig = { pairToken: '', devices: [], revokedDevices: {} };
+                                                try {
+                                                    authConfig = JSON.parse(cloudJson.app_authorized_parents_v1 || '{}');
+                                                } catch (e) {}
+                                                const updatedDevices = (authConfig.devices || []).filter(d => d.deviceId !== currentDevId);
+                                                const updatedRevoked = {
+                                                    ...(authConfig.revokedDevices || {}),
+                                                    [currentDevId]: Date.now()
+                                                };
+                                                const updatedAuthConfig = {
+                                                    ...authConfig,
+                                                    devices: updatedDevices,
+                                                    revokedDevices: updatedRevoked
+                                                };
+                                                const payload = {
+                                                    ...cloudJson,
+                                                    app_authorized_parents_v1: JSON.stringify(updatedAuthConfig),
+                                                    _syncTs: Date.now()
+                                                };
+                                                await fetch(`${SYNC_URL}?code=${encodeURIComponent(currentCode)}`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify(payload)
+                                                });
+                                            }
+                                        } catch (e) {
+                                            console.warn('Notify cloud unbind failed:', e);
+                                        }
+                                    }
+                                    showToast('info', '已成功解除本设备绑定');
                                 }
                             }}
                             className="w-full py-2.5 bg-red-950/80 border border-red-500/40 text-red-300 text-xs font-bold rounded-xl hover:bg-red-900/60"
