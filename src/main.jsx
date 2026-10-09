@@ -4735,6 +4735,40 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
             // 对单个 localStorage key 尝试合并。返回 { value: 合并后的 JSON 字符串, localChanged, cloudChanged }；不可合并时返回 null
             const tryMergeSyncKey = (key, localStr, cloudStr) => {
+                if (key.startsWith('app_exchange_records_history_')) {
+                    if (!localStr || !cloudStr) return null;
+                    try {
+                        const localArr = JSON.parse(localStr);
+                        const cloudArr = JSON.parse(cloudStr);
+                        if (!Array.isArray(localArr) || !Array.isArray(cloudArr)) return null;
+                        const map = new Map();
+                        localArr.forEach(r => { if (r && r.id) map.set(r.id, r); });
+                        let localChanged = false;
+                        let cloudChanged = false;
+                        cloudArr.forEach(r => {
+                            if (!r || !r.id) return;
+                            if (!map.has(r.id)) {
+                                map.set(r.id, r);
+                                localChanged = true;
+                            } else {
+                                const existing = map.get(r.id);
+                                const statusPriority = { verified: 3, cancelled: 2, pending: 1 };
+                                const existPrio = statusPriority[existing.status] || 0;
+                                const newPrio = statusPriority[r.status] || 0;
+                                if (newPrio > existPrio) {
+                                    map.set(r.id, { ...existing, ...r });
+                                    localChanged = true;
+                                } else if (newPrio < existPrio) {
+                                    cloudChanged = true;
+                                }
+                            }
+                        });
+                        const merged = Array.from(map.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+                        if (merged.length !== localArr.length) localChanged = true;
+                        if (merged.length !== cloudArr.length) cloudChanged = true;
+                        return { value: JSON.stringify(merged), localChanged, cloudChanged };
+                    } catch (e) { return null; }
+                }
                 const semantic = SEMANTIC_MERGERS[key];
                 if (!semantic && !MERGEABLE_DICT_KEYS.has(key) && !MERGEABLE_NESTED_KEYS.has(key) && !MERGEABLE_TWO_LEVEL_KEYS.has(key)) return null;
                 if (!localStr || !cloudStr) return null;

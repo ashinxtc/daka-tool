@@ -49,6 +49,25 @@ const generateFallbackHistory = (todayUsd, baseCentsPerGold = 1) => {
     return res;
 };
 
+// 合并新老兑换记录，去重并以最高有效状态（verified > cancelled > pending）及最新信息为准
+const mergeExchangeRecords = (existingList = [], incomingList = []) => {
+    const map = new Map();
+    (existingList || []).forEach(r => { if (r && r.id) map.set(r.id, r); });
+    (incomingList || []).forEach(r => {
+        if (!r || !r.id) return;
+        const prev = map.get(r.id);
+        if (!prev) {
+            map.set(r.id, r);
+        } else {
+            const statusPriority = { verified: 3, cancelled: 2, pending: 1 };
+            const prevPrio = statusPriority[prev.status] || 0;
+            const newPrio = statusPriority[r.status] || 0;
+            map.set(r.id, newPrio >= prevPrio ? { ...prev, ...r } : { ...r, ...prev });
+        }
+    });
+    return Array.from(map.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+};
+
 // ===== 金元宝钱庄 · 零花钱兑换与财商科普面板 =====
 export const ExchangePanel = ({ 
     show, 
@@ -77,7 +96,54 @@ export const ExchangePanel = ({
         return null;
     });
     const [qrCodeDataUrl, setQrCodeDataUrl] = React.useState('');
-    const [exchangeRecords, setExchangeRecords] = React.useState([]);
+    const [exchangeRecords, setExchangeRecords] = React.useState(() => {
+        try {
+            const cached = storage.getItem(`app_exchange_records_history_${activeChild}`);
+            return cached ? JSON.parse(cached) : [];
+        } catch (e) {
+            return [];
+        }
+    });
+    const [showAllRecords, setShowAllRecords] = React.useState(false);
+    const [storedTotal, setStoredTotal] = React.useState(() => {
+        try {
+            return parseFloat(storage.getItem(`app_exchange_total_${activeChild}`) || '0');
+        } catch (e) {
+            return 0;
+        }
+    });
+
+    React.useEffect(() => {
+        try {
+            setStoredTotal(parseFloat(storage.getItem(`app_exchange_total_${activeChild}`) || '0'));
+        } catch (e) {
+            setStoredTotal(0);
+        }
+    }, [activeChild]);
+
+    // 计算实际已核销的金额（基于真实核销成功的记录清单）
+    const verifiedAmountFromRecords = React.useMemo(() => {
+        return (exchangeRecords || [])
+            .filter(r => r && r.status === 'verified')
+            .reduce((sum, r) => sum + (parseFloat(r.cnyAmount) || 0), 0);
+    }, [exchangeRecords]);
+
+    // 核心对齐：累计已核销金额取记录核销累计与存储累计总额的较大者（绝不因任何单端漏记而少算）
+    const totalVerifiedCny = Math.max(verifiedAmountFromRecords, storedTotal);
+
+    // 自动对齐修复：如果记录核销总额大于当前存储的累计金额，立即更新持久化存储并标记版本
+    React.useEffect(() => {
+        if (verifiedAmountFromRecords > storedTotal) {
+            const totalKey = `app_exchange_total_${activeChild}`;
+            storage.setItem(totalKey, String(verifiedAmountFromRecords));
+            storage.markKeyVersion(totalKey);
+            setStoredTotal(verifiedAmountFromRecords);
+            if (typeof window.triggerSyncUpload === 'function') {
+                window.triggerSyncUpload();
+            }
+        }
+    }, [verifiedAmountFromRecords, storedTotal, activeChild]);
+
     const [priceItems, setPriceItems] = React.useState([]);
     const [walletExplainExpanded, setWalletExplainExpanded] = React.useState(false);
     const [exchangeTab, setExchangeTab] = React.useState('exchange'); // 默认进入兑换 Tab，符合操作直觉
@@ -178,7 +244,13 @@ export const ExchangePanel = ({
         } catch (e) {}
         setApplyResult(initialTicket);
         setQrCodeDataUrl('');
-        setExchangeRecords([]);
+        try {
+            const cached = storage.getItem(`app_exchange_records_history_${activeChild}`);
+            setExchangeRecords(cached ? JSON.parse(cached) : []);
+        } catch (e) {
+            setExchangeRecords([]);
+        }
+        setShowAllRecords(false);
     }, [activeChild]);
 
     const settledOrderIdsRef = React.useRef(new Set());
@@ -196,27 +268,38 @@ export const ExchangePanel = ({
         if (settledOrderIdsRef.current.has(historyKey)) return;
         settledOrderIdsRef.current.add(historyKey);
 
+        let didDeduct = false;
         setWheelHistory(wh => {
             if (wh[historyKey]) return wh;
-            const totalKey = `app_exchange_total_${targetChild}`;
-            try {
-                const prev = parseFloat(storage.getItem(totalKey) || '0');
-                storage.setItem(totalKey, String(prev + (rec.cnyAmount || 0)));
-            } catch (e) {}
+            didDeduct = true;
             return { ...wh, [historyKey]: -(rec.goldAmount || 0) };
+        });
+
+        // 更新记录列表中对应记录状态为 verified 并持久化
+        setExchangeRecords(prev => {
+            const updated = prev.map(r => r.id === rec.id ? { ...r, ...rec, status: 'verified', verifiedAt: rec.verifiedAt || new Date().toISOString() } : r);
+            try {
+                storage.setItem(`app_exchange_records_history_${targetChild}`, JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
         });
 
         // 结清本地待核销离线缓存
         storage.removeItem(`app_offline_exchange_${targetChild}`);
 
         // 如果当前显示的正是该订单，立即关闭待核销二维码
-        setApplyResult(current => (current && current.applyId === rec.id ? null : current));
-
-        showToast('success', `🎉 家长已核销 ¥${rec.cnyAmount} 元零花钱！金元宝已结清。`);
-        if (typeof onExchangeComplete === 'function') {
-            try { onExchangeComplete(rec); } catch (e) {}
+        const isCurrentActive = applyResult && applyResult.applyId === rec.id;
+        if (isCurrentActive) {
+            setApplyResult(null);
         }
-    }, [activeChild, setWheelHistory, showToast, onExchangeComplete]);
+
+        if (didDeduct || isCurrentActive) {
+            showToast('success', `🎉 家长已核销 ¥${rec.cnyAmount} 元零花钱！金元宝已结清。`);
+            if (typeof onExchangeComplete === 'function') {
+                try { onExchangeComplete(rec); } catch (e) {}
+            }
+        }
+    }, [activeChild, applyResult, setWheelHistory, showToast, onExchangeComplete]);
 
     // 3. 全局兑换记录轮询（背景刷新 + 历史记录更新）
     React.useEffect(() => {
@@ -230,7 +313,13 @@ export const ExchangePanel = ({
                     if (!d.records) return;
                     // 严格隔离：仅过滤出当前选中孩子的记录，绝不带入没有孩子名或属于其他孩子的单据
                     const childRecords = d.records.filter(r => r.childName === activeChild);
-                    setExchangeRecords(childRecords);
+                    setExchangeRecords(prev => {
+                        const merged = mergeExchangeRecords(prev, childRecords);
+                        try {
+                            storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged));
+                        } catch (e) {}
+                        return merged;
+                    });
 
                     // 自动恢复当前孩子的待核销申请，确保手机端随时可见二维码与核销码
                     const pendingOrder = childRecords.find(r => r.status === 'pending');
@@ -508,18 +597,37 @@ export const ExchangePanel = ({
 
             if (data.ok) {
                 const newRecord = {
-                    ...data,
+                    id: data.applyId,
+                    applyId: data.applyId,
+                    verifyCode: data.verifyCode,
                     goldAmount: neededGold,
                     cnyAmount: targetCny,
-                    childName: activeChild
+                    rate: cnyPerGold,
+                    childName: activeChild,
+                    status: 'pending',
+                    createdAt: new Date().toISOString()
                 };
                 setApplyResult(newRecord);
                 storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(newRecord));
+                setExchangeRecords(prev => {
+                    const merged = mergeExchangeRecords(prev, [newRecord]);
+                    try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch (e) {}
+                    return merged;
+                });
                 showToast('success', `🎉 申请已提交！请家长扫码或当面核销 ¥${targetCny.toFixed(2)} 元零花钱`);
                 // 刷新记录列表
                 fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                     .then(r => r.json())
-                    .then(d => { if (d.records) setExchangeRecords(d.records); })
+                    .then(d => { 
+                        if (d.records) {
+                            const childRecords = d.records.filter(r => r.childName === activeChild);
+                            setExchangeRecords(prev => {
+                                const merged = mergeExchangeRecords(prev, childRecords);
+                                try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch(e) {}
+                                return merged;
+                            });
+                        } 
+                    })
                     .catch(() => {});
             } else if (data.error && data.error.includes('未核销')) {
                 // 如果发现之前已有未核销单，直接拉取并呈现该单的二维码与核销码，避免报错和重复卡死
@@ -551,19 +659,26 @@ export const ExchangePanel = ({
             const localApplyId = `ex_local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             const localVerifyCode = String(Math.floor(1000 + Math.random() * 9000));
             const offlineTicket = {
-                ok: true,
+                id: localApplyId,
                 applyId: localApplyId,
                 verifyCode: localVerifyCode,
                 goldAmount: neededGold,
                 cnyAmount: targetCny,
+                rate: cnyPerGold,
                 childName: activeChild,
                 isOffline: true,
+                status: 'pending',
                 createdAt: new Date().toISOString()
             };
             try {
                 storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(offlineTicket));
             } catch (err) {}
             setApplyResult(offlineTicket);
+            setExchangeRecords(prev => {
+                const merged = mergeExchangeRecords(prev, [offlineTicket]);
+                try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch (e) {}
+                return merged;
+            });
             showToast('info', '已为您即时生成核销单与二维码！请家长微信扫码或点击下方当面核销。', { duration: 6000 });
         } finally {
             // 无论如何保证解除按钮 loading，绝不卡死
@@ -597,13 +712,31 @@ export const ExchangePanel = ({
         const cny = applyResult.cnyAmount || targetCny;
         const gold = applyResult.goldAmount || neededGold;
 
+        // 1. 扣减金元宝
         setWheelHistory(wh => {
-            const totalKey = `app_exchange_total_${activeChild}`;
-            try {
-                const prev = parseFloat(storage.getItem(totalKey) || '0');
-                storage.setItem(totalKey, String(prev + cny));
-            } catch (e) {}
+            if (wh[historyKey]) return wh;
             return { ...wh, [historyKey]: -gold };
+        });
+
+        // 2. 将此记录标记为 verified 并持久化
+        const verifiedRecord = {
+            id: applyResult.applyId,
+            applyId: applyResult.applyId,
+            childName: activeChild,
+            goldAmount: gold,
+            cnyAmount: cny,
+            verifyCode: applyResult.verifyCode,
+            status: 'verified',
+            createdAt: applyResult.createdAt || new Date().toISOString(),
+            verifiedAt: new Date().toISOString()
+        };
+
+        setExchangeRecords(prev => {
+            const merged = mergeExchangeRecords(prev, [verifiedRecord]);
+            try {
+                storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
         });
 
         storage.removeItem(`app_offline_exchange_${activeChild}`);
@@ -618,7 +751,8 @@ export const ExchangePanel = ({
         }
 
         setApplyResult(null);
-        showToast('success', `🎉 家长已当面核销 ¥${cny.toFixed(2)} 元零花钱！已扣减 ${gold} 金元宝。`);
+        showToast('success', `🎉 恭喜！已完成核销并结清 ¥${cny.toFixed(2)} 元零花钱！金元宝已同步扣减。`);
+        refreshRecords();
     };
 
     // 撤销待核销申请
@@ -632,6 +766,11 @@ export const ExchangePanel = ({
             storage.removeItem(`app_offline_exchange_${activeChild}`);
             setApplyResult(null);
             setApplying(false);
+            setExchangeRecords(prev => {
+                const updated = prev.map(rec => rec.id === id ? { ...rec, status: 'cancelled' } : rec);
+                try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(updated)); } catch(e){}
+                return updated;
+            });
             showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
             return;
         }
@@ -648,9 +787,23 @@ export const ExchangePanel = ({
                 storage.removeItem(`app_offline_exchange_${activeChild}`);
                 setApplyResult(null);
                 showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
+                setExchangeRecords(prev => {
+                    const updated = prev.map(rec => rec.id === id ? { ...rec, status: 'cancelled' } : rec);
+                    try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(updated)); } catch(e){}
+                    return updated;
+                });
                 fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                     .then(r => r.json())
-                    .then(d => { if (d.records) setExchangeRecords(d.records); })
+                    .then(d => { 
+                        if (d.records) {
+                            const childRecords = d.records.filter(r => r.childName === activeChild);
+                            setExchangeRecords(prev => {
+                                const merged = mergeExchangeRecords(prev, childRecords);
+                                try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch(e){}
+                                return merged;
+                            });
+                        } 
+                    })
                     .catch(() => {});
             } else {
                 showToast('error', data.error || '撤销失败，请重试');
@@ -1144,25 +1297,24 @@ export const ExchangePanel = ({
                             )}
 
                             {/* 历史兑换记录列表 */}
-                            {exchangeRecords.length > 0 && (
+                            {exchangeRecords.length > 0 && (() => {
+                                const activeList = exchangeRecords.filter(r => r.status !== 'cancelled');
+                                const visibleList = showAllRecords ? activeList : activeList.slice(0, 5);
+                                const hasMore = activeList.length > 5;
+
+                                return (
                                 <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs">
                                     <div className="flex items-center justify-between mb-3">
                                         <h3 className="text-xs font-bold text-gray-700">📜 历史兑换记录</h3>
-                                        {(() => {
-                                            try {
-                                                const total = parseFloat(storage.getItem(`app_exchange_total_${activeChild}`) || '0');
-                                                if (total > 0) return (
-                                                    <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                                        累计已核销 ¥{total.toFixed(2)}
-                                                    </span>
-                                                );
-                                            } catch (e) {}
-                                            return null;
-                                        })()}
+                                        {totalVerifiedCny > 0 && (
+                                            <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shadow-xs">
+                                                累计已核销 ¥{totalVerifiedCny.toFixed(2)}
+                                            </span>
+                                        )}
                                     </div>
 
                                     <div className="space-y-2">
-                                        {exchangeRecords.filter(r => r.status !== 'cancelled').slice(0, 5).map(r => (
+                                        {visibleList.map(r => (
                                             <div key={r.id} className="flex items-center justify-between text-xs py-2 border-b border-gray-50 last:border-0">
                                                 <div>
                                                     <div className="font-bold text-gray-800">{r.goldAmount} 金元宝</div>
@@ -1198,7 +1350,11 @@ export const ExchangePanel = ({
                                                                     }, 6000);
                                                                     const data = await resp.json();
                                                                     if (data.ok) {
-                                                                        setExchangeRecords(prev => prev.map(rec => rec.id === r.id ? { ...rec, status: 'cancelled' } : rec));
+                                                                        setExchangeRecords(prev => {
+                                                                            const updated = prev.map(rec => rec.id === r.id ? { ...rec, status: 'cancelled' } : rec);
+                                                                            try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(updated)); } catch(e){}
+                                                                            return updated;
+                                                                        });
                                                                         if (applyResult && applyResult.applyId === r.id) {
                                                                             storage.removeItem(`app_offline_exchange_${activeChild}`);
                                                                             setApplyResult(null);
@@ -1227,8 +1383,19 @@ export const ExchangePanel = ({
                                             </div>
                                         ))}
                                     </div>
+
+                                    {hasMore && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAllRecords(prev => !prev)}
+                                            className="w-full text-center py-1.5 text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 font-bold rounded-xl border border-amber-200 transition-colors cursor-pointer mt-2"
+                                        >
+                                            {showAllRecords ? '收起较早记录 ⬆️' : `查看全部历史记录 (共 ${activeList.length} 条) ⬇️`}
+                                        </button>
+                                    )}
                                 </div>
-                            )}
+                                );
+                            })()}
                         </>
                     ) : (
                         /* 走势与财商科普 Tab */

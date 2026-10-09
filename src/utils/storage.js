@@ -184,8 +184,9 @@ export const storage = {
         const valStr = typeof value === 'string' ? value : JSON.stringify(value ?? null);
         memoryCache.set(key, valStr);
 
-        // 如果是快速启动小配置，镜像保存到 localStorage
-        if (FAST_BOOT_KEYS.has(key) && typeof window !== 'undefined' && window.localStorage) {
+        // 如果是快速启动小配置或零花钱兑换等核心数据，镜像保存到 localStorage
+        const isMirrorKey = FAST_BOOT_KEYS.has(key) || key.startsWith('app_exchange_total_') || key.startsWith('app_exchange_records_');
+        if (isMirrorKey && typeof window !== 'undefined' && window.localStorage) {
             try {
                 window.localStorage.setItem(key, valStr);
             } catch (e) {}
