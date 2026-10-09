@@ -493,7 +493,14 @@ export const EvilWheelModal = ({
                         {result.usedShield && (
                             <div className="mb-5 text-emerald-300 font-bold bg-emerald-950/50 p-3 rounded-2xl border border-emerald-500/40 flex items-center gap-2 text-sm shadow-[0_0_20px_rgba(16,185,129,0.2)]">
                                 <Shield className="w-5 h-5 text-emerald-400 shrink-0 animate-bounce" />
-                                <span>青铜守护盾生效！神圣庇佑已成功抵消本次惩罚！</span>
+                                <span>青铜守护盾生效！神圣庇佑已成功抵消本次惩罚！（今日已用 1/1 次）</span>
+                            </div>
+                        )}
+
+                        {result.shieldLimitReached && (
+                            <div className="mb-5 text-amber-300 font-bold bg-amber-950/60 p-3 rounded-2xl border border-amber-500/40 flex items-center gap-2 text-xs shadow-sm">
+                                <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span>青铜守护盾今日触发已达上限（每日限1次），本次惩罚无法抵消</span>
                             </div>
                         )}
 

@@ -3765,7 +3765,7 @@ const CopyIcon = (props) => (
                                     {evilAutoTrigger && (
                                         <div className="text-[11px] text-amber-300/90 bg-amber-950/40 border border-amber-800/50 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
                                             <span>🛡️</span>
-                                            <span>守护机制生效中：孩子道具背包中的「青铜守护盾」可在触发时自动抵消本次惩罚</span>
+                                            <span>守护机制生效中：孩子道具背包中的「青铜守护盾」可在触发时自动抵消本次惩罚（每日上限1次）</span>
                                         </div>
                                     )}
                                 </div>

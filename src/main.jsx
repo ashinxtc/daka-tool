@@ -7806,21 +7806,32 @@ ${context}
                 const finalAngle = evilPointerRotation + 1800 + (targetBaseAngle - (evilPointerRotation % 360)) + randomOffset;
                 setEvilPointerRotation(finalAngle);
                 setTimeout(() => {
+                    const today = getLocalDateKey(0);
+                    const shieldKey = `${activeChild}-SHIELD_TRIGGER-${today}`;
+                    const shieldTriggeredToday = !!evilPenaltyLog[shieldKey];
                     // 检查是否有青铜盾
                     const hasShield = (inventory[activeChild]?.['item_shield'] || 0) > 0;
-                    let resultItem = { ...selectedItem, usedShield: false };
+                    let resultItem = { ...selectedItem, usedShield: false, shieldLimitReached: false };
 
                     if (!isEvilDemo && hasShield && selectedItem.value < 0) {
-                        // 消耗盾牌
-                        setInventory(prev => {
-                            const childInv = prev[activeChild] || {};
-                            const newCount = (childInv['item_shield'] || 0) - 1;
-                            const newInv = { ...childInv, 'item_shield': newCount };
-                            if (newCount <= 0) delete newInv['item_shield'];
-                            return { ...prev, [activeChild]: newInv };
-                        });
-                        resultItem.usedShield = true;
-                        resultItem.value = 0; // 惩罚归零
+                        if (!shieldTriggeredToday) {
+                            // 消耗盾牌并记录今日触发（每日上限触发1次）
+                            setInventory(prev => {
+                                const childInv = prev[activeChild] || {};
+                                const newCount = (childInv['item_shield'] || 0) - 1;
+                                const newInv = { ...childInv, 'item_shield': newCount };
+                                if (newCount <= 0) delete newInv['item_shield'];
+                                return { ...prev, [activeChild]: newInv };
+                            });
+                            setEvilPenaltyLog(prev => ({ ...prev, [shieldKey]: Date.now() }));
+                            resultItem.usedShield = true;
+                            resultItem.value = 0; // 惩罚归零
+                        } else {
+                            // 今日青铜神盾已达触发上限（1天1次），正常扣除金元宝
+                            const key = `${activeChild}-EVIL-${Date.now()}`;
+                            setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
+                            resultItem.shieldLimitReached = true;
+                        }
                     } else if (!isEvilDemo) {
                          const key = `${activeChild}-EVIL-${Date.now()}`;
                          setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
@@ -9635,6 +9646,7 @@ ${context}
                       activeChild={activeChild}
 					  holidayForecast={apiHolidayForecast}
 					  setShowTributeModal={setShowTributeModal}
+					  shieldTriggeredToday={!!evilPenaltyLog[`${activeChild}-SHIELD_TRIGGER-${getLocalDateKey(0)}`]}
                   />
 				  
 				  <WheelChoiceModal 

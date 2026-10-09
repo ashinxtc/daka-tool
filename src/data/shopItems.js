@@ -17,7 +17,7 @@ export const SHOP_ITEMS = [
             { 
                 id: 'item_shield', name: '青铜守护盾', icon: '🛡️', type: 'passive_shield', 
                 price: 80, era: '文明初曙', minLevel: 6, 
-                desc: '防御卡。在“邪恶大转盘”惩罚生效前自动触发，抵消一次惩罚。',
+                desc: '防御卡。在“邪恶大转盘”惩罚生效前自动触发，抵消一次惩罚（每日上限触发1次）。',
                 category: 'tool'
             },
             { 

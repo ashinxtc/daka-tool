@@ -45,7 +45,8 @@ export const ShopModal = ({
     initialTab = 'buy', 
     holidayData, 
     holidayForecast, 
-    setShowTributeModal 
+    setShowTributeModal,
+    shieldTriggeredToday = false
 }) => {
     // 保证 React Hooks 恒定在顶部声明
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -406,8 +407,15 @@ export const ShopModal = ({
                                         </span>
                                     )}
                                     {(inventory['item_shield'] || 0) > 0 && (
-                                        <span className="px-3 py-1 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm">
-                                            <Shield className="w-3.5 h-3.5" /> 青铜神盾已就绪 (持有{inventory['item_shield']}枚)
+                                        <span className={`px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm ${
+                                            shieldTriggeredToday 
+                                                ? 'bg-amber-600/90 text-white' 
+                                                : 'bg-emerald-600 text-white'
+                                        }`}>
+                                            <Shield className="w-3.5 h-3.5" /> 
+                                            {shieldTriggeredToday 
+                                                ? `青铜神盾今日已生效 (持有${inventory['item_shield']}枚 · 明日重置)` 
+                                                : `青铜神盾已就绪 (持有${inventory['item_shield']}枚 · 今日可用1次)`}
                                         </span>
                                     )}
                                     {activeBuffs.luckyBuff && (
