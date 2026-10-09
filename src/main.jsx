@@ -839,6 +839,9 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [evilAutoTrigger, setEvilAutoTrigger] = useStickyState(false, 'app_evil_auto_trigger');
             const [evilPenaltyLog, setEvilPenaltyLog] = useStickyState({}, 'app_evil_penalty_log_v1');
             const [pendingEvilPenalty, setPendingEvilPenalty] = useStickyState(false, 'app_pending_evil_penalty_v1');
+            const [evilPenaltySource, setEvilPenaltySource] = useState(
+                typeof pendingEvilPenalty === 'string' ? pendingEvilPenalty : (pendingEvilPenalty ? 'auto' : null)
+            );
 
             // --- AI 相关状态 ---
             const [aiEnabled, setAiEnabled] = useStickyState(false, 'app_ai_enabled');
@@ -7592,7 +7595,9 @@ ${context}
             // 启动时检查：有未完成的惩罚转盘则自动打开
             React.useEffect(() => {
                 if (pendingEvilPenalty) {
-                    setTimeout(() => handleLaunchEvilWheelRef.current?.(), 500);
+                    const source = typeof pendingEvilPenalty === 'string' ? pendingEvilPenalty : 'auto';
+                    setEvilPenaltySource(source);
+                    setTimeout(() => handleLaunchEvilWheelRef.current?.(source), 500);
                 }
             }, []);
 
@@ -7632,22 +7637,27 @@ ${context}
 
                 if (completed === 0) {
                     setEvilPenaltyLog(prev => ({ ...prev, [penaltyKey]: Date.now() }));
-                    setPendingEvilPenalty(true);
-                    setTimeout(() => handleLaunchEvilWheelRef.current?.(), 500);
+                    setPendingEvilPenalty('auto');
+                    setEvilPenaltySource('auto');
+                    setTimeout(() => handleLaunchEvilWheelRef.current?.('auto'), 500);
                 }
                 evilCheckDoneRef.current.add(penaltyKey);
             }, [checkins, activeChild, evilAutoTrigger]);
-            const handleLaunchEvilWheel = () => {
+            const handleLaunchEvilWheel = (source = null) => {
                 setShowSettings(false);
                 setIsEvilDemo(false);
                 setShowEvilWheel(true);
                 setEvilWheelResult(null);
+                if (source) {
+                    setEvilPenaltySource(source);
+                }
             };
 
             const handleTestEvilWheel = () => {
                 setIsEvilDemo(true);
                 setShowEvilWheel(true);
                 setEvilWheelResult(null);
+                setEvilPenaltySource('test');
             };
 
 			// 启动额外奖励转盘
@@ -7721,9 +7731,10 @@ ${context}
                         const operator = action.operatorRole || '家长';
                         const reasonText = action.reason ? `\n事由：${action.reason}` : '';
                         showToast('error', `🚨【${operator}】对你下达了戒律惩罚！${reasonText}`, { duration: 8000 });
-                        setPendingEvilPenalty(true);
+                        setPendingEvilPenalty('parent');
+                        setEvilPenaltySource('parent');
                         setTimeout(() => {
-                            handleLaunchEvilWheel();
+                            handleLaunchEvilWheel('parent');
                         }, 800);
                         return { ...action, status: 'claimed', processedAt: Date.now() };
                     }
@@ -7811,11 +7822,16 @@ ${context}
                     const shieldTriggeredToday = !!evilPenaltyLog[shieldKey];
                     // 检查是否有青铜盾
                     const hasShield = (inventory[activeChild]?.['item_shield'] || 0) > 0;
-                    let resultItem = { ...selectedItem, usedShield: false, shieldLimitReached: false };
+                    let resultItem = { ...selectedItem, usedShield: false, shieldLimitReached: false, shieldPierced: false };
+
+                    const isAutoPenalty = (evilPenaltySource === 'auto') || (pendingEvilPenalty === 'auto');
 
                     if (!isEvilDemo && hasShield && selectedItem.value < 0) {
                         if (!shieldTriggeredToday) {
-                            // 消耗盾牌并记录今日触发（每日上限触发1次）
+                            // 判断是否为自动惩罚机制触发：若是，则大概率（80%几率）青铜守护盾被天罚击穿失效
+                            const isPierced = isAutoPenalty && (Math.random() < 0.80);
+
+                            // 无论是否击穿，本次均消耗 1 面守护盾并记录今日触发（每日上限触发1次）
                             setInventory(prev => {
                                 const childInv = prev[activeChild] || {};
                                 const newCount = (childInv['item_shield'] || 0) - 1;
@@ -7824,13 +7840,26 @@ ${context}
                                 return { ...prev, [activeChild]: newInv };
                             });
                             setEvilPenaltyLog(prev => ({ ...prev, [shieldKey]: Date.now() }));
-                            resultItem.usedShield = true;
-                            resultItem.value = 0; // 惩罚归零
+
+                            if (isPierced) {
+                                // 💥 护盾被天罚击穿失效：正常扣除金元宝
+                                const key = `${activeChild}-EVIL-${Date.now()}`;
+                                setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
+                                resultItem.shieldPierced = true;
+                                resultItem.usedShield = false;
+                                showToast('error', '💥 青铜守护盾被天罚击穿失效！本次惩罚正常扣除。', { duration: 6000 });
+                            } else {
+                                // 奇迹防守（20%几率）：惩罚归零豁免
+                                resultItem.usedShield = true;
+                                resultItem.value = 0; // 惩罚归零
+                                showToast('success', '🛡️ 青铜守护盾生效，成功抵消惩罚！（今日已用 1/1 次）', { duration: 5000 });
+                            }
                         } else {
                             // 今日青铜神盾已达触发上限（1天1次），正常扣除金元宝
                             const key = `${activeChild}-EVIL-${Date.now()}`;
                             setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
                             resultItem.shieldLimitReached = true;
+                            showToast('warning', '⚠️ 青铜守护盾今日触发已达上限，本次惩罚无法抵消。', { duration: 5000 });
                         }
                     } else if (!isEvilDemo) {
                          const key = `${activeChild}-EVIL-${Date.now()}`;
@@ -9929,13 +9958,18 @@ ${context}
 				  <ThemeSelectionModal show={showThemeModal} onClose={handleCloseThemeModal} currentTheme={theme} onSelectTheme={handleChangeTheme} unlockedThemes={stats[activeChild]?.unlockedThemes || []} showToast={showToast} />
                   <EvilWheelModal 
                     show={showEvilWheel} 
-                    onClose={() => setShowEvilWheel(false)} 
+                    onClose={() => {
+                        setShowEvilWheel(false);
+                        setEvilPenaltySource(null);
+                    }} 
                     wheelConfig={evilWheelConfig} 
                     pointerRotation={evilPointerRotation} 
                     spinWheel={spinEvilWheel} 
                     wheelSpinning={evilWheelSpinning} 
                     result={evilWheelResult}
                     isDemo={isEvilDemo}
+                    source={evilPenaltySource || (pendingEvilPenalty === 'parent' ? 'parent' : 'auto')}
+                    hasShield={(inventory[activeChild]?.['item_shield'] || 0) > 0}
                   />
 				  <GoldHistoryModal
                     show={showGoldHistory}

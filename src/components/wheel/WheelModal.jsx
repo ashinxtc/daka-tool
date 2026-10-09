@@ -367,6 +367,8 @@ export const EvilWheelModal = ({
     wheelSpinning,
     result,
     isDemo,
+    source = 'auto',
+    hasShield = false,
 }) => {
     if (!show) return null;
 
@@ -392,13 +394,17 @@ export const EvilWheelModal = ({
                 <div className="z-10 text-center mb-5 mt-2">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-900/40 border border-red-600/40 text-red-300 text-xs font-black tracking-widest uppercase mb-2">
                         <Skull className="w-3.5 h-3.5 animate-pulse text-red-500" />
-                        {isDemo ? '测试演练模式 (不计处罚)' : '命运审判殿堂 · 终局裁决'}
+                        {isDemo ? '测试演练模式 (不计处罚)' : (source === 'auto' ? '天道裁决 · 昨日任务未完成' : '命运审判殿堂 · 终局裁决')}
                     </div>
                     <h2 className="text-2xl font-black bg-gradient-to-r from-red-400 via-rose-200 to-red-500 bg-clip-text text-transparent">
-                        {isDemo ? '命运审判转盘演示' : '严明自律 · 审判降临'}
+                        {isDemo ? '命运审判转盘演示' : (source === 'auto' ? '天道惩戒 · 审判降临' : '严明自律 · 审判降临')}
                     </h2>
                     <p className="text-slate-400 text-xs mt-1">
-                        {isDemo ? '仅供测试审判转盘概率与物理旋转表现' : '直面懈怠的代价，接受审判并砥砺前行...'}
+                        {isDemo 
+                            ? '仅供测试审判转盘概率与物理旋转表现' 
+                            : (source === 'auto' 
+                                ? '昨日全天每日必做未完成！天道严明，青铜守护盾大概率击穿失效...' 
+                                : '直面懈怠的代价，接受审判并砥砺前行...')}
                     </p>
                 </div>
 
@@ -469,6 +475,21 @@ export const EvilWheelModal = ({
                             </div>
                         </div>
 
+                        {hasShield && !isDemo && (
+                            <div className={`w-full max-w-xs mb-3 text-xs font-semibold px-3 py-2 rounded-xl border flex items-center justify-center gap-2 transition-all text-center ${
+                                source === 'auto'
+                                    ? 'bg-amber-950/60 border-amber-600/40 text-amber-300'
+                                    : 'bg-emerald-950/60 border-emerald-600/40 text-emerald-300'
+                            }`}>
+                                <Shield className={`w-4 h-4 shrink-0 ${source === 'auto' ? 'text-amber-400' : 'text-emerald-400'}`} />
+                                <span>
+                                    {source === 'auto'
+                                        ? '已备青铜守护盾（⚠️天罚严惩下大概率击穿失效）'
+                                        : '已备青铜守护盾（若受罚将自动触发神圣抵消）'}
+                                </span>
+                            </div>
+                        )}
+
                         <button
                             onClick={spinWheel}
                             disabled={wheelSpinning}
@@ -489,6 +510,22 @@ export const EvilWheelModal = ({
                         <div className="text-4xl font-black text-red-500 mb-4 drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]">
                             {result.value} 金元宝
                         </div>
+
+                        {result.shieldPierced && (
+                            <div className="mb-5 text-rose-200 font-bold bg-gradient-to-r from-red-950/90 via-rose-950/80 to-slate-900/90 p-4 rounded-2xl border-2 border-rose-500/70 flex items-start gap-3 text-xs shadow-[0_0_30px_rgba(244,63,94,0.35)] text-left animate-in zoom-in-95 duration-300">
+                                <div className="p-2 rounded-xl bg-rose-500/20 border border-rose-500/40 shrink-0 text-2xl leading-none">
+                                    💥
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="text-sm font-black text-rose-300 flex items-center gap-1.5">
+                                        <span>青铜守护盾被天罚击穿失效！</span>
+                                    </div>
+                                    <p className="text-rose-200/90 leading-relaxed font-medium">
+                                        昨日全天任务未做，神圣护盾碎裂击穿，无法抵挡天道惩戒！本次惩罚正常扣除，消耗 1 面青铜守护盾。
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
                         {result.usedShield && (
                             <div className="mb-5 text-emerald-300 font-bold bg-emerald-950/50 p-3 rounded-2xl border border-emerald-500/40 flex items-center gap-2 text-sm shadow-[0_0_20px_rgba(16,185,129,0.2)]">
