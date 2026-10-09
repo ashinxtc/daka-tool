@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 
+// 保证必须在 HTTPS 协议下运行，避免因 Origin 隔离导致 localStorage 丢失
+if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    window.location.replace('https://' + window.location.host + window.location.pathname + window.location.search + window.location.hash);
+}
+
 // 云端同步端点
 const SYNC_URL = 'https://sync.daka-tool.top';
 
@@ -105,7 +110,8 @@ export const ParentApp = () => {
             const hashParams = window.location.hash ? new URLSearchParams(window.location.hash.replace(/^#/, '')) : null;
             const code = params.get('code') || params.get('syncCode') || hashParams?.get('code') || hashParams?.get('syncCode');
             if (code) return true;
-            if (localStorage.getItem('parent_is_bound') === 'true' && localStorage.getItem('parent_sync_code')) return true;
+            if (localStorage.getItem('parent_is_bound') === 'true') return true;
+            if (localStorage.getItem('parent_sync_code')) return true;
         }
         return false;
     });
@@ -226,35 +232,29 @@ export const ParentApp = () => {
 
             const currentDevId = deviceId;
             const existingDev = (authConfig.devices || []).find(d => d.deviceId === currentDevId);
-
             const activeRole = roleOverride || operatorRole;
+            const localToken = tokenOverride || pairToken || localStorage.getItem('parent_pair_token');
+            const hasLocalBound = (localStorage.getItem('parent_is_bound') === 'true') || Boolean(localStorage.getItem('parent_sync_code'));
+
             if (existingDev) {
                 setIsBound(true);
+                localStorage.setItem('parent_is_bound', 'true');
                 // 同步本地角色为已注册角色
                 if (existingDev.role && existingDev.role !== activeRole) {
                     setOperatorRole(existingDev.role);
                     localStorage.setItem('parent_role', existingDev.role);
                 }
+            } else if (hasLocalBound || (localToken && authConfig.pairToken && localToken === authConfig.pairToken) || (!authConfig.pairToken && localToken)) {
+                // 本机此前已在本地绑定，或持有配对 token：自动自愈登记本设备并保持登入
+                await registerCurrentDevice(data, codeToUse, authConfig, currentDevId, activeRole);
+                setIsBound(true);
+            } else if (!authConfig.devices || authConfig.devices.length === 0) {
+                // 首次初始化自动绑定
+                await registerCurrentDevice(data, codeToUse, authConfig, currentDevId, activeRole);
+                setIsBound(true);
             } else {
-                // 如果本地存有有效的 pairToken 且与云端相符，或者首次扫码进入，自动完成设备自登记
-                const localToken = tokenOverride || pairToken || localStorage.getItem('parent_pair_token');
-                if (localToken && authConfig.pairToken && localToken === authConfig.pairToken) {
-                    await registerCurrentDevice(data, codeToUse, authConfig, currentDevId, activeRole);
-                    setIsBound(true);
-                } else if (!authConfig.pairToken && localToken) {
-                    // 若云端尚无 pairToken，主程序与家长端初始化互认
-                    await registerCurrentDevice(data, codeToUse, authConfig, currentDevId, activeRole);
-                    setIsBound(true);
-                } else {
-                    // 仅当已有绑定设备列表且未匹配到当前设备时，标记未绑定
-                    if (authConfig.devices && authConfig.devices.length > 0) {
-                        setIsBound(false);
-                    } else {
-                        // 首次初始化自动绑定
-                        await registerCurrentDevice(data, codeToUse, authConfig, currentDevId, activeRole);
-                        setIsBound(true);
-                    }
-                }
+                // 仅当从未绑定过的新访客设备，且未持有配对凭证时，才保持未绑定以显示配对界面
+                setIsBound(false);
             }
 
             // 初始化活跃孩子
@@ -274,7 +274,7 @@ export const ParentApp = () => {
         }
     };
 
-    // 辅助：向云端注册本设备信息
+    // 辅助：向云端注册本设备信息并持久化本地凭证
     const registerCurrentDevice = async (currentCloudData, code, authConfig, devId, roleToUse = operatorRole) => {
         try {
             const devName = navigator.userAgent.includes('iPhone') ? 'iPhone' :
@@ -287,8 +287,9 @@ export const ParentApp = () => {
                 lastActive: Date.now()
             };
             const updatedDevices = [...(authConfig.devices || []).filter(d => d.deviceId !== devId), newDevice];
+            const updatedPairToken = authConfig.pairToken || pairToken || localStorage.getItem('parent_pair_token') || ('token_' + Math.random().toString(36).slice(2, 10));
             const updatedAuthConfig = {
-                pairToken: authConfig.pairToken || pairToken || 'token_' + Math.random().toString(36).slice(2, 10),
+                pairToken: updatedPairToken,
                 devices: updatedDevices
             };
 
@@ -304,10 +305,24 @@ export const ParentApp = () => {
                 body: JSON.stringify(payload)
             });
 
+            // 本地持久化凭据（确保刷新或重新进入无需重新绑定）
+            localStorage.setItem('parent_is_bound', 'true');
+            localStorage.setItem('parent_sync_code', code);
+            localStorage.setItem('parent_role', roleToUse);
+            if (updatedPairToken) {
+                localStorage.setItem('parent_pair_token', updatedPairToken);
+                setPairToken(updatedPairToken);
+            }
+
             setCloudData(payload);
             setIsBound(true);
         } catch (e) {
             console.warn('Auto register device warning:', e);
+            // 即使网络微有抖动，本地已验证凭证也必须固化
+            localStorage.setItem('parent_is_bound', 'true');
+            localStorage.setItem('parent_sync_code', code);
+            localStorage.setItem('parent_role', roleToUse);
+            setIsBound(true);
         }
     };
 
@@ -315,39 +330,58 @@ export const ParentApp = () => {
     const handleManualAuth = async (e) => {
         e.preventDefault();
         setAuthError('');
-        if (!inputSyncCode.trim()) {
+        const trimmedCode = inputSyncCode.trim();
+        if (!trimmedCode) {
             setAuthError('请输入家庭私密同步码！');
             return;
         }
         setAuthLoading(true);
         try {
-            const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(inputSyncCode.trim())}`);
+            const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(trimmedCode)}`);
             if (resp.status === 404) {
                 throw new Error('未找到该同步码对应的数据，请核对是否与电脑主程序一致！');
             }
             if (!resp.ok) throw new Error('云端服务连接失败，请稍后重试');
             const data = await resp.json();
 
-            // 校验家长密码
-            const cloudPwd = data.app_settings_password;
-            if (cloudPwd && cloudPwd.trim() !== '') {
-                if (inputPassword !== cloudPwd) {
-                    throw new Error('家长安全密码不正确！无法完成设备绑定。');
+            // 校验家长密码 (彻底兼容 useStickyState 的 JSON.stringify 引号序列化包裹)
+            let cloudPwd = data.app_settings_password;
+            if (cloudPwd !== undefined && cloudPwd !== null) {
+                if (typeof cloudPwd === 'string') {
+                    const trimmed = cloudPwd.trim();
+                    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+                        try {
+                            cloudPwd = JSON.parse(trimmed);
+                        } catch (err) {
+                            cloudPwd = trimmed.slice(1, -1);
+                        }
+                    } else {
+                        cloudPwd = trimmed;
+                    }
+                }
+            }
+            cloudPwd = (cloudPwd || '').toString().trim();
+
+            // 若电脑主程序设置了非空密码，则输入必须完全相符；若未设密码（为空），直接放行
+            if (cloudPwd !== '') {
+                if (inputPassword.trim() !== cloudPwd) {
+                    throw new Error('家长安全密码不正确！请在电脑主程序【设置】→【家长】中查看或修改密码。若未设密码可直接留空。');
                 }
             }
 
             // 验证通过，写入本地并注册设备
-            localStorage.setItem('parent_sync_code', inputSyncCode.trim());
+            localStorage.setItem('parent_sync_code', trimmedCode);
             localStorage.setItem('parent_role', inputRole);
-            setSyncCode(inputSyncCode.trim());
+            localStorage.setItem('parent_is_bound', 'true');
+            setSyncCode(trimmedCode);
             setOperatorRole(inputRole);
+            setIsBound(true);
 
             let authConfig = { pairToken: '', devices: [] };
-            try { authConfig = JSON.parse(data.app_authorized_parents_v1 || '{}'); } catch(e) {}
-            await registerCurrentDevice(data, inputSyncCode.trim(), authConfig, deviceId);
+            try { authConfig = JSON.parse(data.app_authorized_parents_v1 || '{}'); } catch(err) {}
+            await registerCurrentDevice(data, trimmedCode, authConfig, deviceId, inputRole);
 
             setCloudData(data);
-            setIsBound(true);
             showToast('success', `🎉 绑定成功！欢迎【${inputRole}】进入护航看板`);
         } catch (err) {
             setAuthError(err.message || '绑定失败，请核对信息');
@@ -838,14 +872,17 @@ export const ParentApp = () => {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-300 mb-1">家长安全密码 (主程序防沉迷密码)</label>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">家长安全密码 (主程序【设置】→【家长】中设置)</label>
                                 <input
                                     type="password"
                                     value={inputPassword}
                                     onChange={e => setInputPassword(e.target.value)}
-                                    placeholder="主程序设置里的家长密码 (若未设可留空)"
+                                    placeholder="电脑主程序家长安全密码 (未设密码请留空)"
                                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-400"
                                 />
+                                <p className="text-[11px] text-slate-400 mt-1">
+                                    💡 提示：与电脑主程序【设置】→【家长】中的“家长安全密码”一致。电脑端默认未设密码，直接留空即可绑定。
+                                </p>
                             </div>
 
                             <div>

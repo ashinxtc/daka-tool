@@ -196,6 +196,8 @@ const CopyIcon = (props) => (
                 if (isLocalhost && networkMode === 'lan' && lanHost.trim()) {
                     const cleanHost = lanHost.trim().replace(/^https?:\/\//, '');
                     baseOrigin = `${window.location.protocol}//${cleanHost}`;
+                } else if (!isLocalhost && baseOrigin.startsWith('http://')) {
+                    baseOrigin = baseOrigin.replace('http://', 'https://');
                 }
                 return `${baseOrigin}/parent.html?code=${encodeURIComponent(syncCode || '')}&token=${encodeURIComponent(pairToken)}&role=${encodeURIComponent(selectedParentRole)}`;
             }, [authorizedParents, isLocalhost, networkMode, lanHost, syncCode, selectedParentRole]);
