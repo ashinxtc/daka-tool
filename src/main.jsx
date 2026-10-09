@@ -850,11 +850,30 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [evilAutoTrigger, setEvilAutoTrigger] = useStickyState(false, 'app_evil_auto_trigger');
             const [evilTriggerConfig, setEvilTriggerConfig] = useStickyState(DEFAULT_EVIL_TRIGGER_CONFIG, 'app_evil_trigger_config_v1');
             const [evilPenaltyLog, setEvilPenaltyLog] = useStickyState({}, 'app_evil_penalty_log_v1');
-            const [pendingEvilPenalty, setPendingEvilPenalty] = useStickyState(false, 'app_pending_evil_penalty_v1');
-            const [evilPenaltySource, setEvilPenaltySource] = useState(
-                typeof pendingEvilPenalty === 'string' ? pendingEvilPenalty : (pendingEvilPenalty ? 'auto' : null)
-            );
+            // 按成员区分待执行惩罚队列 { [childName]: { source: 'auto'|'parent', reason: '...' } }，避免一人受罚导致全家无法使用
+            const [pendingEvilPenalties, setPendingEvilPenalties] = useStickyState({}, 'app_pending_evil_penalties_v2');
+            const [evilPenaltySource, setEvilPenaltySource] = useState(null);
             const [evilPenaltyReason, setEvilPenaltyReason] = useState('');
+
+            // 旧版单一 pendingEvilPenalty 状态平滑迁移
+            React.useEffect(() => {
+                try {
+                    const oldVal = storage.getItem('app_pending_evil_penalty_v1');
+                    if (oldVal) {
+                        const parsed = JSON.parse(oldVal);
+                        if (parsed === true || typeof parsed === 'string') {
+                            const src = typeof parsed === 'string' ? parsed : 'auto';
+                            if (activeChild) {
+                                setPendingEvilPenalties(prev => ({
+                                    ...(typeof prev === 'object' && prev !== null ? prev : {}),
+                                    [activeChild]: { source: src, reason: '', timestamp: Date.now() }
+                                }));
+                            }
+                        }
+                        storage.removeItem('app_pending_evil_penalty_v1');
+                    }
+                } catch (e) {}
+            }, []);
 
             // --- AI 相关状态 ---
             const [aiEnabled, setAiEnabled] = useStickyState(false, 'app_ai_enabled');
@@ -7658,19 +7677,27 @@ ${context}
                 }, 3000); 
             };
 			
-            // 启动时检查：有未完成的惩罚转盘则自动打开
+            // 切换成员或启动时检查：当前成员有未完成的惩罚转盘则自动打开，否则关闭，避免卡死其他家庭成员
             React.useEffect(() => {
-                if (pendingEvilPenalty) {
-                    const source = typeof pendingEvilPenalty === 'string' ? pendingEvilPenalty : 'auto';
+                const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null)
+                    ? pendingEvilPenalties[activeChild]
+                    : null;
+
+                if (currentPending) {
+                    const source = currentPending.source || 'auto';
                     setEvilPenaltySource(source);
-                    const yesterday = getLocalDateKey(-1);
-                    const penaltyKey = `${activeChild}-EVIL_PENALTY-${yesterday}`;
-                    const logEntry = evilPenaltyLog[penaltyKey];
-                    const savedReason = (typeof logEntry === 'object' && logEntry?.reason) ? logEntry.reason : '';
+                    const savedReason = currentPending.reason || '';
                     if (savedReason) setEvilPenaltyReason(savedReason);
-                    setTimeout(() => handleLaunchEvilWheelRef.current?.(source, savedReason), 500);
+                    setShowEvilWheel(true);
+                    setEvilWheelResult(null);
+                } else if (!isEvilDemo) {
+                    // 当前成员没有待受惩罚：若转盘正在显示（从受罚成员切换而来），立即解除遮挡关闭转盘
+                    setShowEvilWheel(false);
+                    setEvilWheelResult(null);
+                    setEvilPenaltySource(null);
+                    setEvilPenaltyReason('');
                 }
-            }, []);
+            }, [activeChild, pendingEvilPenalties, isEvilDemo]);
 
             // 清理 wheelHistory 中被错误写入的 EVIL_PENALTY 对象（一次性修复）
             React.useEffect(() => {
@@ -7785,7 +7812,10 @@ ${context}
                         ...prev,
                         [penaltyKey]: { timestamp: Date.now(), reason: combinedReason }
                     }));
-                    setPendingEvilPenalty('auto');
+                    setPendingEvilPenalties(prev => ({
+                        ...(typeof prev === 'object' && prev !== null ? prev : {}),
+                        [activeChild]: { source: 'auto', reason: combinedReason, timestamp: Date.now() }
+                    }));
                     setEvilPenaltySource('auto');
                     setEvilPenaltyReason(combinedReason);
                     setTimeout(() => handleLaunchEvilWheelRef.current?.('auto', combinedReason), 500);
@@ -7886,9 +7916,13 @@ ${context}
                         const operator = action.operatorRole || '家长';
                         const reasonText = action.reason ? `\n事由：${action.reason}` : '';
                         showToast('error', `🚨【${operator}】对你下达了戒律惩罚！${reasonText}`, { duration: 8000 });
-                        setPendingEvilPenalty('parent');
-                        setEvilPenaltySource('parent');
+                        const target = action.targetChild || activeChild;
                         const parentReason = action.reason || `${operator}下达戒律惩罚`;
+                        setPendingEvilPenalties(prev => ({
+                            ...(typeof prev === 'object' && prev !== null ? prev : {}),
+                            [target]: { source: 'parent', reason: parentReason, timestamp: Date.now() }
+                        }));
+                        setEvilPenaltySource('parent');
                         setEvilPenaltyReason(parentReason);
                         setTimeout(() => {
                             handleLaunchEvilWheel('parent', parentReason);
@@ -7981,7 +8015,8 @@ ${context}
                     const hasShield = (inventory[activeChild]?.['item_shield'] || 0) > 0;
                     let resultItem = { ...selectedItem, usedShield: false, shieldLimitReached: false, shieldPierced: false };
 
-                    const isAutoPenalty = (evilPenaltySource === 'auto') || (pendingEvilPenalty === 'auto');
+                    const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
+                    const isAutoPenalty = (evilPenaltySource === 'auto') || (currentPending?.source === 'auto');
 
                     if (!isEvilDemo && hasShield && selectedItem.value < 0) {
                         if (!shieldTriggeredToday) {
@@ -8026,7 +8061,13 @@ ${context}
 
                     setEvilWheelResult(resultItem);
                     setEvilWheelSpinning(false);
-                    if (!isEvilDemo) setPendingEvilPenalty(false);
+                    if (!isEvilDemo) {
+                        setPendingEvilPenalties(prev => {
+                            const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
+                            delete next[activeChild];
+                            return next;
+                        });
+                    }
                 }, 3000);
             };
 
@@ -8793,6 +8834,7 @@ ${context}
 														petSlots: 'app_pet_slots_v1', petMusic: 'app_pet_music_v1', petNotif: 'app_pet_notif_v1',
 														evilPenaltyLog: 'app_evil_penalty_log_v1', evilAutoTrigger: 'app_evil_auto_trigger',
 														evilTriggerConfig: 'app_evil_trigger_config_v1',
+														pendingEvilPenalties: 'app_pending_evil_penalties_v2',
 														pendingEvilPenalty: 'app_pending_evil_penalty_v1', aiEnabled: 'app_ai_enabled',
 														deepseekApiKey: 'app_deepseek_api_key', aiPetEnabled: 'app_ai_pet_enabled',
 														aiChatEnabled: 'app_ai_chat_enabled', aiDailyLimit: 'app_ai_daily_limit',
@@ -10136,9 +10178,18 @@ ${context}
                     wheelSpinning={evilWheelSpinning} 
                     result={evilWheelResult}
                     isDemo={isEvilDemo}
-                    source={evilPenaltySource || (pendingEvilPenalty === 'parent' ? 'parent' : 'auto')}
+                    source={evilPenaltySource || (pendingEvilPenalties?.[activeChild]?.source === 'parent' ? 'parent' : 'auto')}
                     hasShield={(inventory[activeChild]?.['item_shield'] || 0) > 0}
                     reason={evilPenaltyReason}
+                    profiles={profiles}
+                    activeChild={activeChild}
+                    onSwitchUser={(target) => {
+                        if (target && target !== activeChild) {
+                            startTransition(() => {
+                                setActiveChild(target);
+                            });
+                        }
+                    }}
                   />
 				  <GoldHistoryModal
                     show={showGoldHistory}

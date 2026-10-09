@@ -370,6 +370,9 @@ export const EvilWheelModal = ({
     source = 'auto',
     hasShield = false,
     reason = '',
+    profiles = [],
+    activeChild = '',
+    onSwitchUser = () => {},
 }) => {
     if (!show) return null;
 
@@ -377,15 +380,62 @@ export const EvilWheelModal = ({
     const angleStep = 360 / count;
 
     return (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="relative bg-gradient-to-b from-slate-950 via-red-950/80 to-slate-950 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.3)] overflow-hidden flex flex-col items-center border-2 border-red-700/60">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300 overflow-y-auto">
+            <div className="relative bg-gradient-to-b from-slate-950 via-red-950/80 to-slate-950 rounded-3xl w-full max-w-md p-5 sm:p-6 shadow-[0_0_50px_rgba(239,68,68,0.3)] overflow-hidden flex flex-col items-center border-2 border-red-700/60 my-auto">
                 {/* 顶部血色暗涌 */}
                 <div className="absolute top-0 left-0 right-0 h-36 bg-gradient-to-b from-red-600/20 via-red-900/10 to-transparent pointer-events-none"></div>
+
+                {/* 多成员快速切换栏：允许其他家庭成员正常切换并使用 */}
+                {profiles && profiles.length > 1 && (
+                    <div className="w-full mb-3 pb-2.5 border-b border-red-900/50 flex items-center justify-between gap-2 z-20">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs">👤</span>
+                            <div className="text-xs font-bold text-rose-300 truncate">
+                                受罚成员：<span className="text-white font-black">{activeChild}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[11px] text-slate-400 font-medium">切换:</span>
+                            <div className="flex items-center gap-1 max-w-[13rem] overflow-x-auto no-scrollbar">
+                                {profiles.map(p => {
+                                    const isCurrent = p.name === activeChild;
+                                    return (
+                                        <button
+                                            key={p.id || p.name}
+                                            type="button"
+                                            disabled={wheelSpinning}
+                                            onClick={() => {
+                                                if (!isCurrent) {
+                                                    onSwitchUser(p.name);
+                                                }
+                                            }}
+                                            className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 border cursor-pointer ${
+                                                isCurrent
+                                                    ? 'bg-rose-900/90 border-rose-500 text-white shadow-xs'
+                                                    : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                                            } ${wheelSpinning ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
+                                            title={isCurrent ? `当前受罚成员【${p.name}】` : `切换为【${p.name}】`}
+                                        >
+                                            {p.avatar ? (
+                                                <img src={p.avatar} alt={p.name} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                            ) : (
+                                                <span className="w-3.5 h-3.5 rounded-full bg-slate-700 flex items-center justify-center text-[9px] text-white">
+                                                    {(p.name || '孩')[0]}
+                                                </span>
+                                            )}
+                                            <span className="truncate max-w-[3.5rem]">{p.name}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {isDemo && (
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 z-20 p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-full transition-colors border border-slate-700/50"
+                        className="absolute top-4 right-4 z-20 p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-full transition-colors border border-slate-700/50 cursor-pointer"
                         title="关闭演示"
                     >
                         <XIcon className="w-5 h-5" />
