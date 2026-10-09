@@ -7242,6 +7242,19 @@ ${context}
 
                 triggerSyncUpload();
                 showToast('success', `📖 今日阅读已记录！+${dailyReward} 金元宝，+3 星星！`);
+
+                // 即时打卡奖励触发逻辑（若伴读配置了转盘奖励）
+                const currentTask = (tasks[activeChild] || []).find(t => t.id === taskId) || task;
+                const readingTaskReward = currentTask.onCheckinReward || task.onCheckinReward;
+                if (readingTaskReward) {
+                    setTimeout(() => {
+                        if (readingTaskReward === 'wheel_gold') {
+                            handleLaunchExtraWheel('gold');
+                        } else if (readingTaskReward === 'wheel_xp') {
+                            handleLaunchExtraWheel('xp');
+                        }
+                    }, 300);
+                }
             };
 
             // --- 【伴读书阁】接力开启下一本新书 ---
@@ -7499,6 +7512,21 @@ ${context}
                         showToast('success', `${cfg.icon || '🌱'} 太棒了！「${task.name}」已记录第 ${nextVal} ${unit}！金元宝 +${finalReward}`);
                     } else {
                         showToast('success', `🎉 太棒了！「${task.name}」今日圆满达标！金元宝 +${finalReward}`);
+                    }
+
+                    // 即时打卡奖励触发逻辑（金元宝转盘 / 经验转盘）
+                    const currentTask = (tasks[activeChild] || []).find(t => t.id === task.id) || task;
+                    const taskOnCheckinReward = currentTask.onCheckinReward || task.onCheckinReward;
+                    // 定量目标(如喝水8杯)在首次达成当日目标时触发；单次打卡(check模式)或随心多次(无目标count模式)在有效打卡时触发
+                    const shouldTriggerReward = isCount && hasTarget ? (nextVal >= target && curCount < target) : true;
+                    if (shouldTriggerReward && taskOnCheckinReward) {
+                        setTimeout(() => {
+                            if (taskOnCheckinReward === 'wheel_gold') {
+                                handleLaunchExtraWheel('gold');
+                            } else if (taskOnCheckinReward === 'wheel_xp') {
+                                handleLaunchExtraWheel('xp');
+                            }
+                        }, 300);
                     }
                 }
             };
@@ -8136,18 +8164,24 @@ ${context}
                     const { [taskId]: _, ...rest } = child;
                     return { ...prev, [activeChild]: rest };
                 });
-                // 清理关联数据：wheelHistory（TASK- 前缀）
+                // 清理关联数据：wheelHistory（TASK- 与 HABIT- 前缀）
                 setWheelHistory(prev => {
-                    const prefix = `${activeChild}-TASK-${taskId}-`;
+                    const taskPrefix = `${activeChild}-TASK-${taskId}-`;
+                    const habitPrefix = `${activeChild}-HABIT-${taskId}-`;
                     const next = { ...prev };
-                    Object.keys(next).forEach(k => { if (k.startsWith(prefix)) delete next[k]; });
+                    Object.keys(next).forEach(k => {
+                        if (k.startsWith(taskPrefix) || k.startsWith(habitPrefix)) delete next[k];
+                    });
                     return next;
                 });
-                // 清理关联数据：starHistory（STAR_CHECKIN- 前缀）
+                // 清理关联数据：starHistory（STAR_CHECKIN- 与 STAR_HABIT- 前缀）
                 setStarHistory(prev => {
-                    const prefix = `${activeChild}-STAR_CHECKIN-${taskId}-`;
+                    const taskPrefix = `${activeChild}-STAR_CHECKIN-${taskId}-`;
+                    const habitPrefix = `${activeChild}-STAR_HABIT-${taskId}-`;
                     const next = { ...prev };
-                    Object.keys(next).forEach(k => { if (k.startsWith(prefix)) delete next[k]; });
+                    Object.keys(next).forEach(k => {
+                        if (k.startsWith(taskPrefix) || k.startsWith(habitPrefix)) delete next[k];
+                    });
                     return next;
                 });
                 // 清理关联数据：repairedCheckins

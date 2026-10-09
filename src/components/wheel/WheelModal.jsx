@@ -5,7 +5,7 @@ import { XIcon, TrendingUp, Gift, Skull, Shield, Sparkles, Coins } from '../icon
 export const WheelChoiceModal = ({ show, onClose, onSelect }) => {
     if (!show) return null;
     return (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
             <div className="relative w-full max-w-md bg-gradient-to-b from-slate-900 via-slate-900/95 to-amber-950/40 rounded-3xl p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(245,158,11,0.3)] border-2 border-amber-400/40 backdrop-blur-xl text-center overflow-hidden">
                 {/* 顶栏光晕与流光 */}
                 <div className="absolute top-0 left-0 right-0 h-36 bg-gradient-to-b from-amber-500/15 via-amber-500/5 to-transparent pointer-events-none"></div>
@@ -122,7 +122,7 @@ export const WheelModal = ({
     const bulbs = Array.from({ length: bulbCount });
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
             <div
                 className={`relative ${modalBg} rounded-3xl w-full max-w-md p-6 shadow-2xl overflow-hidden flex flex-col items-center border-2 transition-transform duration-300 ${
                     wheelResult ? 'scale-105' : 'scale-100'
@@ -377,7 +377,7 @@ export const EvilWheelModal = ({
     const angleStep = 360 / count;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
             <div className="relative bg-gradient-to-b from-slate-950 via-red-950/80 to-slate-950 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.3)] overflow-hidden flex flex-col items-center border-2 border-red-700/60">
                 {/* 顶部血色暗涌 */}
                 <div className="absolute top-0 left-0 right-0 h-36 bg-gradient-to-b from-red-600/20 via-red-900/10 to-transparent pointer-events-none"></div>

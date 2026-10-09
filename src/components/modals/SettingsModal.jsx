@@ -2613,6 +2613,8 @@ const CopyIcon = (props) => (
 												{soon && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-amber-100 text-amber-700 font-bold border border-amber-200">临期</span>}
 												{overdue && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-rose-100 text-rose-700 font-bold border border-rose-200">已逾期</span>}
 												{task.isNew && <span className="blink-reminder shrink-0 text-[10px] text-amber-600 font-black">新</span>}
+												{task.onCheckinReward === 'wheel_gold' && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-amber-50 text-amber-600 font-bold border border-amber-200">🎡金币转盘</span>}
+												{task.onCheckinReward === 'wheel_xp' && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-indigo-50 text-indigo-600 font-bold border border-indigo-200">🎡经验转盘</span>}
 												<span className={`shrink-0 ml-auto px-2 py-0.5 rounded-full border text-[10px] font-bold ${fl.cls}`}>
 													{fl.text}
 												</span>
@@ -3076,7 +3078,7 @@ const CopyIcon = (props) => (
 															✨ 幸运大转盘（经验）
 														</button>
 													</div>
-													<p className="text-[10px] text-slate-400">打卡确认后将立即触发所选转盘进行额外奖励抽奖。</p>
+													<p className="text-[10px] text-slate-400">打卡确认后将立即触发所选转盘进行额外奖励抽奖（定量生活习惯在达成当日目标时触发）。</p>
 												</>
 											))}
 
@@ -3516,7 +3518,7 @@ const CopyIcon = (props) => (
 														</button>
 													))}
 													<span className="w-px h-3.5 bg-slate-200 mx-1" />
-													{[['', '全部频次'], ['daily_must', '每日必做'], ['weekly_optional', '每周选做'], ['count', '按总次数'], ['habit', '🌱 生活习惯']].map(([v, label]) => (
+													{[['', '全部频次'], ['daily_must', '每日必做'], ['weekly_optional', '每周选做'], ['count', '按总次数'], ['reading', '📖 伴读打卡'], ['habit', '🌱 生活习惯']].map(([v, label]) => (
 														<button 
 															key={'f' + v} 
 															type="button"

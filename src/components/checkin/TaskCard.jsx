@@ -216,6 +216,16 @@ export const TaskCardInner = (({
 									{frequencyType === 'daily_must' ? '每日必做' : '每周选做'}
 								</span>
 							)}
+							{task.onCheckinReward === 'wheel_gold' && (
+								<span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200">
+									🎡 金币转盘
+								</span>
+							)}
+							{task.onCheckinReward === 'wheel_xp' && (
+								<span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">
+									🎡 经验转盘
+								</span>
+							)}
 						</div>
 					</div>
 

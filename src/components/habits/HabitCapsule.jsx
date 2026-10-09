@@ -293,6 +293,16 @@ export const HabitCapsule = ({
                   <Flame className="w-2.5 h-2.5" />{streak}
                 </span>
               )}
+              {task.onCheckinReward === 'wheel_gold' && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-600 bg-amber-50 px-1 rounded-sm shrink-0 border border-amber-200/60">
+                  🎡转盘
+                </span>
+              )}
+              {task.onCheckinReward === 'wheel_xp' && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-indigo-600 bg-indigo-50 px-1 rounded-sm shrink-0 border border-indigo-200/60">
+                  🎡经验
+                </span>
+              )}
             </div>
             {isUnlimited ? (
               <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
@@ -385,6 +395,16 @@ export const HabitCapsule = ({
                 <Coins className="w-3 h-3 text-amber-500" />
                 +{reward} {isUnlimited && <span className="text-[10px] font-normal text-slate-400">/每次</span>}
               </span>
+              {task.onCheckinReward === 'wheel_gold' && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.2 rounded-full bg-amber-50 text-amber-600 border border-amber-200/60">
+                  🎡 金币转盘
+                </span>
+              )}
+              {task.onCheckinReward === 'wheel_xp' && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200/60">
+                  🎡 经验转盘
+                </span>
+              )}
               {streak > 0 && (
                 <span className={`inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.2 rounded-full ${
                   streak >= 7 ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-orange-50 text-orange-600'
