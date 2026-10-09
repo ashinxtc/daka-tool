@@ -7828,8 +7828,8 @@ ${context}
 
                     if (!isEvilDemo && hasShield && selectedItem.value < 0) {
                         if (!shieldTriggeredToday) {
-                            // 判断是否为自动惩罚机制触发：若是，则大概率（80%几率）青铜守护盾被天罚击穿失效
-                            const isPierced = isAutoPenalty && (Math.random() < 0.80);
+                            // 判断是否为自动惩罚机制触发：若是，则大概率（90%几率）青铜守护盾被天罚击穿失效
+                            const isPierced = isAutoPenalty && (Math.random() < 0.90);
 
                             // 无论是否击穿，本次均消耗 1 面守护盾并记录今日触发（每日上限触发1次）
                             setInventory(prev => {
