@@ -132,7 +132,7 @@ const CopyIcon = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
 );
 
-        const SettingsModal = ({ showSettings, setShowSettings, initialTab = 'parent', theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, authorizedParents = { pairToken: '', devices: [] }, setAuthorizedParents, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
+        const SettingsModal = ({ showSettings, setShowSettings, initialTab = 'parent', theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, evilTriggerConfig = {}, setEvilTriggerConfig = () => {}, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, authorizedParents = { pairToken: '', devices: [] }, setAuthorizedParents, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
             const showToast = (typeof window !== "undefined" && window.showToast) || ((t, m) => alert(m));
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState(initialTab);
@@ -3743,32 +3743,356 @@ const CopyIcon = (props) => (
                                     </p>
                                 </div>
 
-                                {/* 自动惩罚开关 */}
-                                <div className="p-4 bg-slate-800/70 rounded-xl border border-slate-700/70 space-y-2.5">
+                                {/* 自动惩罚开关与定制条件 */}
+                                <div className="p-4 bg-slate-800/70 rounded-xl border border-slate-700/70 space-y-3">
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                                                <span>⚡</span> 自动惩罚触发
+                                                <span>⚡</span> 自动天罚机制 (戒律惩罚)
                                             </div>
                                             <div className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                                                前一天所有「每日必做」任务均未完成时，隔天首次打卡自动触发邪恶转盘
+                                                次日首次打卡时，若昨日未达成设定戒律条件，将自动开启命运审判转盘
                                             </div>
                                         </div>
                                         <div className="shrink-0">
                                             <ToggleSwitch 
-                                                checked={evilAutoTrigger} 
-                                                onChange={setEvilAutoTrigger} 
-                                                color="red"
+                                                checked={!!evilAutoTrigger} 
+                                                onChange={() => setEvilAutoTrigger(!evilAutoTrigger)} 
+                                                activeColor="bg-rose-600"
                                             />
                                         </div>
                                     </div>
+
                                     {evilAutoTrigger && (
-                                        <div className="text-[11px] text-amber-300/90 bg-amber-950/40 border border-amber-800/50 px-3 py-2 rounded-lg flex items-start gap-2 leading-relaxed">
-                                            <span className="shrink-0 mt-0.5">🛡️</span>
-                                            <div>
-                                                <div>守护机制：孩子道具背包中的「青铜守护盾」每日最多触发 1 次抵消。</div>
-                                                <div className="text-rose-300 font-bold mt-1">
-                                                    ⚠️ 注意：自动惩罚机制下，青铜守护盾有大概率（90%）会被天罚击穿失效并碎裂，本次惩罚无法豁免！仅有极小概率（10%）奇迹防守成功。
+                                        <div className="mt-2.5 pt-3 border-t border-slate-700/60 space-y-3">
+                                            {/* 守护机制提示 */}
+                                            <div className="text-[11px] text-amber-300/90 bg-amber-950/40 border border-amber-800/50 px-3 py-2 rounded-lg flex items-start gap-2 leading-relaxed">
+                                                <span className="shrink-0 mt-0.5">🛡️</span>
+                                                <div>
+                                                    <div>守护机制：孩子道具背包中的「青铜守护盾」每日最多触发 1 次抵消。</div>
+                                                    <div className="text-rose-300 font-bold mt-1">
+                                                        ⚠️ 注意：自动惩罚机制下，青铜守护盾有大概率（90%）会被天罚击穿失效并碎裂，本次惩罚无法豁免！仅有极小概率（10%）奇迹防守成功。
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* 触发条件定制区 */}
+                                            <div className="space-y-2.5">
+                                                <div className="flex items-center justify-between text-xs font-bold text-slate-200">
+                                                    <span className="flex items-center gap-1.5 text-rose-300">
+                                                        <span>⚙️</span> 定制触发条件（满足任意勾选条件即触发）
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400 font-normal">次日评估前日表现</span>
+                                                </div>
+
+                                                {/* 规则 1：前一天必做全部未做 */}
+                                                <div className={`p-3 bg-slate-900/60 rounded-xl border transition-colors ${evilTriggerConfig?.mustAllUndone !== false ? 'border-rose-500/40 bg-rose-950/15' : 'border-slate-700/60'}`}>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={evilTriggerConfig?.mustAllUndone !== false}
+                                                                onChange={(e) => {
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        mustAllUndone: e.target.checked
+                                                                    }));
+                                                                }}
+                                                                className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 bg-slate-800 border-slate-600 cursor-pointer"
+                                                            />
+                                                            <span>【全军覆没】昨日「每日必做」全部未做</span>
+                                                        </label>
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">基础戒律</span>
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 pl-6 mt-1 leading-relaxed">
+                                                        前一日生效的所有「每日必做」任务完成数为 0 时，立即触发自动惩罚
+                                                    </p>
+                                                </div>
+
+                                                {/* 规则 2：前一天必做完成比例低于设定值 */}
+                                                <div className={`p-3 bg-slate-900/60 rounded-xl border transition-colors ${evilTriggerConfig?.mustRateEnabled ? 'border-rose-500/40 bg-rose-950/15' : 'border-slate-700/60'}`}>
+                                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                                        <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={!!evilTriggerConfig?.mustRateEnabled}
+                                                                onChange={(e) => {
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        mustRateEnabled: e.target.checked
+                                                                    }));
+                                                                }}
+                                                                className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 bg-slate-800 border-slate-600 cursor-pointer"
+                                                            />
+                                                            <span>【必做不足】昨日「每日必做」完成率低于阈值</span>
+                                                        </label>
+                                                        {evilTriggerConfig?.mustRateEnabled && (
+                                                            <span className="text-[11px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded-md border border-rose-800/60">
+                                                                低于 {evilTriggerConfig?.mustRateThreshold || 50}%
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 pl-6 leading-relaxed mb-2">
+                                                        前一日每日必做任务完成比例低于设定百分比时触发惩罚（如 4 项仅完成 1 项为 25%）
+                                                    </p>
+                                                    {evilTriggerConfig?.mustRateEnabled && (
+                                                        <div className="pl-6 pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
+                                                            <span className="text-slate-400">完成比例低于</span>
+                                                            <input
+                                                                type="number"
+                                                                min="10"
+                                                                max="90"
+                                                                step="5"
+                                                                value={evilTriggerConfig?.mustRateThreshold ?? 50}
+                                                                onChange={(e) => {
+                                                                    const val = Math.max(5, Math.min(95, parseInt(e.target.value, 10) || 50));
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        mustRateThreshold: val
+                                                                    }));
+                                                                }}
+                                                                className="w-16 px-2 py-1 text-center font-bold text-rose-300 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-rose-500"
+                                                            />
+                                                            <span className="text-slate-400">% 触发</span>
+                                                            <div className="flex gap-1.5 ml-auto">
+                                                                {[30, 50, 60].map(val => (
+                                                                    <button
+                                                                        key={val}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setEvilTriggerConfig(prev => ({
+                                                                                mustAllUndone: true,
+                                                                                mustRateEnabled: false,
+                                                                                mustRateThreshold: 50,
+                                                                                overallRateEnabled: false,
+                                                                                overallRateThreshold: 40,
+                                                                                consecutiveUndoneEnabled: false,
+                                                                                consecutiveDays: 3,
+                                                                                ...(prev || {}),
+                                                                                mustRateThreshold: val
+                                                                            }));
+                                                                        }}
+                                                                        className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                                                                            evilTriggerConfig?.mustRateThreshold === val 
+                                                                                ? 'bg-rose-600 text-white shadow-xs' 
+                                                                                : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+                                                                        }`}
+                                                                    >
+                                                                        {val}%
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 规则 3：前一天总体任务完成比例低于设定值 */}
+                                                <div className={`p-3 bg-slate-900/60 rounded-xl border transition-colors ${evilTriggerConfig?.overallRateEnabled ? 'border-amber-500/40 bg-amber-950/15' : 'border-slate-700/60'}`}>
+                                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                                        <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={!!evilTriggerConfig?.overallRateEnabled}
+                                                                onChange={(e) => {
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        overallRateEnabled: e.target.checked
+                                                                    }));
+                                                                }}
+                                                                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-800 border-slate-600 cursor-pointer"
+                                                            />
+                                                            <span>【总体不足】昨日「全任务总体」完成率低于阈值</span>
+                                                        </label>
+                                                        {evilTriggerConfig?.overallRateEnabled && (
+                                                            <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-800/60">
+                                                                低于 {evilTriggerConfig?.overallRateThreshold || 40}%
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 pl-6 leading-relaxed mb-2">
+                                                        涵盖昨日全部生效待打卡任务（必做、日常习惯等），整体打卡率过低时触发
+                                                    </p>
+                                                    {evilTriggerConfig?.overallRateEnabled && (
+                                                        <div className="pl-6 pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
+                                                            <span className="text-slate-400">总体比例低于</span>
+                                                            <input
+                                                                type="number"
+                                                                min="10"
+                                                                max="90"
+                                                                step="5"
+                                                                value={evilTriggerConfig?.overallRateThreshold ?? 40}
+                                                                onChange={(e) => {
+                                                                    const val = Math.max(5, Math.min(95, parseInt(e.target.value, 10) || 40));
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        overallRateThreshold: val
+                                                                    }));
+                                                                }}
+                                                                className="w-16 px-2 py-1 text-center font-bold text-amber-300 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-amber-400"
+                                                            />
+                                                            <span className="text-slate-400">% 触发</span>
+                                                            <div className="flex gap-1.5 ml-auto">
+                                                                {[30, 40, 50].map(val => (
+                                                                    <button
+                                                                        key={val}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setEvilTriggerConfig(prev => ({
+                                                                                mustAllUndone: true,
+                                                                                mustRateEnabled: false,
+                                                                                mustRateThreshold: 50,
+                                                                                overallRateEnabled: false,
+                                                                                overallRateThreshold: 40,
+                                                                                consecutiveUndoneEnabled: false,
+                                                                                consecutiveDays: 3,
+                                                                                ...(prev || {}),
+                                                                                overallRateThreshold: val
+                                                                            }));
+                                                                        }}
+                                                                        className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                                                                            evilTriggerConfig?.overallRateThreshold === val 
+                                                                                ? 'bg-amber-600 text-white shadow-xs' 
+                                                                                : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+                                                                        }`}
+                                                                    >
+                                                                        {val}%
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 规则 4：单项每日必做连续 N 天未做 */}
+                                                <div className={`p-3 bg-slate-900/60 rounded-xl border transition-colors ${evilTriggerConfig?.consecutiveUndoneEnabled ? 'border-purple-500/40 bg-purple-950/15' : 'border-slate-700/60'}`}>
+                                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                                        <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={!!evilTriggerConfig?.consecutiveUndoneEnabled}
+                                                                onChange={(e) => {
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        consecutiveUndoneEnabled: e.target.checked
+                                                                    }));
+                                                                }}
+                                                                className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 bg-slate-800 border-slate-600 cursor-pointer"
+                                                            />
+                                                            <span>【连续拖延】任一「每日必做」连续多天未打卡</span>
+                                                        </label>
+                                                        {evilTriggerConfig?.consecutiveUndoneEnabled && (
+                                                            <span className="text-[11px] font-bold text-purple-300 bg-purple-950/80 px-2 py-0.5 rounded-md border border-purple-800/60">
+                                                                连续 {evilTriggerConfig?.consecutiveDays || 3} 天未做
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 pl-6 leading-relaxed mb-2">
+                                                        即使其他任务完成，只要有任何单项核心必做连续多天被拖延搁置，即触发天罚
+                                                     </p>
+                                                    {evilTriggerConfig?.consecutiveUndoneEnabled && (
+                                                        <div className="pl-6 pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
+                                                            <span className="text-slate-400">连续天数：连续</span>
+                                                            <input
+                                                                type="number"
+                                                                min="2"
+                                                                max="7"
+                                                                step="1"
+                                                                value={evilTriggerConfig?.consecutiveDays ?? 3}
+                                                                onChange={(e) => {
+                                                                    const val = Math.max(2, Math.min(14, parseInt(e.target.value, 10) || 3));
+                                                                    setEvilTriggerConfig(prev => ({
+                                                                        mustAllUndone: true,
+                                                                        mustRateEnabled: false,
+                                                                        mustRateThreshold: 50,
+                                                                        overallRateEnabled: false,
+                                                                        overallRateThreshold: 40,
+                                                                        consecutiveUndoneEnabled: false,
+                                                                        consecutiveDays: 3,
+                                                                        ...(prev || {}),
+                                                                        consecutiveDays: val
+                                                                    }));
+                                                                }}
+                                                                className="w-16 px-2 py-1 text-center font-bold text-purple-300 bg-slate-800 border border-slate-700 rounded-lg focus:outline-none focus:border-purple-400"
+                                                            />
+                                                            <span className="text-slate-400">天未打卡触发</span>
+                                                            <div className="flex gap-1.5 ml-auto">
+                                                                {[2, 3, 5].map(val => (
+                                                                    <button
+                                                                        key={val}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setEvilTriggerConfig(prev => ({
+                                                                                mustAllUndone: true,
+                                                                                mustRateEnabled: false,
+                                                                                mustRateThreshold: 50,
+                                                                                overallRateEnabled: false,
+                                                                                overallRateThreshold: 40,
+                                                                                consecutiveUndoneEnabled: false,
+                                                                                consecutiveDays: 3,
+                                                                                ...(prev || {}),
+                                                                                consecutiveDays: val
+                                                                            }));
+                                                                        }}
+                                                                        className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                                                                            evilTriggerConfig?.consecutiveDays === val 
+                                                                                ? 'bg-purple-600 text-white shadow-xs' 
+                                                                                : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+                                                                        }`}
+                                                                    >
+                                                                        {val}天
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 保护规则提示 */}
+                                                <div className="text-[10px] text-slate-400 bg-slate-900/40 p-2.5 rounded-lg border border-slate-800 flex items-center gap-2">
+                                                    <span className="text-slate-500">🛡️</span>
+                                                    <span>保护豁免：处于「冰冻卡」保护日或被家长「豁免」的日期，系统会自动跳过，不计入断签违规或惩罚。</span>
                                                 </div>
                                             </div>
                                         </div>

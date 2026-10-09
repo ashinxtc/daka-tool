@@ -369,6 +369,7 @@ export const EvilWheelModal = ({
     isDemo,
     source = 'auto',
     hasShield = false,
+    reason = '',
 }) => {
     if (!show) return null;
 
@@ -394,17 +395,17 @@ export const EvilWheelModal = ({
                 <div className="z-10 text-center mb-5 mt-2">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-900/40 border border-red-600/40 text-red-300 text-xs font-black tracking-widest uppercase mb-2">
                         <Skull className="w-3.5 h-3.5 animate-pulse text-red-500" />
-                        {isDemo ? '测试演练模式 (不计处罚)' : (source === 'auto' ? '天道裁决 · 昨日任务未完成' : '命运审判殿堂 · 终局裁决')}
+                        {isDemo ? '测试演练模式 (不计处罚)' : (source === 'auto' ? '天道裁决 · 戒律惩戒' : '命运审判殿堂 · 终局裁决')}
                     </div>
                     <h2 className="text-2xl font-black bg-gradient-to-r from-red-400 via-rose-200 to-red-500 bg-clip-text text-transparent">
                         {isDemo ? '命运审判转盘演示' : (source === 'auto' ? '天道惩戒 · 审判降临' : '严明自律 · 审判降临')}
                     </h2>
-                    <p className="text-slate-400 text-xs mt-1">
+                    <p className="text-slate-400 text-xs mt-1 max-w-sm mx-auto leading-relaxed">
                         {isDemo 
                             ? '仅供测试审判转盘概率与物理旋转表现' 
                             : (source === 'auto' 
-                                ? '昨日全天每日必做未完成！天道严明，青铜守护盾大概率击穿失效...' 
-                                : '直面懈怠的代价，接受审判并砥砺前行...')}
+                                ? (reason ? `🚨 触发戒律：${reason}。天道严明，守护盾大概率击穿失效...` : '昨日打卡未达成戒律标准！天道严明，青铜守护盾大概率击穿失效...') 
+                                : (reason ? `事由：${reason}` : '直面懈怠的代价，接受审判并砥砺前行...'))}
                     </p>
                 </div>
 
@@ -521,7 +522,7 @@ export const EvilWheelModal = ({
                                         <span>青铜守护盾被天罚击穿失效！</span>
                                     </div>
                                     <p className="text-rose-200/90 leading-relaxed font-medium">
-                                        昨日全天任务未做，神圣护盾碎裂击穿，无法抵挡天道惩戒！本次惩罚正常扣除，消耗 1 面青铜守护盾。
+                                        {reason ? `因「${reason}」，神圣护盾碎裂击穿，无法抵挡天道惩戒！` : '昨日全天任务未达标，神圣护盾碎裂击穿，无法抵挡天道惩戒！'}本次惩罚正常扣除，消耗 1 面青铜守护盾。
                                     </p>
                                 </div>
                             </div>

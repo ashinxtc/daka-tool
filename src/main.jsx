@@ -138,6 +138,17 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             { id: 5, name: '扣除100元宝', value: -100, weight: 5, color: '#4C1D95' } // Deep Purple
         ];
 
+        // 默认自动惩罚定制触发条件配置
+        export const DEFAULT_EVIL_TRIGGER_CONFIG = {
+            mustAllUndone: true,           // 规则1：昨日每日必做全部未做
+            mustRateEnabled: false,        // 规则2：昨日每日必做完成比例低于阈值
+            mustRateThreshold: 50,         // 必做完成率阈值（%）
+            overallRateEnabled: false,     // 规则3：昨日总体任务完成比例低于阈值
+            overallRateThreshold: 40,      // 总体完成率阈值（%）
+            consecutiveUndoneEnabled: false, // 规则4：单项每日必做连续 N 天未做
+            consecutiveDays: 3,            // 连续未做天数阈值
+        };
+
 		// 经验值大转盘
         const DEFAULT_XP_WHEEL_CONFIG = [
             { id: 1, name: '20 XP', value: 20, weight: 40, color: '#94a3b8' }, // 钛银灰 (低调的基础奖励)
@@ -837,11 +848,13 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
             const [evilWheelConfig, setEvilWheelConfig] = useStickyState(DEFAULT_EVIL_WHEEL_CONFIG, 'app_evil_wheel_config');
             const [evilAutoTrigger, setEvilAutoTrigger] = useStickyState(false, 'app_evil_auto_trigger');
+            const [evilTriggerConfig, setEvilTriggerConfig] = useStickyState(DEFAULT_EVIL_TRIGGER_CONFIG, 'app_evil_trigger_config_v1');
             const [evilPenaltyLog, setEvilPenaltyLog] = useStickyState({}, 'app_evil_penalty_log_v1');
             const [pendingEvilPenalty, setPendingEvilPenalty] = useStickyState(false, 'app_pending_evil_penalty_v1');
             const [evilPenaltySource, setEvilPenaltySource] = useState(
                 typeof pendingEvilPenalty === 'string' ? pendingEvilPenalty : (pendingEvilPenalty ? 'auto' : null)
             );
+            const [evilPenaltyReason, setEvilPenaltyReason] = useState('');
 
             // --- AI 相关状态 ---
             const [aiEnabled, setAiEnabled] = useStickyState(false, 'app_ai_enabled');
@@ -7597,7 +7610,12 @@ ${context}
                 if (pendingEvilPenalty) {
                     const source = typeof pendingEvilPenalty === 'string' ? pendingEvilPenalty : 'auto';
                     setEvilPenaltySource(source);
-                    setTimeout(() => handleLaunchEvilWheelRef.current?.(source), 500);
+                    const yesterday = getLocalDateKey(-1);
+                    const penaltyKey = `${activeChild}-EVIL_PENALTY-${yesterday}`;
+                    const logEntry = evilPenaltyLog[penaltyKey];
+                    const savedReason = (typeof logEntry === 'object' && logEntry?.reason) ? logEntry.reason : '';
+                    if (savedReason) setEvilPenaltyReason(savedReason);
+                    setTimeout(() => handleLaunchEvilWheelRef.current?.(source, savedReason), 500);
                 }
             }, []);
 
@@ -7613,7 +7631,7 @@ ${context}
                 }
             }, []);
 
-            // 自动惩罚：检查昨日每日必做完成情况
+            // 自动惩罚：检查昨日每日必做及各项定制条件完成情况
             const evilCheckDoneRef = React.useRef(new Set());
             React.useEffect(() => {
                 if (!evilAutoTrigger) return;
@@ -7621,35 +7639,118 @@ ${context}
                 const penaltyKey = `${activeChild}-EVIL_PENALTY-${yesterday}`;
                 if (evilPenaltyLog[penaltyKey] || evilCheckDoneRef.current.has(penaltyKey)) return;
 
-                const yesterdayTasks = (tasks[activeChild] || [])
+                const childTasks = tasks[activeChild] || [];
+                const yesterdayMustTasks = childTasks
                     .filter(t => t.frequencyType === 'daily_must')
                     .filter(t => !t.startDate || yesterday >= t.startDate)
                     .filter(t => !t.earlyCompleted);
 
-                if (yesterdayTasks.length === 0) { evilCheckDoneRef.current.add(penaltyKey); return; }
+                const yesterdayAllTasks = childTasks
+                    .filter(t => !t.startDate || yesterday >= t.startDate)
+                    .filter(t => !t.earlyCompleted);
 
-                // 冰冻卡检查：如果昨天被冻结，不触发惩罚
+                if (yesterdayAllTasks.length === 0 && yesterdayMustTasks.length === 0) {
+                    evilCheckDoneRef.current.add(penaltyKey);
+                    return;
+                }
+
+                // 豁免与冰冻卡检查：如果昨天被豁免或冻结，不触发惩罚
                 const freezeDates = stats?.[activeChild]?.freezeDates || [];
-                if (freezeDates.includes(yesterday)) { evilCheckDoneRef.current.add(penaltyKey); return; }
+                const childExemptedDays = exemptedDays?.[activeChild] || [];
+                if (freezeDates.includes(yesterday) || childExemptedDays.includes(yesterday)) {
+                    evilCheckDoneRef.current.add(penaltyKey);
+                    return;
+                }
 
-                const completed = yesterdayTasks
-                    .filter(t => checkins[activeChild]?.[t.id]?.[yesterday]).length;
+                const cfg = {
+                    ...DEFAULT_EVIL_TRIGGER_CONFIG,
+                    ...(typeof evilTriggerConfig === 'object' && evilTriggerConfig !== null ? evilTriggerConfig : {})
+                };
 
-                if (completed === 0) {
-                    setEvilPenaltyLog(prev => ({ ...prev, [penaltyKey]: Date.now() }));
+                const triggeredReasons = [];
+
+                // 规则 1：前一天所有「每日必做」均未完成
+                let mustUndoneTriggered = false;
+                if (cfg.mustAllUndone && yesterdayMustTasks.length > 0) {
+                    const mustCompleted = yesterdayMustTasks.filter(t => checkins[activeChild]?.[t.id]?.[yesterday]).length;
+                    if (mustCompleted === 0) {
+                        mustUndoneTriggered = true;
+                        triggeredReasons.push('昨日所有「每日必做」均未完成');
+                    }
+                }
+
+                // 规则 2：前一天「每日必做」完成比例低于设定值
+                if (cfg.mustRateEnabled && yesterdayMustTasks.length > 0) {
+                    const mustCompleted = yesterdayMustTasks.filter(t => checkins[activeChild]?.[t.id]?.[yesterday]).length;
+                    const mustRate = Math.round((mustCompleted / yesterdayMustTasks.length) * 100);
+                    const threshold = Math.max(5, Math.min(100, Number(cfg.mustRateThreshold) || 50));
+                    if (mustRate < threshold) {
+                        // 如果规则1已触发且完成数为0，则不重复提示完成率为0%
+                        if (!mustUndoneTriggered || mustCompleted > 0) {
+                            triggeredReasons.push(`昨日必做完成率仅 ${mustRate}%（低于设定的 ${threshold}%）`);
+                        }
+                    }
+                }
+
+                // 规则 3：前一天「总体任务」完成比例低于设定值
+                if (cfg.overallRateEnabled && yesterdayAllTasks.length > 0) {
+                    const allCompleted = yesterdayAllTasks.filter(t => checkins[activeChild]?.[t.id]?.[yesterday]).length;
+                    const overallRate = Math.round((allCompleted / yesterdayAllTasks.length) * 100);
+                    const threshold = Math.max(5, Math.min(100, Number(cfg.overallRateThreshold) || 40));
+                    if (overallRate < threshold) {
+                        triggeredReasons.push(`昨日总体完成率仅 ${overallRate}%（低于设定的 ${threshold}%）`);
+                    }
+                }
+
+                // 规则 4：单项每日必做连续 N 天未做
+                if (cfg.consecutiveUndoneEnabled && yesterdayMustTasks.length > 0) {
+                    const N = Math.max(2, Math.min(30, parseInt(cfg.consecutiveDays, 10) || 3));
+                    const pastNDates = [];
+                    for (let i = 0; i < N; i++) {
+                        pastNDates.push(getLocalDateKey(-1 - i));
+                    }
+                    const earliestDate = pastNDates[pastNDates.length - 1];
+
+                    const neglectedTasks = yesterdayMustTasks.filter(t => {
+                        if (t.startDate && t.startDate > earliestDate) return false;
+
+                        return pastNDates.every(d => {
+                            if (freezeDates.includes(d) || childExemptedDays.includes(d)) return false;
+                            return !checkins[activeChild]?.[t.id]?.[d];
+                        });
+                    });
+
+                    if (neglectedTasks.length > 0) {
+                        const taskNames = neglectedTasks.slice(0, 2).map(t => `「${t.name}」`).join('、') + (neglectedTasks.length > 2 ? ` 等${neglectedTasks.length}项` : '');
+                        triggeredReasons.push(`必做任务 ${taskNames} 连续 ${N} 天未打卡`);
+                    }
+                }
+
+                if (triggeredReasons.length > 0) {
+                    const combinedReason = triggeredReasons.join('；');
+                    setEvilPenaltyLog(prev => ({
+                        ...prev,
+                        [penaltyKey]: { timestamp: Date.now(), reason: combinedReason }
+                    }));
                     setPendingEvilPenalty('auto');
                     setEvilPenaltySource('auto');
-                    setTimeout(() => handleLaunchEvilWheelRef.current?.('auto'), 500);
+                    setEvilPenaltyReason(combinedReason);
+                    setTimeout(() => handleLaunchEvilWheelRef.current?.('auto', combinedReason), 500);
                 }
+
                 evilCheckDoneRef.current.add(penaltyKey);
-            }, [checkins, activeChild, evilAutoTrigger]);
-            const handleLaunchEvilWheel = (source = null) => {
+            }, [checkins, activeChild, evilAutoTrigger, evilTriggerConfig, tasks, stats, exemptedDays]);
+
+            const handleLaunchEvilWheel = (source = null, reason = '') => {
                 setShowSettings(false);
                 setIsEvilDemo(false);
                 setShowEvilWheel(true);
                 setEvilWheelResult(null);
                 if (source) {
                     setEvilPenaltySource(source);
+                }
+                if (reason) {
+                    setEvilPenaltyReason(reason);
                 }
             };
 
@@ -7658,6 +7759,7 @@ ${context}
                 setShowEvilWheel(true);
                 setEvilWheelResult(null);
                 setEvilPenaltySource('test');
+                setEvilPenaltyReason('测试演练');
             };
 
 			// 启动额外奖励转盘
@@ -7733,8 +7835,10 @@ ${context}
                         showToast('error', `🚨【${operator}】对你下达了戒律惩罚！${reasonText}`, { duration: 8000 });
                         setPendingEvilPenalty('parent');
                         setEvilPenaltySource('parent');
+                        const parentReason = action.reason || `${operator}下达戒律惩罚`;
+                        setEvilPenaltyReason(parentReason);
                         setTimeout(() => {
-                            handleLaunchEvilWheel('parent');
+                            handleLaunchEvilWheel('parent', parentReason);
                         }, 800);
                         return { ...action, status: 'claimed', processedAt: Date.now() };
                     }
@@ -7847,7 +7951,8 @@ ${context}
                                 setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
                                 resultItem.shieldPierced = true;
                                 resultItem.usedShield = false;
-                                showToast('error', '💥 青铜守护盾被天罚击穿失效！本次惩罚正常扣除。', { duration: 6000 });
+                                const reasonNote = evilPenaltyReason ? `因「${evilPenaltyReason}」，` : '';
+                                showToast('error', `💥 青铜守护盾被天罚击穿失效！${reasonNote}本次惩罚正常扣除。`, { duration: 6000 });
                             } else {
                                 // 奇迹防守（20%几率）：惩罚归零豁免
                                 resultItem.usedShield = true;
@@ -8628,6 +8733,7 @@ ${context}
 														petAdventureLog: 'app_pet_adventure_log_v1', petAdventureStats: 'app_pet_adventure_stats_v1',
 														petSlots: 'app_pet_slots_v1', petMusic: 'app_pet_music_v1', petNotif: 'app_pet_notif_v1',
 														evilPenaltyLog: 'app_evil_penalty_log_v1', evilAutoTrigger: 'app_evil_auto_trigger',
+														evilTriggerConfig: 'app_evil_trigger_config_v1',
 														pendingEvilPenalty: 'app_pending_evil_penalty_v1', aiEnabled: 'app_ai_enabled',
 														deepseekApiKey: 'app_deepseek_api_key', aiPetEnabled: 'app_ai_pet_enabled',
 														aiChatEnabled: 'app_ai_chat_enabled', aiDailyLimit: 'app_ai_daily_limit',
@@ -9529,6 +9635,8 @@ ${context}
                     setEvilWheelConfig={setEvilWheelConfig}
                     evilAutoTrigger={evilAutoTrigger}
                     setEvilAutoTrigger={setEvilAutoTrigger}
+                    evilTriggerConfig={evilTriggerConfig}
+                    setEvilTriggerConfig={setEvilTriggerConfig}
                     onLaunchEvilWheel={handleLaunchEvilWheel}
                     onTestEvilWheel={handleTestEvilWheel}
 					onLaunchExtraWheel={(type, isDemo) => handleLaunchExtraWheel(type, isDemo)}
@@ -9961,6 +10069,7 @@ ${context}
                     onClose={() => {
                         setShowEvilWheel(false);
                         setEvilPenaltySource(null);
+                        setEvilPenaltyReason('');
                     }} 
                     wheelConfig={evilWheelConfig} 
                     pointerRotation={evilPointerRotation} 
@@ -9970,6 +10079,7 @@ ${context}
                     isDemo={isEvilDemo}
                     source={evilPenaltySource || (pendingEvilPenalty === 'parent' ? 'parent' : 'auto')}
                     hasShield={(inventory[activeChild]?.['item_shield'] || 0) > 0}
+                    reason={evilPenaltyReason}
                   />
 				  <GoldHistoryModal
                     show={showGoldHistory}
