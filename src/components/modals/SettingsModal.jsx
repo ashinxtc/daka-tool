@@ -542,12 +542,19 @@ const CopyIcon = (props) => (
                                                             {dev.role === '爸爸' ? '👑' : dev.role === '妈妈' ? '🌸' : '👴'}
                                                         </span>
                                                         <div className="min-w-0">
-                                                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 truncate">
-                                                                <span>{dev.role}的手机</span>
-                                                                <span className="text-[10px] font-normal text-slate-400 font-mono">({dev.deviceName || '手机设备'})</span>
+                                                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                                                <span>{dev.role}的设备</span>
+                                                                <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.5 rounded-md">
+                                                                    {dev.deviceName || '手机设备'}
+                                                                </span>
                                                             </div>
-                                                            <div className="text-[10px] text-slate-400 mt-0.5">
-                                                                绑定于 {new Date(dev.boundAt || Date.now()).toLocaleDateString('zh-CN')}
+                                                            <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                                                                <span>绑定于 {new Date(dev.boundAt || Date.now()).toLocaleDateString('zh-CN')}</span>
+                                                                {dev.lastActive && (
+                                                                    <span className="text-emerald-600 font-medium bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200/50">
+                                                                        活跃于 {new Date(dev.lastActive).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -583,6 +590,15 @@ const CopyIcon = (props) => (
                                                     </button>
                                                 </div>
                                             ))}
+
+                                            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 text-[11px] text-slate-500 leading-relaxed space-y-1 mt-2">
+                                                <div className="font-bold text-slate-600 flex items-center gap-1">
+                                                    <span>💡</span> 关于同一部手机出现两条绑定的说明：
+                                                </div>
+                                                <div className="text-slate-400 text-[10px]">
+                                                    手机操作系统的「微信内置浏览器」与「系统自带浏览器 (如 Safari / Chrome)」属于完全隔离的独立应用沙盒，存储彼此不互通。微信扫码与手机浏览器分别占用一个专属授权凭据（两处均可正常护航）。若您只想保留其中一个，随时点击对应项的【解除绑定】即可。
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>

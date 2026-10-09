@@ -291,8 +291,14 @@ export const ParentApp = () => {
     // 辅助：向云端注册本设备信息并持久化本地凭证
     const registerCurrentDevice = async (currentCloudData, code, authConfig, devId, roleToUse = operatorRole) => {
         try {
-            const devName = navigator.userAgent.includes('iPhone') ? 'iPhone' :
-                           navigator.userAgent.includes('Android') ? '安卓手机' : '移动手机设备';
+            const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
+            const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            let osName = isIOS ? (navigator.userAgent.includes('iPad') ? 'iPad' : 'iPhone') :
+                         isAndroid ? '安卓手机' : '移动设备';
+            let envName = isWeChat ? '微信内置' : '系统浏览器';
+            const devName = `${osName} (${envName})`;
+
             const newDevice = {
                 deviceId: devId,
                 role: roleToUse,
@@ -659,6 +665,19 @@ export const ParentApp = () => {
                 ...updates,
                 _syncTs: Date.now()
             };
+
+            // 顺便刷新当前设备的活跃时间戳
+            if (latest.app_authorized_parents_v1 && deviceId) {
+                try {
+                    const parsedAuth = JSON.parse(latest.app_authorized_parents_v1);
+                    if (Array.isArray(parsedAuth.devices)) {
+                        parsedAuth.devices = parsedAuth.devices.map(d =>
+                            d.deviceId === deviceId ? { ...d, lastActive: Date.now() } : d
+                        );
+                        newPayload.app_authorized_parents_v1 = JSON.stringify(parsedAuth);
+                    }
+                } catch (e) {}
+            }
 
             const postResp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
                 method: 'POST',
