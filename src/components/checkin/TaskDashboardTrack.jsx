@@ -292,8 +292,9 @@ const CategoryTrack = ({
     });
   };
 
-  // 4. CSS 硬件级 Alpha 遮罩（业内真正无色透明渐隐，随滚动状态自适应边缘消融）
+  // 4. CSS 硬件级 Alpha 遮罩（业内真正无色透明渐隐，随滚动状态自适应边缘消融；低性能模式下直出避免旧显卡渲染穿透）
   const maskStyle = useMemo(() => {
+    if (isLowPerf) return {};
     if (!canScrollLeft && !canScrollRight) {
       return {};
     }
@@ -304,21 +305,23 @@ const CategoryTrack = ({
       maskImage: gradient,
       WebkitMaskImage: gradient
     };
-  }, [canScrollLeft, canScrollRight]);
+  }, [canScrollLeft, canScrollRight, isLowPerf]);
 
   if (!tasks || tasks.length === 0) return null;
 
   return (
-    <div className={`rounded-2xl transition-all duration-300 border ${
+    <div className={`rounded-2xl transition-all duration-300 border relative ${
       hasBgEffect 
-        ? (isLowPerf ? 'bg-slate-900/85 border-slate-700/70 shadow-md' : 'bg-slate-900/50 backdrop-blur-md border-white/20 shadow-sm') 
-        : 'bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm hover:shadow-md'
+        ? (isLowPerf ? 'bg-slate-900 border-slate-700 shadow-md text-white' : 'bg-slate-900/50 backdrop-blur-md border-white/20 shadow-sm') 
+        : (isLowPerf ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm hover:shadow-md')
     }`}>
       {/* 头部手风琴控制条（平时展现的高密度数据看板，彻底无气泡框空气感设计） */}
       <div 
         onClick={onToggleExpand}
         className={`px-4 py-3 cursor-pointer flex flex-wrap items-center justify-between gap-3 select-none transition-colors rounded-2xl group ${
-          hasBgEffect ? 'hover:bg-white/10' : 'hover:bg-black/[0.02]'
+          hasBgEffect 
+            ? (isLowPerf ? 'hover:bg-slate-800/60' : 'hover:bg-white/10') 
+            : (isLowPerf ? 'hover:bg-gray-50' : 'hover:bg-black/[0.02]')
         }`}
       >
         {/* 左侧：分类标题与核心标识 */}
@@ -542,15 +545,26 @@ const CategoryTrack = ({
               </div>
             )}
 
-            {/* 展开/收起：无气泡框，轻盈灵动的文本与动效箭头 */}
-            <span className={`inline-flex items-center gap-1 text-xs font-bold transition-all ${
-              hasBgEffect 
-                ? (isExpanded ? 'text-white drop-shadow-xs' : 'text-white/75 group-hover:text-white') 
-                : (isExpanded ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-800')
-            }`}>
-              <span>{isExpanded ? '收起' : '展开'}</span>
+            {/* 展开/收起：高对比度可点击实体按键，带数量提示与动效箭头 */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand();
+              }}
+              className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                hasBgEffect
+                  ? (isExpanded 
+                      ? (isLowPerf ? 'bg-slate-800 border-slate-600 text-white' : 'bg-white/20 border-white/30 text-white')
+                      : (isLowPerf ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30' : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'))
+                  : (isExpanded
+                      ? 'bg-gray-100 border-gray-200 text-gray-800'
+                      : 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700')
+              }`}
+            >
+              <span>{isExpanded ? '收起' : (categoryKey === 'daily_must' && stats.remain > 0 ? `展开 (${stats.remain}项待办)` : '展开')}</span>
               <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-            </span>
+            </button>
           </div>
         </div>
       </div>
@@ -558,7 +572,7 @@ const CategoryTrack = ({
       {/* 展开态：横向卡片跑道泳道（固定高度，绝对不垂挂堆叠撑爆页面） */}
       {isExpanded && (
         <div className={`relative p-3 pt-3 border-t ${
-          hasBgEffect ? 'border-white/15' : 'border-gray-100/80'
+          hasBgEffect ? (isLowPerf ? 'border-slate-700/80' : 'border-white/15') : 'border-gray-100/80'
         }`}>
 
           {/* 卡片横向滚动轨道 */}
@@ -576,7 +590,7 @@ const CategoryTrack = ({
                 key={task.id} 
                 className={`w-[305px] min-w-[305px] max-w-[305px] shrink-0 snap-start transition-all duration-300 transform-gpu hover:-translate-y-1.5 hover:scale-[1.01] ${
                   hasBgEffect 
-                    ? 'rounded-2xl ring-1 ring-white/25 hover:ring-white/50 shadow-sm hover:shadow-xl hover:shadow-black/30' 
+                    ? (isLowPerf ? 'rounded-2xl border border-slate-700 bg-slate-900 shadow-md' : 'rounded-2xl ring-1 ring-white/25 hover:ring-white/50 shadow-sm hover:shadow-xl hover:shadow-black/30') 
                     : 'rounded-2xl hover:shadow-lg'
                 }`}
               >
@@ -665,7 +679,14 @@ export const TaskDashboardTrack = ({
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // 核心保护：每日必做和伴读默认优先保障展开，避免用户误触收起后感知为任务丢失
+        return {
+          reading: parsed.reading !== undefined ? parsed.reading : true,
+          daily_must: parsed.daily_must !== undefined ? parsed.daily_must : true,
+          weekly_optional: !!parsed.weekly_optional,
+          count: !!parsed.count
+        };
       }
     } catch {
       // 忽略解析异常
@@ -735,10 +756,10 @@ export const TaskDashboardTrack = ({
   return (
     <div className="space-y-4 mb-8 w-full">
       {/* 顶部工具栏：看板指示、排序切换、一键全开全关 */}
-      <div className={`flex flex-wrap items-center justify-between gap-2.5 text-xs font-bold transition-all duration-300 ${
+      <div className={`flex flex-wrap items-center justify-between gap-2.5 text-xs font-bold transition-all duration-300 relative z-10 ${
         hasBgEffect 
-          ? (isLowPerf ? 'bg-slate-900/90 border border-slate-700/70 rounded-2xl px-3.5 py-2 shadow-lg text-white' : 'bg-slate-900/40 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-lg shadow-black/20 text-white') 
-          : 'text-gray-500 px-1'
+          ? (isLowPerf ? 'bg-slate-900 border border-slate-700 rounded-2xl px-3.5 py-2 shadow-lg text-white' : 'bg-slate-900/40 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-lg shadow-black/20 text-white') 
+          : (isLowPerf ? 'bg-white border border-gray-200 rounded-2xl px-3.5 py-2 shadow-sm text-gray-800' : 'text-gray-500 px-1')
       }`}>
         {/* 左侧：纯净标题与宏观概览（无独立气泡框，极简自然融合） */}
         <div className="flex items-center gap-2 flex-wrap py-0.5">
@@ -772,9 +793,9 @@ export const TaskDashboardTrack = ({
           <button
             type="button"
             onClick={toggleAll}
-            className={`px-2.5 py-1 rounded-lg transition-all text-[11px] font-medium ${
+            className={`px-2.5 py-1 rounded-lg transition-all text-[11px] font-medium cursor-pointer ${
               hasBgEffect
-                ? 'bg-white/15 hover:bg-white/25 active:scale-95 text-white border border-white/20 shadow-xs'
+                ? (isLowPerf ? 'bg-slate-800 hover:bg-slate-700 active:scale-95 text-white border border-slate-600 shadow-xs' : 'bg-white/15 hover:bg-white/25 active:scale-95 text-white border border-white/20 shadow-xs')
                 : 'bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 shadow-2xs'
             }`}
           >
@@ -784,7 +805,7 @@ export const TaskDashboardTrack = ({
           {/* 排序按钮组 */}
           <div className={`flex items-center gap-1 p-0.5 rounded-xl border transition-all ${
             hasBgEffect
-              ? 'bg-white/10 backdrop-blur-xs border-white/20 shadow-xs'
+              ? (isLowPerf ? 'bg-slate-800 border-slate-700 shadow-xs' : 'bg-white/10 backdrop-blur-xs border-white/20 shadow-xs')
               : 'bg-white/70 backdrop-blur-xs border-gray-200/80 shadow-2xs'
           }`}>
             <span className={`pl-2 pr-1 flex items-center gap-1 text-[11px] ${

@@ -1259,6 +1259,12 @@
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
+        /* 低性能模式下彻底解除背景层的 GPU 硬件加速层提升，杜绝老旧浏览器硬件合成层遮挡 DOM 文档流 */
+        .low-perf-mode .atmosphere-layer {
+            transform: none !important;
+            will-change: auto !important;
+            backface-visibility: visible !important;
+        }
 
         /* 宠物专用动画 */
         @keyframes pet-wiggle {
@@ -1323,15 +1329,29 @@
             // 自动检测信号
             var signals = 0;
             var cores = navigator.hardwareConcurrency || 4;
-            if (cores <= 2) signals++;
-            var mem = navigator.deviceMemory || 8;
-            if (mem <= 4) signals++;
+            if (cores <= 2) {
+                signals += 2; // 双核或单核（老旧电脑/入门平板）直接判为低配
+            } else if (cores <= 4) {
+                signals += 1; // 4核（老旧双核超线程或低端4核）计1个信号
+            }
+
+            var mem = navigator.deviceMemory;
+            if (mem && mem <= 4) signals++;
+
             try {
                 var canvas = document.createElement('canvas');
-                var gl = canvas.getContext('webgl');
+                var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                 if (gl) {
-                    var renderer = gl.getParameter(gl.RENDERER) || '';
-                    var weakGPU = /Intel.*(HD|UHD)\s*(2000|3000|4000|5000|510|515|520|530|6000|615|620)/i.test(renderer);
+                    var renderer = '';
+                    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (dbg) {
+                        renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '';
+                    }
+                    if (!renderer) {
+                        renderer = gl.getParameter(gl.RENDERER) || '';
+                    }
+                    // 检测弱显卡/集成显卡/老旧架构：包括 Intel HD/UHD/Iris/GMA 系列、老旧 AMD/Radeon、Adreno 3xx/4xx/5xx/61x、Mali-400/Txxx/G5x、PowerVR、软解等
+                    var weakGPU = /Intel.*(HD|UHD|Iris|GMA)|Radeon\s*(HD|R[579]|5[234]0|Vega\s*[368])|Adreno\s*(3|4|5|61)|Mali-(4|T|G[35][012])|PowerVR|llvmpipe|Software/i.test(renderer);
                     if (weakGPU) signals++;
                     var ext = gl.getExtension('WEBGL_lose_context');
                     if (ext) ext.loseContext();
@@ -1369,7 +1389,7 @@
                     requestAnimationFrame(countFrame);
                 } else {
                     var fps = frameCount / (elapsed / 1000);
-                    fpsLow = fps < 24;
+                    fpsLow = fps < 28;
                     fpsDone = true;
                     applyResult();
                 }

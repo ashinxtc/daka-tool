@@ -125,8 +125,8 @@ export const TaskCardInner = (({
 			const activeBg = equippedGear?.[activeChild]?.background;
 			const hasActiveBg = !!activeBg;
 			const isSolidBgNeeded = hasActiveBg || isLowPerf;
-			const bgStyle = isSolidBgNeeded ? 'bg-white/95 shadow-xs border-slate-200/90' : 'bg-amber-50/60 border-amber-200/80';
-			const completedBgStyle = isSolidBgNeeded ? 'bg-amber-50/95 shadow-xs border-amber-300' : 'bg-yellow-50/50 border-yellow-200';
+			const bgStyle = isSolidBgNeeded ? (isLowPerf ? 'bg-white shadow-xs border-slate-300' : 'bg-white/95 shadow-xs border-slate-200') : 'bg-amber-50/60 border-amber-200';
+			const completedBgStyle = isSolidBgNeeded ? (isLowPerf ? 'bg-amber-50 shadow-xs border-amber-300' : 'bg-amber-50/95 shadow-xs border-amber-300') : 'bg-yellow-50/50 border-yellow-200';
 
             // 周末选做冲刺提醒 (周五、周六、周日)
             const dayOfWeek = new Date().getDay();

@@ -2165,6 +2165,48 @@ import { PerformanceContext } from '../../context/PerformanceContext';
             </div>
         );
 
+        const LowPerfMeteor = () => (
+            <div className="absolute inset-0 bg-meteor-gradient overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-60 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(1.5px 1.5px at 30px 40px, #ffffff, rgba(0,0,0,0)), radial-gradient(1px 1px at 120px 160px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2px 2px at 280px 80px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1px 1px at 420px 200px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 600px 110px, #a5b4fc, rgba(0,0,0,0)), radial-gradient(2px 2px at 750px 170px, #ffffff, rgba(0,0,0,0))',
+                    backgroundSize: '750px 380px'
+                }} />
+                <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#0f172a] to-transparent opacity-80 pointer-events-none" />
+            </div>
+        );
+
+        const LowPerfMatrix = () => (
+            <div className="absolute inset-0 bg-matrix-civilization overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-500/25 via-green-950/20 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 opacity-25 pointer-events-none" style={{
+                    backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.12) 1px, transparent 1px)',
+                    backgroundSize: '40px 40px'
+                }} />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.7)_100%)] pointer-events-none" />
+            </div>
+        );
+
+        const LowPerfOracleSands = () => (
+            <div className="absolute inset-0 bg-matrix-civilization overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-amber-600/30 via-yellow-900/10 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 opacity-20 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(1.5px 1.5px at 40px 60px, #f59e0b, rgba(0,0,0,0)), radial-gradient(1px 1px at 140px 180px, #d97706, rgba(0,0,0,0)), radial-gradient(2px 2px at 300px 90px, #b45309, rgba(0,0,0,0)), radial-gradient(1px 1px at 460px 220px, #f59e0b, rgba(0,0,0,0))',
+                    backgroundSize: '600px 320px'
+                }} />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.6)_100%)] pointer-events-none" />
+            </div>
+        );
+
+        const LowPerfFireworks = () => (
+            <div className="absolute inset-0 bg-lunar-night overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-60 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(1.5px 1.5px at 60px 40px, #fef08a, rgba(0,0,0,0)), radial-gradient(2px 2px at 180px 120px, #f43f5e, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 320px 70px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 500px 150px, #38bdf8, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 680px 90px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 840px 130px, #fde047, rgba(0,0,0,0))',
+                    backgroundSize: '900px 450px'
+                }} />
+                <div className="absolute bottom-0 left-0 right-0 h-[40%] opacity-30 bg-gradient-to-t from-red-600/30 via-amber-500/15 to-transparent pointer-events-none" />
+            </div>
+        );
+
         // --- 新增：通用气氛背景层管理器 ---
         // 后续新增商品只需在这里添加 case 即可
         // 优化：所有特效组件始终挂载，通过CSS控制显示/隐藏，避免切换用户时重新创建canvas导致的卡顿
@@ -2174,14 +2216,14 @@ import { PerformanceContext } from '../../context/PerformanceContext';
             return (
                 <div className="atmosphere-layer">
                     {type === 'bg_galaxy' && (isLowPerf ? <LowPerfGalaxy /> : <div className="absolute inset-0"><GalaxyEffect isActive={true} /></div>)}
-                    {type === 'bg_meteor' && <div className="absolute inset-0"><MeteorShower isActive={true} /></div>}
+                    {type === 'bg_meteor' && (isLowPerf ? <LowPerfMeteor /> : <div className="absolute inset-0"><MeteorShower isActive={true} /></div>)}
                     {type === 'bg_aurora' && (isLowPerf ? <LowPerfAurora /> : <div className="absolute inset-0"><AuroraBorealis isActive={true} /></div>)}
                     {type === 'bg_lantern' && <div className="absolute inset-0"><LanternFestival isLowPerf={isLowPerf} /></div>}
                     {type === 'bg_firefly' && <div className="absolute inset-0"><FireflyForest isLowPerf={isLowPerf} /></div>}
                     {type === 'bg_ginkgo' && <div className="absolute inset-0"><GinkgoRain isLowPerf={isLowPerf} /></div>}
-                    {type === 'bg_matrix' && <div className="absolute inset-0"><MatrixCivilization isActive={true} /></div>}
-                    {type === 'bg_oraclesands' && <div className="absolute inset-0"><MatrixOracleSands isActive={true} /></div>}
-                    {type === 'bg_firework' && <div className="absolute inset-0"><LunarFireworks isActive={true} /></div>}
+                    {type === 'bg_matrix' && (isLowPerf ? <LowPerfMatrix /> : <div className="absolute inset-0"><MatrixCivilization isActive={true} /></div>)}
+                    {type === 'bg_oraclesands' && (isLowPerf ? <LowPerfOracleSands /> : <div className="absolute inset-0"><MatrixOracleSands isActive={true} /></div>)}
+                    {type === 'bg_firework' && (isLowPerf ? <LowPerfFireworks /> : <div className="absolute inset-0"><LunarFireworks isActive={true} /></div>)}
                     {type === 'bg_prismatic' && (isLowPerf ? <LowPerfPrismatic /> : <div className="absolute inset-0"><PrismaticBackground isActive={true} /></div>)}
                     {type === 'bg_timewarp' && (isLowPerf ? <LowPerfTimeWarp /> : <div className="absolute inset-0"><TimeWarpBackground isActive={true} /></div>)}
                     {type === 'bg_hyperspeed' && (isLowPerf ? <LowPerfHyperspeed /> : <div className="absolute inset-0"><HyperspeedBackground isActive={true} /></div>)}

@@ -279,6 +279,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 		// TimeDisplay 已迁移至 src/components/common/TimeDisplay.jsx
 
         const App = () => {
+            const { isLowPerf } = React.useContext(PerformanceContext);
             // ===== 多次打卡辅助函数 (Phase 2) — var declarations for hoisting =====
             
 
@@ -9185,7 +9186,7 @@ ${context}
                       );
                   })()}
 
-                  <main className="max-w-5xl mx-auto px-4 py-8" style={{ opacity: isAccountSwitchingUI ? 0.55 : 1, transition: 'opacity 0.18s ease' }}>
+                  <main className="relative z-10 max-w-5xl mx-auto px-4 py-8" style={{ opacity: isAccountSwitchingUI ? 0.55 : 1, transition: 'opacity 0.18s ease' }}>
 				    {/* 新增：周末仪表盘 */}
 					<WeekendDashboard 
 						tasks={tasks} 
@@ -9239,13 +9240,15 @@ ${context}
 
 
 					
-                    <div className={`rounded-3xl border transition-all duration-300 shadow-xl overflow-hidden ${
+                    <div className={`rounded-3xl border transition-all duration-300 shadow-xl overflow-hidden relative z-10 ${
                       hasActiveBg 
-                        ? 'bg-white/20 backdrop-blur-md border-white/20' 
-                        : 'bg-white/70 backdrop-blur-md border-white/50'
+                        ? (isLowPerf ? 'bg-slate-900 border-slate-700' : 'bg-white/20 backdrop-blur-md border-white/20') 
+                        : (isLowPerf ? 'bg-white border-gray-200' : 'bg-white/70 backdrop-blur-md border-white/50')
                     }`}>
                     <div className={`p-4 border-b flex justify-between items-center transition-colors ${
-                      hasActiveBg ? 'border-white/15 bg-white/10' : 'border-gray-100 bg-white/50'
+                      hasActiveBg 
+                        ? (isLowPerf ? 'border-slate-700 bg-slate-800/80 text-white' : 'border-white/15 bg-white/10') 
+                        : 'border-gray-100 bg-white/50'
                     }`}>
                     <h2 className={`text-lg font-bold flex items-center gap-2 ${
                       hasActiveBg ? 'text-white drop-shadow-xs' : 'text-gray-700'
@@ -9253,7 +9256,9 @@ ${context}
                       <CalendarIcon className={`w-5 h-5 ${hasActiveBg ? 'text-amber-300' : theme.primary}`} /> 打卡记录
                     </h2>
                     <div className={`flex rounded-xl p-1 text-xs font-bold items-center transition-colors ${
-                      hasActiveBg ? 'bg-white/15 backdrop-blur-xs border border-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                      hasActiveBg 
+                        ? (isLowPerf ? 'bg-slate-800 border border-slate-600 text-white' : 'bg-white/15 backdrop-blur-xs border border-white/20 text-white') 
+                        : 'bg-gray-100 text-gray-600'
                     }`}>
                     {(viewMode === 'calendar' || viewMode === 'week') && (
                       <button 
@@ -9314,10 +9319,10 @@ ${context}
                     <div className="overflow-x-auto pb-2 pt-4" ref={scrollContainerRef}>
                     <table className="w-full text-sm">
                     <thead className="relative">
-                    <tr className={hasActiveBg ? 'bg-white/10 border-b border-white/10' : 'bg-gray-50/50'}>
+                    <tr className={hasActiveBg ? (isLowPerf ? 'bg-slate-800/80 border-b border-slate-700' : 'bg-white/10 border-b border-white/10') : 'bg-gray-50/50'}>
                     <th className={`p-3 text-left w-px whitespace-nowrap sticky left-0 z-10 font-bold pl-6 transition-colors ${
                       hasActiveBg 
-                        ? 'bg-slate-900/80 backdrop-blur-md text-white/80 border-r border-white/15 shadow-[2px_0_8px_rgba(0,0,0,0.3)]' 
+                        ? (isLowPerf ? 'bg-slate-900 text-white border-r border-slate-700 shadow-[2px_0_8px_rgba(0,0,0,0.5)]' : 'bg-slate-900/80 backdrop-blur-md text-white/80 border-r border-white/15 shadow-[2px_0_8px_rgba(0,0,0,0.3)]') 
                         : 'bg-gray-50 text-gray-400 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]'
                     }`}>任务名称</th>
                     {calendarDates.map(date => {
@@ -9418,7 +9423,7 @@ ${context}
                                     const bubbleCls = freq === 'daily_must' ? 'bg-red-100 text-red-600 border-red-200' : freq === 'weekly_optional' ? 'bg-sky-100 text-sky-600 border-sky-200' : 'bg-amber-50 text-amber-600 border-amber-200';
                                     return (
                                     <tr key={task.id} className={`border-b transition-colors ${hasActiveBg ? 'border-white/10 hover:bg-white/10' : 'border-gray-50 hover:bg-white/80'} ${rowTypeStyle} ${idx % 2 === 0 ? '' : (hasActiveBg ? 'bg-white/[0.03]' : 'bg-gray-50/20')}`}>
-                                      <td className={`p-0 sticky left-0 z-30 overflow-visible w-px whitespace-nowrap align-middle relative transition-colors ${hasActiveBg ? 'bg-slate-900/85 backdrop-blur-md border-r border-white/15 shadow-[4px_0_12px_rgba(0,0,0,0.3)]' : 'bg-white border-r border-gray-100 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]'}`}>
+                                      <td className={`p-0 sticky left-0 z-30 overflow-visible w-px whitespace-nowrap align-middle relative transition-colors ${hasActiveBg ? (isLowPerf ? 'bg-slate-900 text-white border-r border-slate-700 shadow-[4px_0_12px_rgba(0,0,0,0.5)]' : 'bg-slate-900/85 backdrop-blur-md border-r border-white/15 shadow-[4px_0_12px_rgba(0,0,0,0.3)]') : 'bg-white border-r border-gray-100 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]'}`}>
                                         <span className={`relative z-10 inline-block pl-4 pr-3 lg:pr-14 py-3 font-bold whitespace-nowrap ${hasActiveBg ? 'text-white drop-shadow-xs' : 'text-gray-800'}`} style={{ textShadow: hasActiveBg ? '0 1px 3px rgba(0,0,0,0.7)' : '0 0 1px rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.06)' }}>{task.name}</span>
                                         <div className={`absolute inset-0 rounded-r-lg ${barTrackCls}`} aria-hidden="true" />
                                         <div className={`absolute inset-y-0 left-0 rounded-r-lg transition-all duration-500 flex items-center justify-end pr-1.5 ${barFillCls}`} style={{ width: `${progressPct}%`, maxWidth: '100%' }} aria-hidden="true">
