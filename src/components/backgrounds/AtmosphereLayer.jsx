@@ -2113,97 +2113,203 @@ import { PerformanceContext } from '../../context/PerformanceContext';
             );
         };
 		
-        // 低性能模式下轻量化 CSS 特效组件（零 WebGL 压力，保留生动视觉层次，告别死黑一片）
+        // 低性能模式下轻量化 CSS 特效组件（零 WebGL/Canvas 压力，保留生动视觉层次与主题象征，彻底告别死黑一片）
         const LowPerfGalaxy = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#0b0c2a] via-[#16123f] to-[#050515] overflow-hidden">
-                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500 via-purple-900 to-transparent blur-xl pointer-events-none" />
-                <div className="absolute inset-0 opacity-70 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 100px 150px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1px 1px at 200px 80px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 320px 220px, #fbcfe8, rgba(0,0,0,0)), radial-gradient(1px 1px at 450px 120px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2px 2px at 580px 300px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 700px 180px, #fae8ff, rgba(0,0,0,0))',
-                    backgroundSize: '800px 400px'
+            <div className="absolute inset-0 bg-gradient-to-b from-[#130d38] via-[#1d1454] to-[#070519] overflow-hidden pointer-events-none">
+                {/* 银河螺旋大星云 */}
+                <div className="absolute inset-0 opacity-55 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/45 via-purple-700/30 via-fuchsia-900/25 to-transparent blur-2xl pointer-events-none" />
+                {/* 银心粉紫华彩 */}
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_50%_35%,rgba(244,114,182,0.3)_0%,transparent_60%)] pointer-events-none" />
+                {/* 璀璨群星 */}
+                <div className="absolute inset-0 opacity-85 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(2px 2px at 20px 30px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 100px 150px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 200px 80px, #ffffff, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 320px 220px, #fbcfe8, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 450px 120px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 580px 300px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 700px 180px, #fae8ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 820px 70px, #f472b6, rgba(0,0,0,0))',
+                    backgroundSize: '820px 420px'
                 }} />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
             </div>
         );
 
         const LowPerfAurora = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#021b18] via-[#092237] to-[#040d1a] overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-[60%] opacity-45 bg-gradient-to-r from-emerald-500/30 via-teal-400/40 via-purple-500/30 to-emerald-600/20 blur-2xl pointer-events-none" />
-                <div className="absolute top-10 left-[10%] right-[10%] h-[40%] opacity-35 bg-gradient-to-r from-green-400/30 via-cyan-300/40 to-indigo-500/30 blur-xl pointer-events-none" />
-                <div className="absolute inset-0 opacity-60 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(1.5px 1.5px at 50px 70px, #d1fae5, rgba(0,0,0,0)), radial-gradient(1px 1px at 180px 120px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 340px 90px, #cffafe, rgba(0,0,0,0)), radial-gradient(2px 2px at 520px 160px, #ffffff, rgba(0,0,0,0))',
-                    backgroundSize: '650px 350px'
+            <div className="absolute inset-0 bg-gradient-to-b from-[#032822] via-[#073646] to-[#03111b] overflow-hidden pointer-events-none">
+                {/* 极光主光幕（翡翠绿与碧青） */}
+                <div className="absolute top-0 left-0 right-0 h-[60%] opacity-55 bg-gradient-to-r from-emerald-400/45 via-teal-300/45 via-purple-500/35 to-emerald-500/30 blur-2xl pointer-events-none" />
+                {/* 极光次级跃动光束（青荧之辉） */}
+                <div className="absolute top-8 left-[6%] right-[6%] h-[42%] opacity-45 bg-gradient-to-r from-green-400/40 via-cyan-300/45 to-indigo-500/35 blur-xl pointer-events-none" />
+                {/* 极地清朗星辰 */}
+                <div className="absolute inset-0 opacity-75 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(2px 2px at 50px 70px, #d1fae5, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 180px 120px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 340px 90px, #cffafe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 520px 160px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 680px 100px, #a7f3d0, rgba(0,0,0,0))',
+                    backgroundSize: '680px 360px'
                 }} />
             </div>
         );
 
         const LowPerfPrismatic = () => (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#2e1065] via-[#4c0519] to-[#0f172a] overflow-hidden">
-                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-fuchsia-500/40 via-rose-500/20 to-transparent blur-xl pointer-events-none" />
-                <div className="absolute inset-0 opacity-50 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(2px 2px at 80px 60px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 250px 180px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 450px 100px, #a855f7, rgba(0,0,0,0))',
-                    backgroundSize: '600px 300px'
+            <div className="absolute inset-0 bg-gradient-to-br from-[#3b0764] via-[#701a75] via-[#4c0519] to-[#0f172a] overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-50 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-fuchsia-400/50 via-rose-500/30 to-transparent blur-xl pointer-events-none" />
+                <div className="absolute inset-0 opacity-65 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(2.5px 2.5px at 80px 60px, #fde047, rgba(0,0,0,0)), radial-gradient(2px 2px at 250px 180px, #f472b6, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 450px 100px, #c084fc, rgba(0,0,0,0)), radial-gradient(2px 2px at 620px 220px, #38bdf8, rgba(0,0,0,0))',
+                    backgroundSize: '620px 320px'
                 }} />
             </div>
         );
 
         const LowPerfTimeWarp = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] via-[#1e1b4b] to-[#020617] overflow-hidden">
-                <div className="absolute inset-0 opacity-50 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-500/30 via-purple-600/20 to-transparent pointer-events-none" />
-                <div className="absolute inset-0 opacity-40 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(circle at center, transparent 40px, rgba(99,102,241,0.2) 41px, transparent 43px, transparent 90px, rgba(168,85,247,0.15) 91px, transparent 93px, transparent 150px, rgba(236,72,153,0.12) 151px, transparent 153px)'
+            <div className="absolute inset-0 bg-gradient-to-b from-[#17133f] via-[#241a5e] to-[#050414] overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-500/40 via-purple-600/30 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 opacity-55 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(circle at center, transparent 35px, rgba(129,140,248,0.3) 36px, transparent 38px, transparent 80px, rgba(192,132,252,0.25) 81px, transparent 83px, transparent 135px, rgba(244,114,182,0.2) 136px, transparent 138px, transparent 200px, rgba(56,189,248,0.18) 201px, transparent 203px)'
                 }} />
             </div>
         );
 
         const LowPerfHyperspeed = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#030712] via-[#0c1a36] to-[#020617] overflow-hidden">
-                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-500/20 via-blue-600/15 to-transparent pointer-events-none" />
-                <div className="absolute inset-0 opacity-40 pointer-events-none" style={{
-                    backgroundImage: 'linear-gradient(90deg, transparent 49%, rgba(56,189,248,0.25) 50%, transparent 51%)',
-                    backgroundSize: '120px 100%'
+            <div className="absolute inset-0 bg-gradient-to-b from-[#04132b] via-[#0b2554] to-[#020917] overflow-hidden pointer-events-none">
+                <div className="absolute inset-0 opacity-55 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-400/30 via-blue-600/25 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 opacity-50 pointer-events-none" style={{
+                    backgroundImage: 'linear-gradient(90deg, transparent 48%, rgba(56,189,248,0.38) 50%, transparent 52%)',
+                    backgroundSize: '90px 100%'
                 }} />
             </div>
         );
 
         const LowPerfMeteor = () => (
-            <div className="absolute inset-0 bg-meteor-gradient overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-60 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(1.5px 1.5px at 30px 40px, #ffffff, rgba(0,0,0,0)), radial-gradient(1px 1px at 120px 160px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2px 2px at 280px 80px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1px 1px at 420px 200px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 600px 110px, #a5b4fc, rgba(0,0,0,0)), radial-gradient(2px 2px at 750px 170px, #ffffff, rgba(0,0,0,0))',
-                    backgroundSize: '750px 380px'
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0b132b] via-[#1c2541] to-[#080d1e] overflow-hidden pointer-events-none">
+                {/* 深空星云光芒 */}
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/35 via-blue-900/20 to-transparent blur-xl pointer-events-none" />
+
+                {/* 璀璨星空点阵 */}
+                <div className="absolute inset-0 opacity-80 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(2px 2px at 30px 40px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 120px 160px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 280px 80px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 420px 200px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 600px 110px, #a5b4fc, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 750px 170px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 890px 90px, #93c5fd, rgba(0,0,0,0))',
+                    backgroundSize: '890px 420px'
                 }} />
-                <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#0f172a] to-transparent opacity-80 pointer-events-none" />
+
+                {/* 优雅划过的纯 CSS 流星（0 CPU 开销，纯 GPU 动画） */}
+                <div className="absolute h-[2px] w-[140px] bg-gradient-to-r from-transparent via-white to-transparent rounded-full opacity-85 pointer-events-none" style={{
+                    left: '18%', top: '15%',
+                    boxShadow: '0 0 12px rgba(255,255,255,0.85)',
+                    animation: 'meteor-drop 4.2s linear infinite'
+                }} />
+                <div className="absolute h-[2px] w-[110px] bg-gradient-to-r from-transparent via-cyan-200 to-transparent rounded-full opacity-80 pointer-events-none" style={{
+                    left: '62%', top: '22%',
+                    boxShadow: '0 0 10px rgba(165,243,252,0.8)',
+                    animation: 'meteor-drop 5.8s linear infinite 2.2s'
+                }} />
+
+                {/* 底部微光遮罩 */}
+                <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#080d1e] to-transparent opacity-80 pointer-events-none" />
             </div>
         );
 
         const LowPerfMatrix = () => (
-            <div className="absolute inset-0 bg-matrix-civilization overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-500/25 via-green-950/20 to-transparent pointer-events-none" />
-                <div className="absolute inset-0 opacity-25 pointer-events-none" style={{
-                    backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.12) 1px, transparent 1px)',
-                    backgroundSize: '40px 40px'
+            <div className="absolute inset-0 bg-gradient-to-b from-[#021d13] via-[#042419] to-[#01110b] overflow-hidden pointer-events-none">
+                {/* 赛博矩阵核心辉光 */}
+                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-500/35 via-emerald-950/25 to-transparent blur-xl pointer-events-none" />
+                
+                {/* 鲜明透亮的绿色数码纵横网格 */}
+                <div className="absolute inset-0 opacity-45 pointer-events-none" style={{
+                    backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.3) 1px, transparent 1px)',
+                    backgroundSize: '44px 44px'
                 }} />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.7)_100%)] pointer-events-none" />
+
+                {/* 垂直发光数据光束 */}
+                <div className="absolute left-[16%] top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-emerald-400/60 to-transparent blur-[1px] pointer-events-none" />
+                <div className="absolute right-[22%] top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-teal-300/50 to-transparent blur-[1px] pointer-events-none" />
+                <div className="absolute left-[58%] top-0 bottom-0 w-[1.5px] bg-gradient-to-b from-transparent via-green-400/40 to-transparent pointer-events-none" />
+
+                {/* 适度暗角保持内容清晰 */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.5)_100%)] pointer-events-none" />
             </div>
         );
 
-        const LowPerfOracleSands = () => (
-            <div className="absolute inset-0 bg-matrix-civilization overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-amber-600/30 via-yellow-900/10 to-transparent pointer-events-none" />
-                <div className="absolute inset-0 opacity-20 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(1.5px 1.5px at 40px 60px, #f59e0b, rgba(0,0,0,0)), radial-gradient(1px 1px at 140px 180px, #d97706, rgba(0,0,0,0)), radial-gradient(2px 2px at 300px 90px, #b45309, rgba(0,0,0,0)), radial-gradient(1px 1px at 460px 220px, #f59e0b, rgba(0,0,0,0))',
-                    backgroundSize: '600px 320px'
-                }} />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.6)_100%)] pointer-events-none" />
-            </div>
-        );
+        const LowPerfOracleSands = () => {
+            const oracleGlyphs = [
+                { char: '日', top: '12%', left: '8%', size: 'text-3xl sm:text-4xl', delay: '0s' },
+                { char: '月', top: '18%', right: '12%', size: 'text-2xl sm:text-3xl', delay: '1.2s' },
+                { char: '山', top: '35%', left: '14%', size: 'text-4xl sm:text-5xl', delay: '2.5s' },
+                { char: '川', top: '42%', right: '18%', size: 'text-3xl sm:text-4xl', delay: '0.8s' },
+                { char: '天', top: '62%', left: '10%', size: 'text-3xl sm:text-4xl', delay: '1.8s' },
+                { char: '地', top: '68%', right: '14%', size: 'text-4xl sm:text-5xl', delay: '3.1s' },
+                { char: '星', top: '25%', left: '45%', size: 'text-2xl sm:text-3xl', delay: '2.0s' },
+                { char: '辰', top: '78%', left: '38%', size: 'text-3xl sm:text-4xl', delay: '1.5s' },
+                { char: '鼎', top: '50%', right: '8%', size: 'text-4xl sm:text-5xl', delay: '0.5s' },
+                { char: '恒', top: '82%', right: '28%', size: 'text-2xl sm:text-3xl', delay: '2.8s' },
+            ];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#26170d] via-[#191008] to-[#0c0804] overflow-hidden pointer-events-none">
+                    {/* 中心金石温润辉光 */}
+                    <div className="absolute inset-0 opacity-45 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-600/40 via-amber-800/20 to-transparent blur-2xl pointer-events-none" />
+                    
+                    {/* 金沙微粒点阵 */}
+                    <div className="absolute inset-0 opacity-75 pointer-events-none" style={{
+                        backgroundImage: 'radial-gradient(1.5px 1.5px at 40px 60px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 140px 180px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 300px 90px, #f59e0b, rgba(0,0,0,0)), radial-gradient(1px 1px at 460px 220px, #fde047, rgba(0,0,0,0)), radial-gradient(2px 2px at 600px 140px, #d97706, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 750px 260px, #fbbf24, rgba(0,0,0,0))',
+                        backgroundSize: '750px 380px'
+                    }} />
+
+                    {/* 古朴甲骨文字拓片暗纹（零 CPU 占用，纯 GPU 文本排版） */}
+                    {oracleGlyphs.map((g, idx) => (
+                        <div
+                            key={idx}
+                            className={`absolute font-black select-none oracle-font text-amber-300/35 drop-shadow-[0_0_12px_rgba(245,158,11,0.6)] ${g.size}`}
+                            style={{
+                                top: g.top,
+                                left: g.left,
+                                right: g.right,
+                                animation: `breathe-daily 5s ease-in-out infinite ${g.delay}`,
+                                fontFamily: "'OracleBone', '方正甲骨文.TTF', '方正甲骨文', 'STKaiti', serif"
+                            }}
+                        >
+                            {g.char}
+                        </div>
+                    ))}
+
+                    {/* 底部暗金石刻余晖遮罩 */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-gradient-to-t from-[#0c0804] via-amber-950/20 to-transparent opacity-85 pointer-events-none" />
+                </div>
+            );
+        };
 
         const LowPerfFireworks = () => (
-            <div className="absolute inset-0 bg-lunar-night overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-60 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(1.5px 1.5px at 60px 40px, #fef08a, rgba(0,0,0,0)), radial-gradient(2px 2px at 180px 120px, #f43f5e, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 320px 70px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 500px 150px, #38bdf8, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 680px 90px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 840px 130px, #fde047, rgba(0,0,0,0))',
+            <div className="absolute inset-0 bg-gradient-to-b from-[#141b38] via-[#101728] via-[#1e132b] to-[#3f0814] overflow-hidden pointer-events-none">
+                {/* 底部除夕万家灯火与地平线暖红余晖 */}
+                <div className="absolute bottom-0 left-0 right-0 h-[45%] opacity-55 bg-gradient-to-t from-red-600/40 via-amber-500/25 to-transparent pointer-events-none" />
+
+                {/* 烟花绽放光团 1（左上：金灿牡丹） */}
+                <div
+                    className="absolute w-52 h-52 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-75 blur-md"
+                    style={{
+                        top: '22%',
+                        left: '24%',
+                        background: 'radial-gradient(circle, rgba(254,240,138,0.85) 0%, rgba(245,158,11,0.5) 30%, rgba(239,68,68,0.2) 55%, transparent 75%)',
+                        animation: 'breathe-daily 4s ease-in-out infinite'
+                    }}
+                />
+                {/* 烟花绽放光团 2（右上：紫薇星火） */}
+                <div
+                    className="absolute w-60 h-60 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-70 blur-md"
+                    style={{
+                        top: '30%',
+                        right: '8%',
+                        background: 'radial-gradient(circle, rgba(251,113,133,0.85) 0%, rgba(217,70,239,0.5) 30%, rgba(139,92,246,0.2) 55%, transparent 75%)',
+                        animation: 'breathe-daily 5s ease-in-out infinite 1.5s'
+                    }}
+                />
+                {/* 烟花绽放光团 3（中央高空：天青流火） */}
+                <div
+                    className="absolute w-44 h-44 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-65 blur-md"
+                    style={{
+                        top: '12%',
+                        left: '52%',
+                        background: 'radial-gradient(circle, rgba(103,232,249,0.85) 0%, rgba(59,130,246,0.45) 30%, rgba(251,191,36,0.2) 55%, transparent 70%)',
+                        animation: 'breathe-daily 4.5s ease-in-out infinite 0.8s'
+                    }}
+                />
+
+                {/* 漫天新春星尘火花点阵 */}
+                <div className="absolute inset-0 opacity-85 pointer-events-none" style={{
+                    backgroundImage: 'radial-gradient(2px 2px at 60px 50px, #fef08a, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 180px 130px, #f43f5e, rgba(0,0,0,0)), radial-gradient(2px 2px at 320px 80px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 500px 160px, #38bdf8, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 680px 90px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 840px 140px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 240px 220px, #fed7aa, rgba(0,0,0,0)), radial-gradient(2px 2px at 620px 240px, #fca5a5, rgba(0,0,0,0))',
                     backgroundSize: '900px 450px'
                 }} />
-                <div className="absolute bottom-0 left-0 right-0 h-[40%] opacity-30 bg-gradient-to-t from-red-600/30 via-amber-500/15 to-transparent pointer-events-none" />
             </div>
         );
 

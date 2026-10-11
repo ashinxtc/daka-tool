@@ -25,7 +25,11 @@ export const FAST_BOOT_KEYS = new Set([
     '_sync_local_ts',
     '_sync_last_hash',
     '_key_versions',
-    '_storage_migrated_v1'
+    '_storage_migrated_v1',
+    'app_pending_evil_penalties_v2',
+    'app_evil_penalty_log_v1',
+    'app_evil_auto_trigger',
+    'app_evil_trigger_config_v1'
 ]);
 
 // 内存中的全量缓存字典，保证业务层读操作（如 useStickyState, useMemo）绝对同步、0ms 耗时

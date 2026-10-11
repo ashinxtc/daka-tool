@@ -3767,6 +3767,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_exempted_days_v1',   // 豁免日（dateKey: true）
                 'app_random_event_history',
                 'app_evil_penalty_log_v1',
+                'app_pending_evil_penalties_v2',
                 'app_daily_random_counts',
                 'app_daily_event_type_counts_v1',
                 'app_active_pet_v1',      // 孩子出战宠物 { child: petId }
@@ -7752,7 +7753,10 @@ ${context}
                 if (!evilAutoTrigger) return;
                 const yesterday = getLocalDateKey(-1);
                 const penaltyKey = `${activeChild}-EVIL_PENALTY-${yesterday}`;
-                if (evilPenaltyLog[penaltyKey] || evilCheckDoneRef.current.has(penaltyKey)) return;
+                const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null)
+                    ? pendingEvilPenalties[activeChild]
+                    : null;
+                if (evilPenaltyLog[penaltyKey] || currentPending || evilCheckDoneRef.current.has(penaltyKey)) return;
 
                 const childTasks = tasks[activeChild] || [];
                 const yesterdayMustTasks = childTasks
@@ -7843,17 +7847,16 @@ ${context}
 
                 if (triggeredReasons.length > 0) {
                     const combinedReason = triggeredReasons.join('；');
-                    setEvilPenaltyLog(prev => ({
-                        ...prev,
-                        [penaltyKey]: { timestamp: Date.now(), reason: combinedReason }
-                    }));
+                    // 严密机制：此处仅记入待执行惩罚队列 pendingEvilPenalties！
+                    // 绝不能在转盘旋转结算前提前核销写入 evilPenaltyLog，确保未受罚前切换用户或刷新均绝不丢失！
                     setPendingEvilPenalties(prev => ({
                         ...(typeof prev === 'object' && prev !== null ? prev : {}),
-                        [activeChild]: { source: 'auto', reason: combinedReason, timestamp: Date.now() }
+                        [activeChild]: { source: 'auto', reason: combinedReason, timestamp: Date.now(), penaltyKey }
                     }));
                     setEvilPenaltySource('auto');
                     setEvilPenaltyReason(combinedReason);
-                    setTimeout(() => handleLaunchEvilWheelRef.current?.('auto', combinedReason), 500);
+                    setShowEvilWheel(true);
+                    setEvilWheelResult(null);
                 }
 
                 evilCheckDoneRef.current.add(penaltyKey);
@@ -8097,6 +8100,13 @@ ${context}
                     setEvilWheelResult(resultItem);
                     setEvilWheelSpinning(false);
                     if (!isEvilDemo) {
+                        const yesterday = getLocalDateKey(-1);
+                        const penaltyKey = currentPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${yesterday}`;
+                        // 转盘正式旋转停止并扣减/消耗神盾结算后，才真正核销记入已受惩罚日志
+                        setEvilPenaltyLog(prev => ({
+                            ...prev,
+                            [penaltyKey]: { timestamp: Date.now(), reason: evilPenaltyReason || '已受命运裁决' }
+                        }));
                         setPendingEvilPenalties(prev => {
                             const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
                             delete next[activeChild];
@@ -10222,6 +10232,7 @@ ${context}
                     reason={evilPenaltyReason}
                     profiles={profiles}
                     activeChild={activeChild}
+                    pendingEvilPenalties={pendingEvilPenalties}
                     onSwitchUser={(target) => {
                         if (target && target !== activeChild) {
                             startTransition(() => {

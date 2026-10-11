@@ -372,6 +372,7 @@ export const EvilWheelModal = ({
     reason = '',
     profiles = [],
     activeChild = '',
+    pendingEvilPenalties = {},
     onSwitchUser = () => {},
 }) => {
     if (!show) return null;
@@ -385,49 +386,69 @@ export const EvilWheelModal = ({
                 {/* 顶部血色暗涌 */}
                 <div className="absolute top-0 left-0 right-0 h-36 bg-gradient-to-b from-red-600/20 via-red-900/10 to-transparent pointer-events-none"></div>
 
-                {/* 多成员快速切换栏：允许其他家庭成员正常切换并使用 */}
+                {/* 顶部家庭成员快速切换卡片栏：舒展宽敞、美观典雅、清晰标识当前受罚人 */}
                 {profiles && profiles.length > 1 && (
-                    <div className="w-full mb-3 pb-2.5 border-b border-red-900/50 flex items-center justify-between gap-2 z-20">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs">👤</span>
-                            <div className="text-xs font-bold text-rose-300 truncate">
-                                受罚成员：<span className="text-white font-black">{activeChild}</span>
+                    <div className="w-full mb-4 bg-slate-950/70 rounded-2xl p-2.5 sm:p-3 border border-red-900/50 shadow-inner z-20 flex flex-col gap-2">
+                        <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-rose-300">
+                                <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                                <span>当前受审：</span>
+                                <span className="px-2 py-0.5 rounded-md bg-rose-950/90 text-rose-200 border border-rose-600/50 font-black tracking-wide">
+                                    {activeChild}
+                                </span>
                             </div>
+                            <span className="text-[11px] text-slate-400 font-medium">
+                                点击头像切换成员 👇
+                            </span>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-[11px] text-slate-400 font-medium">切换:</span>
-                            <div className="flex items-center gap-1 max-w-[13rem] overflow-x-auto no-scrollbar">
-                                {profiles.map(p => {
-                                    const isCurrent = p.name === activeChild;
-                                    return (
-                                        <button
-                                            key={p.id || p.name}
-                                            type="button"
-                                            disabled={wheelSpinning}
-                                            onClick={() => {
-                                                if (!isCurrent) {
-                                                    onSwitchUser(p.name);
-                                                }
-                                            }}
-                                            className={`px-2 py-0.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 border cursor-pointer ${
-                                                isCurrent
-                                                    ? 'bg-rose-900/90 border-rose-500 text-white shadow-xs'
-                                                    : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
-                                            } ${wheelSpinning ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
-                                            title={isCurrent ? `当前受罚成员【${p.name}】` : `切换为【${p.name}】`}
-                                        >
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 px-0.5">
+                            {profiles.map(p => {
+                                const isCurrent = p.name === activeChild;
+                                const hasPending = !!pendingEvilPenalties?.[p.name];
+                                return (
+                                    <button
+                                        key={p.id || p.name}
+                                        type="button"
+                                        disabled={wheelSpinning}
+                                        onClick={() => {
+                                            if (!isCurrent) {
+                                                onSwitchUser(p.name);
+                                            }
+                                        }}
+                                        className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border cursor-pointer select-none ${
+                                            isCurrent
+                                                ? 'bg-gradient-to-r from-red-900 via-rose-900 to-red-950 border-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.4)] ring-1 ring-rose-400/50'
+                                                : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-slate-300 hover:text-white shadow-xs'
+                                        } ${wheelSpinning ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}`}
+                                        title={isCurrent ? `当前受罚成员【${p.name}】` : `切换为【${p.name}】`}
+                                    >
+                                        <div className="relative">
                                             {p.avatar ? (
-                                                <img src={p.avatar} alt={p.name} className="w-3.5 h-3.5 rounded-full object-cover" />
+                                                <img src={p.avatar} alt={p.name} className="w-5 h-5 rounded-full object-cover ring-1 ring-white/20" />
                                             ) : (
-                                                <span className="w-3.5 h-3.5 rounded-full bg-slate-700 flex items-center justify-center text-[9px] text-white">
+                                                <span className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white font-bold ring-1 ring-white/20">
                                                     {(p.name || '孩')[0]}
                                                 </span>
                                             )}
-                                            <span className="truncate max-w-[3.5rem]">{p.name}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                                            {isCurrent && (
+                                                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 border border-black" />
+                                            )}
+                                        </div>
+                                        <span className="max-w-[5.5rem] truncate font-black tracking-wide">{p.name}</span>
+                                        {isCurrent ? (
+                                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-200 border border-rose-400/30">
+                                                受罚中
+                                            </span>
+                                        ) : hasPending ? (
+                                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-300 border border-amber-400/30">
+                                                待受罚
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-slate-400">切换</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
