@@ -2113,205 +2113,679 @@ import { PerformanceContext } from '../../context/PerformanceContext';
             );
         };
 		
-        // 低性能模式下轻量化 CSS 特效组件（零 WebGL/Canvas 压力，保留生动视觉层次与主题象征，彻底告别死黑一片）
-        const LowPerfGalaxy = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#130d38] via-[#1d1454] to-[#070519] overflow-hidden pointer-events-none">
-                {/* 银河螺旋大星云 */}
-                <div className="absolute inset-0 opacity-55 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/45 via-purple-700/30 via-fuchsia-900/25 to-transparent blur-2xl pointer-events-none" />
-                {/* 银心粉紫华彩 */}
-                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_50%_35%,rgba(244,114,182,0.3)_0%,transparent_60%)] pointer-events-none" />
-                {/* 璀璨群星 */}
-                <div className="absolute inset-0 opacity-85 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(2px 2px at 20px 30px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 100px 150px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 200px 80px, #ffffff, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 320px 220px, #fbcfe8, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 450px 120px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 580px 300px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 700px 180px, #fae8ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 820px 70px, #f472b6, rgba(0,0,0,0))',
-                    backgroundSize: '820px 420px'
-                }} />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
-            </div>
-        );
-
-        const LowPerfAurora = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#032822] via-[#073646] to-[#03111b] overflow-hidden pointer-events-none">
-                {/* 极光主光幕（翡翠绿与碧青） */}
-                <div className="absolute top-0 left-0 right-0 h-[60%] opacity-55 bg-gradient-to-r from-emerald-400/45 via-teal-300/45 via-purple-500/35 to-emerald-500/30 blur-2xl pointer-events-none" />
-                {/* 极光次级跃动光束（青荧之辉） */}
-                <div className="absolute top-8 left-[6%] right-[6%] h-[42%] opacity-45 bg-gradient-to-r from-green-400/40 via-cyan-300/45 to-indigo-500/35 blur-xl pointer-events-none" />
-                {/* 极地清朗星辰 */}
-                <div className="absolute inset-0 opacity-75 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(2px 2px at 50px 70px, #d1fae5, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 180px 120px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 340px 90px, #cffafe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 520px 160px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 680px 100px, #a7f3d0, rgba(0,0,0,0))',
-                    backgroundSize: '680px 360px'
-                }} />
-            </div>
-        );
-
-        const LowPerfPrismatic = () => (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#3b0764] via-[#701a75] via-[#4c0519] to-[#0f172a] overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-50 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-fuchsia-400/50 via-rose-500/30 to-transparent blur-xl pointer-events-none" />
-                <div className="absolute inset-0 opacity-65 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(2.5px 2.5px at 80px 60px, #fde047, rgba(0,0,0,0)), radial-gradient(2px 2px at 250px 180px, #f472b6, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 450px 100px, #c084fc, rgba(0,0,0,0)), radial-gradient(2px 2px at 620px 220px, #38bdf8, rgba(0,0,0,0))',
-                    backgroundSize: '620px 320px'
-                }} />
-            </div>
-        );
-
-        const LowPerfTimeWarp = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#17133f] via-[#241a5e] to-[#050414] overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-500/40 via-purple-600/30 to-transparent pointer-events-none" />
-                <div className="absolute inset-0 opacity-55 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(circle at center, transparent 35px, rgba(129,140,248,0.3) 36px, transparent 38px, transparent 80px, rgba(192,132,252,0.25) 81px, transparent 83px, transparent 135px, rgba(244,114,182,0.2) 136px, transparent 138px, transparent 200px, rgba(56,189,248,0.18) 201px, transparent 203px)'
-                }} />
-            </div>
-        );
-
-        const LowPerfHyperspeed = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#04132b] via-[#0b2554] to-[#020917] overflow-hidden pointer-events-none">
-                <div className="absolute inset-0 opacity-55 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-400/30 via-blue-600/25 to-transparent pointer-events-none" />
-                <div className="absolute inset-0 opacity-50 pointer-events-none" style={{
-                    backgroundImage: 'linear-gradient(90deg, transparent 48%, rgba(56,189,248,0.38) 50%, transparent 52%)',
-                    backgroundSize: '90px 100%'
-                }} />
-            </div>
-        );
-
-        const LowPerfMeteor = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#0b132b] via-[#1c2541] to-[#080d1e] overflow-hidden pointer-events-none">
-                {/* 深空星云光芒 */}
-                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/35 via-blue-900/20 to-transparent blur-xl pointer-events-none" />
-
-                {/* 璀璨星空点阵 */}
-                <div className="absolute inset-0 opacity-80 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(2px 2px at 30px 40px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 120px 160px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 280px 80px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 420px 200px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 600px 110px, #a5b4fc, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 750px 170px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 890px 90px, #93c5fd, rgba(0,0,0,0))',
-                    backgroundSize: '890px 420px'
-                }} />
-
-                {/* 优雅划过的纯 CSS 流星（0 CPU 开销，纯 GPU 动画） */}
-                <div className="absolute h-[2px] w-[140px] bg-gradient-to-r from-transparent via-white to-transparent rounded-full opacity-85 pointer-events-none" style={{
-                    left: '18%', top: '15%',
-                    boxShadow: '0 0 12px rgba(255,255,255,0.85)',
-                    animation: 'meteor-drop 4.2s linear infinite'
-                }} />
-                <div className="absolute h-[2px] w-[110px] bg-gradient-to-r from-transparent via-cyan-200 to-transparent rounded-full opacity-80 pointer-events-none" style={{
-                    left: '62%', top: '22%',
-                    boxShadow: '0 0 10px rgba(165,243,252,0.8)',
-                    animation: 'meteor-drop 5.8s linear infinite 2.2s'
-                }} />
-
-                {/* 底部微光遮罩 */}
-                <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#080d1e] to-transparent opacity-80 pointer-events-none" />
-            </div>
-        );
-
-        const LowPerfMatrix = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#021d13] via-[#042419] to-[#01110b] overflow-hidden pointer-events-none">
-                {/* 赛博矩阵核心辉光 */}
-                <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-500/35 via-emerald-950/25 to-transparent blur-xl pointer-events-none" />
-                
-                {/* 鲜明透亮的绿色数码纵横网格 */}
-                <div className="absolute inset-0 opacity-45 pointer-events-none" style={{
-                    backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.3) 1px, transparent 1px)',
-                    backgroundSize: '44px 44px'
-                }} />
-
-                {/* 垂直发光数据光束 */}
-                <div className="absolute left-[16%] top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-emerald-400/60 to-transparent blur-[1px] pointer-events-none" />
-                <div className="absolute right-[22%] top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-teal-300/50 to-transparent blur-[1px] pointer-events-none" />
-                <div className="absolute left-[58%] top-0 bottom-0 w-[1.5px] bg-gradient-to-b from-transparent via-green-400/40 to-transparent pointer-events-none" />
-
-                {/* 适度暗角保持内容清晰 */}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.5)_100%)] pointer-events-none" />
-            </div>
-        );
-
-        const LowPerfOracleSands = () => {
-            const oracleGlyphs = [
-                { char: '日', top: '12%', left: '8%', size: 'text-3xl sm:text-4xl', delay: '0s' },
-                { char: '月', top: '18%', right: '12%', size: 'text-2xl sm:text-3xl', delay: '1.2s' },
-                { char: '山', top: '35%', left: '14%', size: 'text-4xl sm:text-5xl', delay: '2.5s' },
-                { char: '川', top: '42%', right: '18%', size: 'text-3xl sm:text-4xl', delay: '0.8s' },
-                { char: '天', top: '62%', left: '10%', size: 'text-3xl sm:text-4xl', delay: '1.8s' },
-                { char: '地', top: '68%', right: '14%', size: 'text-4xl sm:text-5xl', delay: '3.1s' },
-                { char: '星', top: '25%', left: '45%', size: 'text-2xl sm:text-3xl', delay: '2.0s' },
-                { char: '辰', top: '78%', left: '38%', size: 'text-3xl sm:text-4xl', delay: '1.5s' },
-                { char: '鼎', top: '50%', right: '8%', size: 'text-4xl sm:text-5xl', delay: '0.5s' },
-                { char: '恒', top: '82%', right: '28%', size: 'text-2xl sm:text-3xl', delay: '2.8s' },
+        // 低性能模式下轻量化纯 CSS 特效组件（零 WebGL/Canvas CPU 开销，纯 GPU 硬件加速，保留生动动态视觉与主题象征）
+        const LowPerfGalaxy = () => {
+            // 32 颗错落分布的星辰 (4 颗十字星芒巨星 + 12 颗中亮星 + 16 颗深空微尘)
+            const stars = [
+                // 4 颗十字大星
+                { x: '18%', y: '22%', size: 'w-2 h-2', isCross: true, color: '#ffffff', delay: '0s' },
+                { x: '78%', y: '18%', size: 'w-2 h-2', isCross: true, color: '#fbcfe8', delay: '1.5s' },
+                { x: '45%', y: '48%', size: 'w-2 h-2', isCross: true, color: '#e0e7ff', delay: '2.8s' },
+                { x: '82%', y: '65%', size: 'w-1.5 h-1.5', isCross: true, color: '#c7d2fe', delay: '0.8s' },
+                // 中亮星
+                { x: '8%', y: '12%', size: 'w-1.5 h-1.5', color: '#ffffff', delay: '0.4s' },
+                { x: '28%', y: '35%', size: 'w-1.5 h-1.5', color: '#c7d2fe', delay: '1.8s' },
+                { x: '62%', y: '15%', size: 'w-1.5 h-1.5', color: '#fae8ff', delay: '2.2s' },
+                { x: '88%', y: '32%', size: 'w-1.5 h-1.5', color: '#fbcfe8', delay: '0.6s' },
+                { x: '14%', y: '68%', size: 'w-1.5 h-1.5', color: '#ffffff', delay: '1.2s' },
+                { x: '35%', y: '80%', size: 'w-1.5 h-1.5', color: '#e0e7ff', delay: '2.5s' },
+                { x: '58%', y: '72%', size: 'w-1.5 h-1.5', color: '#f472b6', delay: '0.9s' },
+                { x: '72%', y: '42%', size: 'w-1.5 h-1.5', color: '#ffffff', delay: '1.7s' },
+                { x: '92%', y: '82%', size: 'w-1.5 h-1.5', color: '#c7d2fe', delay: '2.0s' },
+                { x: '50%', y: '25%', size: 'w-1.5 h-1.5', color: '#ffffff', delay: '0.3s' },
+                { x: '22%', y: '52%', size: 'w-1.5 h-1.5', color: '#fae8ff', delay: '2.7s' },
+                { x: '66%', y: '88%', size: 'w-1.5 h-1.5', color: '#fbcfe8', delay: '1.1s' },
+                // 深空飘拂微尘星
+                { x: '5%', y: '40%', size: 'w-1 h-1', color: '#93c5fd', drift: true, delay: '0s' },
+                { x: '12%', y: '85%', size: 'w-1 h-1', color: '#c084fc', drift: true, delay: '1.2s' },
+                { x: '24%', y: '10%', size: 'w-1 h-1', color: '#ffffff', drift: true, delay: '2.4s' },
+                { x: '32%', y: '60%', size: 'w-1 h-1', color: '#e0e7ff', drift: true, delay: '3.6s' },
+                { x: '40%', y: '18%', size: 'w-1 h-1', color: '#fbcfe8', drift: true, delay: '0.8s' },
+                { x: '48%', y: '90%', size: 'w-1 h-1', color: '#93c5fd', drift: true, delay: '2.0s' },
+                { x: '55%', y: '38%', size: 'w-1 h-1', color: '#ffffff', drift: true, delay: '3.2s' },
+                { x: '65%', y: '55%', size: 'w-1 h-1', color: '#c7d2fe', drift: true, delay: '1.6s' },
+                { x: '75%', y: '5%', size: 'w-1 h-1', color: '#fae8ff', drift: true, delay: '2.8s' },
+                { x: '80%', y: '78%', size: 'w-1 h-1', color: '#f472b6', drift: true, delay: '0.4s' },
+                { x: '86%', y: '50%', size: 'w-1 h-1', color: '#ffffff', drift: true, delay: '1.9s' },
+                { x: '95%', y: '20%', size: 'w-1 h-1', color: '#c084fc', drift: true, delay: '3.1s' },
+                { x: '30%', y: '22%', size: 'w-1 h-1', color: '#93c5fd', drift: true, delay: '0.7s' },
+                { x: '60%', y: '30%', size: 'w-1 h-1', color: '#e0e7ff', drift: true, delay: '2.1s' },
+                { x: '42%', y: '70%', size: 'w-1 h-1', color: '#ffffff', drift: true, delay: '3.5s' },
+                { x: '70%', y: '28%', size: 'w-1 h-1', color: '#fbcfe8', drift: true, delay: '1.4s' }
             ];
 
             return (
-                <div className="absolute inset-0 bg-gradient-to-b from-[#26170d] via-[#191008] to-[#0c0804] overflow-hidden pointer-events-none">
-                    {/* 中心金石温润辉光 */}
-                    <div className="absolute inset-0 opacity-45 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-600/40 via-amber-800/20 to-transparent blur-2xl pointer-events-none" />
-                    
-                    {/* 金沙微粒点阵 */}
-                    <div className="absolute inset-0 opacity-75 pointer-events-none" style={{
-                        backgroundImage: 'radial-gradient(1.5px 1.5px at 40px 60px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 140px 180px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 300px 90px, #f59e0b, rgba(0,0,0,0)), radial-gradient(1px 1px at 460px 220px, #fde047, rgba(0,0,0,0)), radial-gradient(2px 2px at 600px 140px, #d97706, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 750px 260px, #fbbf24, rgba(0,0,0,0))',
-                        backgroundSize: '750px 380px'
-                    }} />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#0a0724] via-[#140c3d] via-[#1b104b] to-[#060417] overflow-hidden pointer-events-none">
+                    {/* 银河螺旋大星云 1（蓝紫星云, 呼吸缩放与微自旋） */}
+                    <div
+                        className="absolute inset-0 opacity-60 bg-[radial-gradient(ellipse_at_35%_35%,_var(--tw-gradient-stops))] from-indigo-500/50 via-purple-700/35 via-fuchsia-950/25 to-transparent blur-3xl pointer-events-none"
+                        style={{ animation: 'galaxy-nebula-breathe 14s ease-in-out infinite' }}
+                    />
 
-                    {/* 古朴甲骨文字拓片暗纹（零 CPU 占用，纯 GPU 文本排版） */}
-                    {oracleGlyphs.map((g, idx) => (
+                    {/* 银河银心粉紫华彩 2（错开相位呼吸） */}
+                    <div
+                        className="absolute inset-0 opacity-45 bg-[radial-gradient(circle_at_65%_45%,rgba(244,114,182,0.4)_0%,rgba(168,85,247,0.25)_40%,transparent_70%)] blur-2xl pointer-events-none"
+                        style={{ animation: 'galaxy-nebula-breathe 18s ease-in-out infinite -7s' }}
+                    />
+
+                    {/* 深邃星尘背景图层 */}
+                    <div
+                        className="absolute inset-0 opacity-75 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 120px 150px, #e0e7ff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 240px 80px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 360px 220px, #fbcfe8, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 500px 120px, #c7d2fe, rgba(0,0,0,0)), radial-gradient(2px 2px at 640px 300px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 780px 180px, #fae8ff, rgba(0,0,0,0))',
+                            backgroundSize: '780px 400px'
+                        }}
+                    />
+
+                    {/* 32 颗独立呼吸与漂浮星辰 */}
+                    {stars.map((s, idx) => (
                         <div
                             key={idx}
-                            className={`absolute font-black select-none oracle-font text-amber-300/35 drop-shadow-[0_0_12px_rgba(245,158,11,0.6)] ${g.size}`}
+                            className="absolute pointer-events-none"
                             style={{
-                                top: g.top,
-                                left: g.left,
-                                right: g.right,
-                                animation: `breathe-daily 5s ease-in-out infinite ${g.delay}`,
-                                fontFamily: "'OracleBone', '方正甲骨文.TTF', '方正甲骨文', 'STKaiti', serif"
+                                left: s.x,
+                                top: s.y,
+                                animation: s.drift
+                                    ? `galaxy-star-drift 8s ease-in-out infinite ${s.delay}`
+                                    : `lowperf-star-twinkle 3s ease-in-out infinite ${s.delay}`
                             }}
                         >
-                            {g.char}
+                            {s.isCross ? (
+                                <div className="relative flex items-center justify-center">
+                                    <div
+                                        className={`${s.size} rounded-full`}
+                                        style={{ backgroundColor: s.color, boxShadow: `0 0 8px ${s.color}, 0 0 16px #ffffff` }}
+                                    />
+                                    {/* 十字星芒衍射光针 */}
+                                    <div
+                                        className="absolute w-5 h-[1.5px] rounded-full pointer-events-none"
+                                        style={{ backgroundColor: s.color, opacity: 0.85 }}
+                                    />
+                                    <div
+                                        className="absolute h-5 w-[1.5px] rounded-full pointer-events-none"
+                                        style={{ backgroundColor: s.color, opacity: 0.85 }}
+                                    />
+                                </div>
+                            ) : (
+                                <div
+                                    className={`${s.size} rounded-full`}
+                                    style={{ backgroundColor: s.color, boxShadow: `0 0 6px ${s.color}` }}
+                                />
+                            )}
                         </div>
                     ))}
 
-                    {/* 底部暗金石刻余晖遮罩 */}
-                    <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-gradient-to-t from-[#0c0804] via-amber-950/20 to-transparent opacity-85 pointer-events-none" />
+                    {/* 底部暗色遮罩保护内容 */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-transparent to-transparent pointer-events-none" />
                 </div>
             );
         };
 
-        const LowPerfFireworks = () => (
-            <div className="absolute inset-0 bg-gradient-to-b from-[#141b38] via-[#101728] via-[#1e132b] to-[#3f0814] overflow-hidden pointer-events-none">
-                {/* 底部除夕万家灯火与地平线暖红余晖 */}
-                <div className="absolute bottom-0 left-0 right-0 h-[45%] opacity-55 bg-gradient-to-t from-red-600/40 via-amber-500/25 to-transparent pointer-events-none" />
+        const LowPerfAurora = () => {
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#02181b] via-[#042831] via-[#06333c] to-[#010e13] overflow-hidden pointer-events-none">
+                    {/* 极光主光幕 1（翡翠绿与碧青光帘，动态摇曳摆动） */}
+                    <div
+                        className="absolute -top-12 -left-20 -right-20 h-[68%] opacity-65 pointer-events-none blur-2xl"
+                        style={{
+                            background:
+                                'linear-gradient(135deg, rgba(52, 211, 153, 0.55) 0%, rgba(16, 185, 129, 0.5) 30%, rgba(45, 212, 191, 0.45) 60%, rgba(99, 102, 241, 0.3) 85%, transparent 100%)',
+                            animation: 'aurora-wave-sway-1 8s ease-in-out infinite'
+                        }}
+                    />
 
-                {/* 烟花绽放光团 1（左上：金灿牡丹） */}
-                <div
-                    className="absolute w-52 h-52 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-75 blur-md"
-                    style={{
-                        top: '22%',
-                        left: '24%',
-                        background: 'radial-gradient(circle, rgba(254,240,138,0.85) 0%, rgba(245,158,11,0.5) 30%, rgba(239,68,68,0.2) 55%, transparent 75%)',
-                        animation: 'breathe-daily 4s ease-in-out infinite'
-                    }}
-                />
-                {/* 烟花绽放光团 2（右上：紫薇星火） */}
-                <div
-                    className="absolute w-60 h-60 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-70 blur-md"
-                    style={{
-                        top: '30%',
-                        right: '8%',
-                        background: 'radial-gradient(circle, rgba(251,113,133,0.85) 0%, rgba(217,70,239,0.5) 30%, rgba(139,92,246,0.2) 55%, transparent 75%)',
-                        animation: 'breathe-daily 5s ease-in-out infinite 1.5s'
-                    }}
-                />
-                {/* 烟花绽放光团 3（中央高空：天青流火） */}
-                <div
-                    className="absolute w-44 h-44 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-65 blur-md"
-                    style={{
-                        top: '12%',
-                        left: '52%',
-                        background: 'radial-gradient(circle, rgba(103,232,249,0.85) 0%, rgba(59,130,246,0.45) 30%, rgba(251,191,36,0.2) 55%, transparent 70%)',
-                        animation: 'breathe-daily 4.5s ease-in-out infinite 0.8s'
-                    }}
-                />
+                    {/* 极光次级跃动光幕 2（青荧与幻紫交织，错相流动） */}
+                    <div
+                        className="absolute top-4 -left-10 -right-10 h-[52%] opacity-55 pointer-events-none blur-2xl"
+                        style={{
+                            background:
+                                'linear-gradient(120deg, rgba(56, 189, 248, 0.5) 0%, rgba(168, 85, 247, 0.55) 45%, rgba(236, 72, 153, 0.35) 75%, transparent 95%)',
+                            animation: 'aurora-wave-sway-2 11s ease-in-out infinite -3.5s'
+                        }}
+                    />
 
-                {/* 漫天新春星尘火花点阵 */}
-                <div className="absolute inset-0 opacity-85 pointer-events-none" style={{
-                    backgroundImage: 'radial-gradient(2px 2px at 60px 50px, #fef08a, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 180px 130px, #f43f5e, rgba(0,0,0,0)), radial-gradient(2px 2px at 320px 80px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 500px 160px, #38bdf8, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 680px 90px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 840px 140px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 240px 220px, #fed7aa, rgba(0,0,0,0)), radial-gradient(2px 2px at 620px 240px, #fca5a5, rgba(0,0,0,0))',
-                    backgroundSize: '900px 450px'
-                }} />
-            </div>
-        );
+                    {/* 极光高空透亮光带 3（嫩绿高光波纹） */}
+                    <div
+                        className="absolute top-0 left-[8%] right-[8%] h-[38%] opacity-60 pointer-events-none blur-xl"
+                        style={{
+                            background:
+                                'linear-gradient(150deg, rgba(134, 239, 172, 0.65) 0%, rgba(52, 211, 153, 0.45) 50%, transparent 80%)',
+                            animation: 'aurora-wave-sway-1 9.5s ease-in-out infinite -5s'
+                        }}
+                    />
+
+                    {/* 极地清朗冰晶星辰点阵 */}
+                    <div
+                        className="absolute inset-0 opacity-80 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'radial-gradient(2px 2px at 45px 60px, #d1fae5, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 170px 110px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 320px 80px, #cffafe, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 500px 150px, #ffffff, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 660px 90px, #a7f3d0, rgba(0,0,0,0)), radial-gradient(2px 2px at 820px 140px, #ffffff, rgba(0,0,0,0))',
+                            backgroundSize: '820px 360px'
+                        }}
+                    />
+
+                    {/* 极地冰原与山脉轮廓剪影 */}
+                    <div
+                        className="absolute bottom-0 left-0 right-0 h-32 opacity-90 pointer-events-none"
+                        style={{
+                            background: 'linear-gradient(to top, #010a0e 0%, #03161c 70%, transparent 100%)',
+                            clipPath:
+                                'polygon(0% 100%, 0% 78%, 10% 72%, 18% 78%, 28% 66%, 40% 79%, 52% 64%, 64% 78%, 76% 68%, 88% 79%, 100% 72%, 100% 100%)'
+                        }}
+                    />
+                </div>
+            );
+        };
+
+        const LowPerfPrismatic = () => {
+            return (
+                <div className="absolute inset-0 bg-gradient-to-br from-[#260533] via-[#480a4f] via-[#310425] to-[#12021c] overflow-hidden pointer-events-none flex items-center justify-center">
+                    {/* 彩虹琉璃光谱旋转射线轮盘 1 */}
+                    <div
+                        className="absolute w-[850px] h-[850px] rounded-full opacity-45 pointer-events-none blur-lg"
+                        style={{
+                            background:
+                                'conic-gradient(from 0deg, rgba(244,63,94,0.4) 0deg, rgba(234,179,8,0.4) 60deg, rgba(34,197,94,0.4) 120deg, rgba(6,182,212,0.4) 180deg, rgba(168,85,247,0.4) 240deg, rgba(236,72,153,0.4) 300deg, rgba(244,63,94,0.4) 360deg)',
+                            animation: 'prismatic-ray-spin 25s linear infinite'
+                        }}
+                    />
+
+                    {/* 逆向旋转的第二重光谱漫射 2 */}
+                    <div
+                        className="absolute w-[700px] h-[700px] rounded-full opacity-35 pointer-events-none blur-xl"
+                        style={{
+                            background:
+                                'conic-gradient(from 180deg, rgba(56,189,248,0.35) 0deg, rgba(168,85,247,0.35) 90deg, rgba(244,63,94,0.35) 180deg, rgba(234,179,8,0.35) 270deg, rgba(56,189,248,0.35) 360deg)',
+                            animation: 'prismatic-ray-spin 18s linear infinite reverse'
+                        }}
+                    />
+
+                    {/* 中心登科及第·琉璃晶核光芒 */}
+                    <div
+                        className="relative w-28 h-28 pointer-events-none"
+                        style={{ animation: 'prismatic-star-pulse 4.5s ease-in-out infinite' }}
+                    >
+                        {/* 八芒晶钻衍射星 */}
+                        <div
+                            className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-fuchsia-400 via-pink-300 to-amber-200 opacity-80"
+                            style={{ transform: 'rotate(45deg)', boxShadow: '0 0 35px rgba(236, 72, 153, 0.9)' }}
+                        />
+                        <div
+                            className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan-300 via-purple-300 to-rose-300 opacity-80"
+                            style={{ transform: 'rotate(0deg)', boxShadow: '0 0 25px rgba(168, 85, 247, 0.9)' }}
+                        />
+                        {/* 核心白光极核 */}
+                        <div className="absolute inset-3 rounded-full bg-white blur-[2px] opacity-95" />
+                    </div>
+
+                    {/* 漫天七彩晶钻折射火彩星尘 */}
+                    <div
+                        className="absolute inset-0 opacity-70 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'radial-gradient(2.5px 2.5px at 80px 70px, #fde047, rgba(0,0,0,0)), radial-gradient(2px 2px at 250px 180px, #f472b6, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 450px 100px, #c084fc, rgba(0,0,0,0)), radial-gradient(2px 2px at 620px 220px, #38bdf8, rgba(0,0,0,0)), radial-gradient(2px 2px at 780px 120px, #4ade80, rgba(0,0,0,0))',
+                            backgroundSize: '780px 320px'
+                        }}
+                    />
+
+                    {/* 边缘暗夜保护遮罩 */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(18,2,28,0.7)_100%)] pointer-events-none" />
+                </div>
+            );
+        };
+
+        const LowPerfTimeWarp = () => {
+            // 4 道同心扩张的时空跃迁引力波环
+            const warpRings = [
+                { delay: '0s', borderClass: 'border-cyan-400/60 shadow-[0_0_20px_rgba(56,189,248,0.7)]' },
+                { delay: '1.0s', borderClass: 'border-purple-400/60 shadow-[0_0_20px_rgba(168,85,247,0.7)]' },
+                { delay: '2.0s', borderClass: 'border-pink-400/60 shadow-[0_0_20px_rgba(244,114,182,0.7)]' },
+                { delay: '3.0s', borderClass: 'border-indigo-400/60 shadow-[0_0_20px_rgba(99,102,241,0.7)]' }
+            ];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#090526] via-[#160c40] to-[#040214] overflow-hidden pointer-events-none flex items-center justify-center">
+                    {/* 中心时空奇点辉光 */}
+                    <div className="absolute w-64 h-64 rounded-full opacity-65 bg-[radial-gradient(circle,_var(--tw-gradient-stops))] from-cyan-400/80 via-purple-600/50 to-transparent blur-xl pointer-events-none" />
+
+                    {/* 4 层不断向外扑面膨胀的时空环 */}
+                    {warpRings.map((ring, idx) => (
+                        <div
+                            key={idx}
+                            className={`absolute w-72 h-72 rounded-full border-2 ${ring.borderClass} pointer-events-none`}
+                            style={{
+                                animation: `timewarp-ring-expand 4s cubic-bezier(0.15, 0.85, 0.35, 1) infinite ${ring.delay}`
+                            }}
+                        />
+                    ))}
+
+                    {/* 纵深放射星轨折痕 */}
+                    <div
+                        className="absolute inset-0 opacity-25 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'conic-gradient(from 0deg, transparent 0deg, rgba(168,85,247,0.4) 15deg, transparent 30deg, transparent 60deg, rgba(56,189,248,0.4) 75deg, transparent 90deg, transparent 150deg, rgba(244,114,182,0.4) 165deg, transparent 180deg, transparent 240deg, rgba(168,85,247,0.4) 255deg, transparent 270deg)',
+                            backgroundSize: '100% 100%'
+                        }}
+                    />
+
+                    {/* 核心奇点小白洞 */}
+                    <div className="absolute w-4 h-4 rounded-full bg-white shadow-[0_0_20px_#ffffff,0_0_40px_#38bdf8] pointer-events-none animate-pulse" />
+                </div>
+            );
+        };
+
+        const LowPerfHyperspeed = () => {
+            // 8 道超光速横贯极速光束
+            const lasers = [
+                { top: '12%', height: '2px', width: '360px', color: '#38bdf8', glow: '#38bdf8', duration: '1.4s', delay: '0s' },
+                { top: '22%', height: '3px', width: '450px', color: '#c084fc', glow: '#a855f7', duration: '1.8s', delay: '0.4s' },
+                { top: '35%', height: '2.5px', width: '400px', color: '#ffffff', glow: '#38bdf8', duration: '1.2s', delay: '0.9s' },
+                { top: '48%', height: '2px', width: '320px', color: '#f472b6', glow: '#ec4899', duration: '1.6s', delay: '0.2s' },
+                { top: '60%', height: '3px', width: '480px', color: '#67e8f9', glow: '#06b6d4', duration: '1.3s', delay: '0.7s' },
+                { top: '72%', height: '2px', width: '380px', color: '#a855f7', glow: '#c084fc', duration: '1.7s', delay: '0.5s' },
+                { top: '85%', height: '2.5px', width: '420px', color: '#38bdf8', glow: '#0284c7', duration: '1.5s', delay: '1.1s' },
+                { top: '93%', height: '2px', width: '350px', color: '#ffffff', glow: '#ffffff', duration: '1.1s', delay: '0.3s' }
+            ];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#020b18] via-[#051833] to-[#01060e] overflow-hidden pointer-events-none">
+                    {/* 曲率引擎聚光核心 */}
+                    <div className="absolute inset-0 opacity-50 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-400/40 via-blue-600/25 to-transparent pointer-events-none" />
+
+                    {/* 8 道超光速霓虹激光束 */}
+                    {lasers.map((l, idx) => (
+                        <div
+                            key={idx}
+                            className="absolute pointer-events-none"
+                            style={{
+                                top: l.top,
+                                height: l.height,
+                                width: l.width,
+                                background: `linear-gradient(to left, transparent, ${l.color} 70%, #ffffff 100%)`,
+                                boxShadow: `0 0 12px ${l.glow}, 0 0 24px ${l.glow}`,
+                                animation: `hyperspeed-laser-run ${l.duration} linear infinite ${l.delay}`
+                            }}
+                        >
+                            {/* 激光穿梭前端超强光斑 */}
+                            <div
+                                className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white"
+                                style={{ boxShadow: `0 0 10px #ffffff, 0 0 20px ${l.glow}` }}
+                            />
+                        </div>
+                    ))}
+
+                    {/* 边缘暗夜保护 */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(0,0,0,0.6)_100%)] pointer-events-none" />
+                </div>
+            );
+        };
+
+        const LowPerfMeteor = () => {
+            // 5 颗错落划破长夜的流星
+            const meteors = [
+                { left: '22%', top: '8%', width: '160px', color: '#ffffff', glow: 'rgba(255,255,255,0.9)', duration: '4.2s', delay: '0s' },
+                { left: '68%', top: '16%', width: '140px', color: '#67e8f9', glow: 'rgba(103,232,249,0.9)', duration: '5.5s', delay: '1.8s' },
+                { left: '44%', top: '10%', width: '180px', color: '#fef08a', glow: 'rgba(254,240,138,0.9)', duration: '4.6s', delay: '3.2s' },
+                { left: '85%', top: '24%', width: '130px', color: '#c084fc', glow: 'rgba(192,132,252,0.9)', duration: '6.0s', delay: '4.5s' },
+                { left: '12%', top: '28%', width: '150px', color: '#ffffff', glow: 'rgba(255,255,255,0.9)', duration: '5.0s', delay: '2.5s' }
+            ];
+
+            // 24 颗闪烁恒星
+            const stars = [
+                { x: '10%', y: '15%', size: 'w-1.5 h-1.5', delay: '0.2s' },
+                { x: '25%', y: '25%', size: 'w-2 h-2', delay: '1.4s' },
+                { x: '38%', y: '12%', size: 'w-1 h-1', delay: '2.1s' },
+                { x: '52%', y: '30%', size: 'w-1.5 h-1.5', delay: '0.8s' },
+                { x: '65%', y: '18%', size: 'w-2 h-2', delay: '2.5s' },
+                { x: '78%', y: '35%', size: 'w-1 h-1', delay: '1.1s' },
+                { x: '90%', y: '20%', size: 'w-1.5 h-1.5', delay: '0.5s' },
+                { x: '15%', y: '50%', size: 'w-1 h-1', delay: '1.8s' },
+                { x: '30%', y: '65%', size: 'w-1.5 h-1.5', delay: '2.7s' },
+                { x: '45%', y: '55%', size: 'w-2 h-2', delay: '0.9s' },
+                { x: '60%', y: '70%', size: 'w-1 h-1', delay: '2.2s' },
+                { x: '74%', y: '58%', size: 'w-1.5 h-1.5', delay: '1.6s' },
+                { x: '88%', y: '72%', size: 'w-2 h-2', delay: '0.4s' },
+                { x: '5%', y: '80%', size: 'w-1 h-1', delay: '1.9s' },
+                { x: '95%', y: '45%', size: 'w-1.5 h-1.5', delay: '2.8s' },
+                { x: '40%', y: '82%', size: 'w-1 h-1', delay: '0.7s' }
+            ];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#080d24] via-[#121a3b] to-[#050817] overflow-hidden pointer-events-none">
+                    {/* 深空午夜星云光晕 */}
+                    <div className="absolute inset-0 opacity-45 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/40 via-blue-900/25 to-transparent blur-2xl pointer-events-none" />
+
+                    {/* 璀璨恒星群 */}
+                    {stars.map((s, idx) => (
+                        <div
+                            key={idx}
+                            className={`absolute ${s.size} bg-white rounded-full pointer-events-none`}
+                            style={{
+                                left: s.x,
+                                top: s.y,
+                                boxShadow: '0 0 6px rgba(255,255,255,0.85)',
+                                animation: `lowperf-star-twinkle 3s ease-in-out infinite ${s.delay}`
+                            }}
+                        />
+                    ))}
+
+                    {/* 5 颗优雅划过长夜的纯 CSS 流星 */}
+                    {meteors.map((m, idx) => (
+                        <div
+                            key={idx}
+                            className="absolute h-[2px] rounded-full opacity-0 pointer-events-none"
+                            style={{
+                                left: m.left,
+                                top: m.top,
+                                width: m.width,
+                                background: `linear-gradient(to right, transparent, ${m.color})`,
+                                boxShadow: `0 0 10px ${m.glow}, 0 0 20px ${m.glow}`,
+                                animation: `lowperf-meteor-streak ${m.duration} linear infinite ${m.delay}`
+                            }}
+                        >
+                            {/* 流星头部耀眼高光 */}
+                            <div
+                                className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full"
+                                style={{ backgroundColor: m.color, boxShadow: `0 0 8px #ffffff, 0 0 14px ${m.glow}` }}
+                            />
+                        </div>
+                    ))}
+
+                    {/* 底部微光渐变，确保底部内容舒适可见 */}
+                    <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-[#050817] to-transparent opacity-85 pointer-events-none" />
+                </div>
+            );
+        };
+
+        const LowPerfMatrix = () => {
+            // 12 列连续降落的赛博数码雨 (纯 CSS 硬件加速, 错开延迟与速度)
+            const streams = [
+                { left: '4%', duration: '6.2s', delay: '-1.5s', chars: ['1', '0', '天', '奎', 'A', '7', '地', 'F'] },
+                { left: '12%', duration: '5.0s', delay: '-3.8s', chars: ['0', '文', '9', '星', 'X', '字', '0', '1'] },
+                { left: '20%', duration: '7.1s', delay: '-0.7s', chars: ['象', '1', '形', '4', '神', 'C', '化', '0'] },
+                { left: '28%', duration: '5.6s', delay: '-4.2s', chars: ['0', '始', '制', '8', '2', '仓', '颉', '1'] },
+                { left: '37%', duration: '6.8s', delay: '-2.1s', chars: ['玄', '黄', '0', '1', 'E', 'B', '秘', '阵'] },
+                { left: '46%', duration: '4.8s', delay: '-5.0s', chars: ['1', '万', '象', '0', 'F', '3', '纪', '元'] },
+                { left: '55%', duration: '6.4s', delay: '-1.2s', chars: ['奎', '0', '星', '1', 'D', '9', '始', '创'] },
+                { left: '64%', duration: '5.2s', delay: '-3.4s', chars: ['字', '8', '符', '0', '1', 'A', '穿', '梭'] },
+                { left: '73%', duration: '7.5s', delay: '-0.4s', chars: ['重', '组', '1', '0', '演', '变', '4', 'C'] },
+                { left: '82%', duration: '5.9s', delay: '-4.6s', chars: ['0', '沧', '海', '1', '桑', '田', 'E', '0'] },
+                { left: '90%', duration: '6.5s', delay: '-2.8s', chars: ['1', '0', '天', '地', '8', 'B', '神', '符'] },
+                { left: '96%', duration: '5.4s', delay: '-5.5s', chars: ['0', '文', '字', '1', '奎', '星', '0', '1'] }
+            ];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#02130c] via-[#042417] to-[#010e08] overflow-hidden pointer-events-none select-none">
+                    {/* 赛博核心翠绿辉光 */}
+                    <div className="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-500/35 via-emerald-950/20 to-transparent blur-2xl pointer-events-none" />
+
+                    {/* 浅淡的赛博经纬数据网格 */}
+                    <div
+                        className="absolute inset-0 opacity-20 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'linear-gradient(rgba(16, 185, 129, 0.25) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.25) 1px, transparent 1px)',
+                            backgroundSize: '40px 40px'
+                        }}
+                    />
+
+                    {/* 12 列流动的数码雨 */}
+                    {streams.map((stream, idx) => (
+                        <div
+                            key={idx}
+                            className="absolute top-0 flex flex-col items-center pointer-events-none"
+                            style={{
+                                left: stream.left,
+                                animation: `matrix-stream-fall ${stream.duration} linear infinite ${stream.delay}`,
+                                fontFamily: "'Courier New', 'OracleBone', monospace"
+                            }}
+                        >
+                            {stream.chars.map((char, cIdx) => {
+                                const isHead = cIdx === 0;
+                                const isNearHead = cIdx === 1 || cIdx === 2;
+                                return (
+                                    <span
+                                        key={cIdx}
+                                        className="block my-[2px] leading-tight text-center"
+                                        style={{
+                                            fontSize: isHead ? '1.15rem' : '0.95rem',
+                                            fontWeight: isHead ? '900' : '600',
+                                            color: isHead ? '#ffffff' : isNearHead ? '#86efac' : '#22c55e',
+                                            opacity: isHead ? 1 : Math.max(0.2, 0.9 - cIdx * 0.1),
+                                            textShadow: isHead
+                                                ? '0 0 8px #ffffff, 0 0 16px #4ade80, 0 0 24px #22c55e'
+                                                : isNearHead
+                                                ? '0 0 6px #4ade80'
+                                                : 'none'
+                                        }}
+                                    >
+                                        {char}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    ))}
+
+                    {/* 边缘暗角保护页面主内容清晰度 */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(0,0,0,0.65)_100%)] pointer-events-none" />
+                </div>
+            );
+        };
+
+        const LowPerfOracleSands = () => {
+            // 10 列垂直倾泻的金沙甲骨文流光 (秘境·甲骨流沙点金成石)
+            const streams = [
+                { left: '6%', duration: '6.5s', delay: '-1.2s', chars: ['日', '月', '山', '川', '天', '地', '鼎'] },
+                { left: '15%', duration: '8.2s', delay: '-4.5s', chars: ['龙', '凤', '易', '德', '和', '泰', '恒'] },
+                { left: '25%', duration: '5.8s', delay: '-0.8s', chars: ['星', '辰', '武', '安', '昌', '帝', '旅'] },
+                { left: '36%', duration: '7.4s', delay: '-3.1s', chars: ['甲', '骨', '流', '沙', '金', '石', '文'] },
+                { left: '47%', duration: '6.0s', delay: '-5.2s', chars: ['天', '行', '健', '君', '子', '自', '强'] },
+                { left: '57%', duration: '8.0s', delay: '-2.0s', chars: ['地', '势', '坤', '厚', '德', '载', '物'] },
+                { left: '68%', duration: '5.5s', delay: '-4.0s', chars: ['鼎', '盛', '千', '秋', '光', '芒', '万'] },
+                { left: '78%', duration: '7.8s', delay: '-1.6s', chars: ['奎', '壁', '联', '辉', '仓', '颉', '作'] },
+                { left: '88%', duration: '6.2s', delay: '-3.7s', chars: ['山', '川', '日', '月', '天', '地', '长'] },
+                { left: '95%', duration: '7.0s', delay: '-5.8s', chars: ['金', '沙', '秘', '境', '岁', '月', '沉'] }
+            ];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#1f1007] via-[#2c170b] to-[#120803] overflow-hidden pointer-events-none select-none">
+                    {/* 中心温润青铜赤金氛围辉光 */}
+                    <div className="absolute inset-0 opacity-45 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-600/40 via-amber-900/25 to-transparent blur-2xl pointer-events-none" />
+
+                    {/* 漫天金沙点阵微粒 */}
+                    <div
+                        className="absolute inset-0 opacity-75 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'radial-gradient(1.5px 1.5px at 30px 40px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 150px 160px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 280px 80px, #f59e0b, rgba(0,0,0,0)), radial-gradient(1px 1px at 450px 200px, #fde047, rgba(0,0,0,0)), radial-gradient(2px 2px at 620px 130px, #d97706, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 780px 250px, #fbbf24, rgba(0,0,0,0))',
+                            backgroundSize: '780px 380px'
+                        }}
+                    />
+
+                    {/* 10 列金色甲骨文字流沙瀑布 */}
+                    {streams.map((stream, idx) => (
+                        <div
+                            key={idx}
+                            className="absolute top-0 flex flex-col items-center pointer-events-none"
+                            style={{
+                                left: stream.left,
+                                animation: `oracle-stream-fall ${stream.duration} linear infinite ${stream.delay}`,
+                                fontFamily: "'OracleBone', '方正甲骨文.TTF', '方正甲骨文', 'STKaiti', serif"
+                            }}
+                        >
+                            {stream.chars.map((char, cIdx) => {
+                                const isHead = cIdx === 0;
+                                const isNearHead = cIdx === 1 || cIdx === 2;
+                                return (
+                                    <span
+                                        key={cIdx}
+                                        className="block my-1 leading-tight text-center"
+                                        style={{
+                                            fontSize: isHead ? '1.35rem' : '1.1rem',
+                                            fontWeight: '900',
+                                            color: isHead ? '#fef08a' : isNearHead ? '#fbbf24' : '#d97706',
+                                            opacity: isHead ? 1 : Math.max(0.25, 0.85 - cIdx * 0.1),
+                                            textShadow: isHead
+                                                ? '0 0 10px #fde047, 0 0 20px #f59e0b, 0 0 32px #d97706'
+                                                : isNearHead
+                                                ? '0 0 8px rgba(245, 158, 11, 0.7)'
+                                                : 'none'
+                                        }}
+                                    >
+                                        {char}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    ))}
+
+                    {/* 底部暗金岩壁与苍茫大地余晖 */}
+                    <div
+                        className="absolute bottom-0 left-0 right-0 h-32 opacity-80 pointer-events-none"
+                        style={{
+                            background: 'linear-gradient(to top, #0d0502 0%, #1e0d05 70%, transparent 100%)',
+                            clipPath:
+                                'polygon(0% 100%, 0% 70%, 12% 78%, 24% 64%, 38% 75%, 52% 62%, 65% 76%, 78% 66%, 89% 74%, 100% 68%, 100% 100%)'
+                        }}
+                    />
+                </div>
+            );
+        };
+
+        const LowPerfFireworks = () => {
+            // 4 处错落绽放的除夕礼花：金色牡丹、绛红锦绣、天青流火、紫玉琼华
+            const fireworkSites = [
+                {
+                    id: 'site-1',
+                    left: '24%',
+                    top: '26%',
+                    colorName: 'gold',
+                    coreColor: 'rgba(254, 240, 138, 0.95)',
+                    sparkColors: ['#fef08a', '#fbbf24', '#f59e0b', '#fff'],
+                    delay: '0s',
+                    duration: '3.8s',
+                    scale: 1.05
+                },
+                {
+                    id: 'site-2',
+                    left: '76%',
+                    top: '20%',
+                    colorName: 'rose',
+                    coreColor: 'rgba(251, 113, 133, 0.95)',
+                    sparkColors: ['#f43f5e', '#fb7185', '#fda4af', '#fef08a'],
+                    delay: '1.4s',
+                    duration: '4.2s',
+                    scale: 1.15
+                },
+                {
+                    id: 'site-3',
+                    left: '50%',
+                    top: '15%',
+                    colorName: 'cyan',
+                    coreColor: 'rgba(103, 232, 249, 0.95)',
+                    sparkColors: ['#38bdf8', '#67e8f9', '#a5f3fc', '#ffffff'],
+                    delay: '2.6s',
+                    duration: '3.6s',
+                    scale: 0.95
+                },
+                {
+                    id: 'site-4',
+                    left: '36%',
+                    top: '40%',
+                    colorName: 'purple',
+                    coreColor: 'rgba(216, 180, 254, 0.95)',
+                    sparkColors: ['#c084fc', '#e879f9', '#f0abfc', '#fde047'],
+                    delay: '0.8s',
+                    duration: '4.0s',
+                    scale: 0.9
+                }
+            ];
+
+            // 每朵烟花 12 个方向的辐射火星
+            const angles = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+            return (
+                <div className="absolute inset-0 bg-gradient-to-b from-[#090e24] via-[#1a081a] via-[#240614] to-[#450914] overflow-hidden pointer-events-none">
+                    {/* 远景除夕万家灯火与地平线温润彤红霞光 */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[48%] opacity-60 bg-gradient-to-t from-red-600/50 via-amber-500/30 to-transparent pointer-events-none" />
+
+                    {/* 4组错落升空并绽放的礼花 */}
+                    {fireworkSites.map(site => (
+                        <div
+                            key={site.id}
+                            className="absolute pointer-events-none"
+                            style={{
+                                left: site.left,
+                                top: site.top,
+                                transform: `scale(${site.scale})`
+                            }}
+                        >
+                            {/* 升空火箭拖尾轨迹 */}
+                            <div
+                                className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[2px] h-[160px] bg-gradient-to-t from-transparent via-amber-300 to-white rounded-full opacity-0 pointer-events-none"
+                                style={{
+                                    transformOrigin: 'bottom center',
+                                    animation: `firework-rocket-launch ${site.duration} ease-out infinite ${site.delay}`
+                                }}
+                            />
+
+                            {/* 爆炸中心瞬时高光光球 */}
+                            <div
+                                className="absolute w-20 h-20 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none opacity-0 blur-sm"
+                                style={{
+                                    background: `radial-gradient(circle, ${site.coreColor} 0%, rgba(255,255,255,0.8) 35%, transparent 70%)`,
+                                    animation: `firework-center-flash ${site.duration} ease-out infinite ${site.delay}`
+                                }}
+                            />
+
+                            {/* 12条自然重力下坠的弧形辐射火星 */}
+                            {angles.map((deg, idx) => {
+                                const rad = (deg * Math.PI) / 180;
+                                const dist = 55 + (idx % 3) * 18;
+                                const tx = Math.round(Math.cos(rad) * dist);
+                                const ty = Math.round(Math.sin(rad) * dist);
+                                const color = site.sparkColors[idx % site.sparkColors.length];
+                                return (
+                                    <div
+                                        key={idx}
+                                        className="absolute w-[3px] h-[3px] rounded-full pointer-events-none opacity-0"
+                                        style={{
+                                            '--tx': `${tx}px`,
+                                            '--ty': `${ty}px`,
+                                            backgroundColor: color,
+                                            boxShadow: `0 0 6px ${color}, 0 0 12px ${color}`,
+                                            animation: `firework-spark-1 ${site.duration} cubic-bezier(0.12, 0.8, 0.32, 1) infinite ${site.delay}`
+                                        }}
+                                    />
+                                );
+                            })}
+                        </div>
+                    ))}
+
+                    {/* 新春繁星与空中飘浮火星微粒 */}
+                    <div
+                        className="absolute inset-0 opacity-80 pointer-events-none"
+                        style={{
+                            backgroundImage:
+                                'radial-gradient(2px 2px at 60px 45px, #fef08a, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 180px 120px, #f43f5e, rgba(0,0,0,0)), radial-gradient(2px 2px at 340px 70px, #fbbf24, rgba(0,0,0,0)), radial-gradient(2px 2px at 520px 150px, #38bdf8, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 700px 90px, #f472b6, rgba(0,0,0,0)), radial-gradient(2px 2px at 860px 130px, #fde047, rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 260px 210px, #fed7aa, rgba(0,0,0,0)), radial-gradient(2px 2px at 640px 230px, #fca5a5, rgba(0,0,0,0))',
+                            backgroundSize: '900px 450px'
+                        }}
+                    />
+
+                    {/* 底部宫阙屋脊轮廓剪影 */}
+                    <div
+                        className="absolute bottom-0 left-0 right-0 h-28 opacity-85 pointer-events-none"
+                        style={{
+                            background: 'linear-gradient(to top, #0f0205 0%, #20040a 80%, transparent 100%)',
+                            clipPath:
+                                'polygon(0% 100%, 0% 75%, 4% 70%, 8% 75%, 15% 62%, 22% 76%, 30% 60%, 38% 76%, 48% 54%, 56% 76%, 66% 58%, 74% 76%, 84% 62%, 91% 75%, 96% 69%, 100% 75%, 100% 100%)'
+                        }}
+                    />
+                </div>
+            );
+        };
 
         // --- 新增：通用气氛背景层管理器 ---
         // 后续新增商品只需在这里添加 case 即可
