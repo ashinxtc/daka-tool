@@ -9330,6 +9330,7 @@ ${context}
                         inventory={inventory[activeChild] || {}}
                         onUseSkipCard={useSkipCard}
                         equippedGear={equippedGear}
+                        hasActiveBg={hasActiveBg}
                         onEarlyComplete={handleEarlyComplete}
                         onOpenSettings={() => handleOpenSettings('tasks')}
                         onOpenQuickCheckin={(task) => {
