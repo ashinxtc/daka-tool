@@ -41,7 +41,8 @@ const CategoryTrack = ({
   isExpanded,
   onToggleExpand,
   hasBgEffect,
-  todayStr
+  todayStr,
+  boardShade = 'light'
 }) => {
   const { isLowPerf } = useContext(PerformanceContext);
   const trackRef = useRef(null);
@@ -312,7 +313,9 @@ const CategoryTrack = ({
   return (
     <div className={`rounded-2xl transition-all duration-300 border relative ${
       hasBgEffect 
-        ? (isLowPerf ? 'bg-slate-900 border-slate-700 shadow-md text-white' : 'bg-slate-900/50 backdrop-blur-md border-white/20 shadow-sm') 
+        ? (boardShade === 'light'
+            ? (isLowPerf ? 'bg-slate-800/80 border-slate-600 shadow-sm text-white' : 'bg-white/20 backdrop-blur-md border-white/20 shadow-sm text-white')
+            : (isLowPerf ? 'bg-slate-900 border-slate-700 shadow-md text-white' : 'bg-slate-900/50 backdrop-blur-md border-white/20 shadow-sm text-white')) 
         : (isLowPerf ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/80 backdrop-blur-sm border-gray-100 shadow-sm hover:shadow-md')
     }`}>
       {/* 头部手风琴控制条（平时展现的高密度数据看板，彻底无气泡框空气感设计） */}
@@ -736,6 +739,27 @@ export const TaskDashboardTrack = ({
 
   const hasBgEffect = !!(equippedGear?.[activeChild]?.background);
 
+  // 看板横条深浅底色模式（针对特效背景提供 ☀️透亮玻璃 与 🌙曜黑质感 双模式切换，默认与打卡日历一致的透亮玻璃）
+  const [boardShade, setBoardShade] = useState(() => {
+    try {
+      return localStorage.getItem('daka_task_board_shade') || 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  const toggleBoardShade = useCallback(() => {
+    setBoardShade(prev => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      try {
+        localStorage.setItem('daka_task_board_shade', next);
+      } catch {
+        // 忽略存储异常
+      }
+      return next;
+    });
+  }, []);
+
   // 全局概览统计计算
   const globalSummary = useMemo(() => {
     const totalDaily = dailyMustTasks.length;
@@ -755,10 +779,12 @@ export const TaskDashboardTrack = ({
 
   return (
     <div className="space-y-4 mb-8 w-full">
-      {/* 顶部工具栏：看板指示、排序切换、一键全开全关 */}
+      {/* 顶部工具栏：看板指示、深浅模式切换、排序切换、一键全开全关 */}
       <div className={`flex flex-wrap items-center justify-between gap-2.5 text-xs font-bold transition-all duration-300 relative z-10 ${
         hasBgEffect 
-          ? (isLowPerf ? 'bg-slate-900 border border-slate-700 rounded-2xl px-3.5 py-2 shadow-lg text-white' : 'bg-slate-900/40 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-lg shadow-black/20 text-white') 
+          ? (boardShade === 'light'
+              ? (isLowPerf ? 'bg-slate-800/80 border border-slate-600 rounded-2xl px-3.5 py-2 shadow-sm text-white' : 'bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-sm text-white')
+              : (isLowPerf ? 'bg-slate-900 border border-slate-700 rounded-2xl px-3.5 py-2 shadow-lg text-white' : 'bg-slate-900/40 backdrop-blur-md border border-white/20 rounded-2xl px-3.5 py-2 shadow-lg shadow-black/20 text-white')) 
           : (isLowPerf ? 'bg-white border border-gray-200 rounded-2xl px-3.5 py-2 shadow-sm text-gray-800' : 'text-gray-500 px-1')
       }`}>
         {/* 左侧：纯净标题与宏观概览（无独立气泡框，极简自然融合） */}
@@ -787,8 +813,24 @@ export const TaskDashboardTrack = ({
           )}
         </div>
 
-        {/* 右侧：排序选项与全局折叠切换 */}
+        {/* 右侧：深浅模式切换、排序选项与全局折叠切换 */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* 特效背景下的深浅风格切换（☀️透亮玻璃 / 🌙曜黑质感） */}
+          {hasBgEffect && (
+            <button
+              type="button"
+              onClick={toggleBoardShade}
+              className={`px-2.5 py-1 rounded-lg transition-all text-[11px] font-medium cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                boardShade === 'light'
+                  ? (isLowPerf ? 'bg-slate-800 hover:bg-slate-700 text-amber-200 border border-slate-600 shadow-xs' : 'bg-white/20 hover:bg-white/30 text-white border border-white/30 shadow-xs')
+                  : (isLowPerf ? 'bg-slate-950 hover:bg-slate-900 text-slate-300 border border-slate-700 shadow-xs' : 'bg-slate-900/60 hover:bg-slate-900/80 text-white/90 border border-white/20 shadow-xs')
+              }`}
+              title={boardShade === 'light' ? '当前：☀️ 透亮玻璃（与打卡日历一致），点击切换为 🌙 曜黑质感' : '当前：🌙 曜黑质感，点击切换为 ☀️ 透亮玻璃（与打卡日历一致）'}
+            >
+              <span>{boardShade === 'light' ? '☀️ 透亮玻璃' : '🌙 曜黑质感'}</span>
+            </button>
+          )}
+
           {/* 一键全开 / 全收 */}
           <button
             type="button"
@@ -858,6 +900,7 @@ export const TaskDashboardTrack = ({
           onToggleExpand={() => toggleSection('reading')}
           hasBgEffect={hasBgEffect}
           todayStr={todayStr}
+          boardShade={boardShade}
         />
       )}
 
@@ -884,6 +927,7 @@ export const TaskDashboardTrack = ({
         onToggleExpand={() => toggleSection('daily_must')}
         hasBgEffect={hasBgEffect}
         todayStr={todayStr}
+        boardShade={boardShade}
       />
 
       {/* 2. 每周选做任务泳道 */}
@@ -909,6 +953,7 @@ export const TaskDashboardTrack = ({
         onToggleExpand={() => toggleSection('weekly_optional')}
         hasBgEffect={hasBgEffect}
         todayStr={todayStr}
+        boardShade={boardShade}
       />
 
       {/* 3. 按总次数目标的长期任务泳道 */}
@@ -934,6 +979,7 @@ export const TaskDashboardTrack = ({
         onToggleExpand={() => toggleSection('count')}
         hasBgEffect={hasBgEffect}
         todayStr={todayStr}
+        boardShade={boardShade}
       />
 
       {/* 底部：添加 / 调整任务入口 */}
