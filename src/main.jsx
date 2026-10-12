@@ -3767,12 +3767,11 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_exempted_days_v1',   // 豁免日（dateKey: true）
                 'app_random_event_history',
                 'app_evil_penalty_log_v1',
-                'app_pending_evil_penalties_v2',
                 'app_daily_random_counts',
                 'app_daily_event_type_counts_v1',
                 'app_active_pet_v1',      // 孩子出战宠物 { child: petId }
                 'app_pet_slots_v1',       // 孩子宠物槽位 { child: count }
-                'app_notified_levels',    // 等级通知记录 { child: level }
+                'app_notified_levels',    // 等等级通知记录 { child: level }
             ]);
             // 两层字典结构 { child: { key: value } }，按 child 分别做扁平合并
             const MERGEABLE_TWO_LEVEL_KEYS = new Set([
@@ -4733,6 +4732,61 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_exam_records_v1': (l, c) => mergeChildArrays(l, c, (a, b) => (b.date || '').localeCompare(a.date || '')),
                 // 历史事件进度：{ child: [eventId] }，字符串数组并集
                 'app_historical_event_progress_v1': (l, c) => mergeChildArrays(l, c),
+                // 待执行惩罚转盘队列：联动已受惩罚日志 evilPenaltyLog 核销，防止跨设备已完成后被旧设备残留“复活”
+                'app_pending_evil_penalties_v2': (l, c) => {
+                    const localPending = (typeof l === 'object' && l !== null && !Array.isArray(l)) ? l : {};
+                    const cloudPending = (typeof c === 'object' && c !== null && !Array.isArray(c)) ? c : {};
+
+                    // 收集已核销惩罚日志 key
+                    const loggedKeys = new Set();
+                    try {
+                        const localLog = JSON.parse(storage.getItem('app_evil_penalty_log_v1') || '{}');
+                        Object.keys(localLog).forEach(k => loggedKeys.add(k));
+                    } catch (e) {}
+                    if (window._syncActiveCloudEvilLogKeys instanceof Set) {
+                        window._syncActiveCloudEvilLogKeys.forEach(k => loggedKeys.add(k));
+                    }
+
+                    const merged = {};
+                    let localChanged = false;
+                    let cloudChanged = false;
+                    const allChildren = new Set([...Object.keys(localPending), ...Object.keys(cloudPending)]);
+
+                    allChildren.forEach(child => {
+                        const localItem = localPending[child];
+                        const cloudItem = cloudPending[child];
+                        const candidate = cloudItem || localItem;
+                        if (!candidate) return;
+
+                        const penaltyKey = candidate.penaltyKey || `${child}-EVIL_PENALTY-${getLocalDateKey(-1)}`;
+                        // 核心防线：如果该惩罚已经在惩罚日志中（说明已在任意设备上完成结算），绝不再保留在待办队列中！
+                        if (loggedKeys.has(penaltyKey)) {
+                            if (localPending[child]) localChanged = true;
+                            if (cloudPending[child]) cloudChanged = true;
+                            return;
+                        }
+
+                        // 若双方都有同一未完成惩罚，以 timestamp 最新者为准
+                        if (localItem && cloudItem) {
+                            const chosen = (cloudItem.timestamp || 0) >= (localItem.timestamp || 0) ? cloudItem : localItem;
+                            merged[child] = chosen;
+                            if (chosen !== localItem) localChanged = true;
+                            if (chosen !== cloudItem) cloudChanged = true;
+                        } else if (cloudItem) {
+                            merged[child] = cloudItem;
+                            localChanged = true;
+                        } else if (localItem) {
+                            merged[child] = localItem;
+                            cloudChanged = true;
+                        }
+                    });
+
+                    // 检查是否剔除了已完成项
+                    if (Object.keys(localPending).some(k => !(k in merged))) localChanged = true;
+                    if (Object.keys(cloudPending).some(k => !(k in merged))) cloudChanged = true;
+
+                    return { merged, localChanged, cloudChanged };
+                },
             };
 
             // 对单个 localStorage key 尝试合并。返回 { value: 合并后的 JSON 字符串, localChanged, cloudChanged }；不可合并时返回 null
@@ -4832,6 +4886,27 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 }
 
+                // 提取云端与本地已完成的惩罚日志，供待受惩罚队列合并时做实时核销
+                let cloudEvilLogKeys = null;
+                try {
+                    if (cloudData['app_evil_penalty_log_v1']) {
+                        const parsed = JSON.parse(cloudData['app_evil_penalty_log_v1']);
+                        if (parsed && typeof parsed === 'object') {
+                            cloudEvilLogKeys = new Set(Object.keys(parsed));
+                        }
+                    }
+                } catch (e) {}
+                window._syncActiveCloudEvilLogKeys = cloudEvilLogKeys;
+
+                // 若云端队列已清空未下发，而本地仍有待受惩罚队列，主动以空表对齐核销
+                if (!('app_pending_evil_penalties_v2' in cloudData) && localSnapshot['app_pending_evil_penalties_v2']) {
+                    const penRes = tryMergeSyncKey('app_pending_evil_penalties_v2', localSnapshot['app_pending_evil_penalties_v2'], '{}');
+                    if (penRes) {
+                        if (penRes.localChanged) writes['app_pending_evil_penalties_v2'] = penRes.value;
+                        if (penRes.cloudChanged) needUpload = true;
+                    }
+                }
+
                 Object.entries(cloudData).forEach(([key, cloudVal]) => {
                     if (key === '_syncTs' || key === '_keyVersions' || key === 'app_deleted_profiles_v1') return;
                     const localVal = (key in localSnapshot) ? localSnapshot[key] : null;
@@ -4881,6 +4956,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         needUpload = true; // 本地保留的新值需要回传云端
                     }
                 });
+                window._syncActiveCloudEvilLogKeys = null;
                 return { writes, adoptVersions, needUpload };
             };
             window._resolveSyncMerge = resolveSyncMerge;
@@ -7713,13 +7789,17 @@ ${context}
                 }, 3000); 
             };
 			
-            // 切换成员或启动时检查：当前成员有未完成的惩罚转盘则自动打开，否则关闭，避免卡死其他家庭成员
+            // 切换成员、启动、或收到云端同步核销时检查：当前成员有未完成惩罚则开启，已在其他设备完成或无惩罚则自动解除关闭
             React.useEffect(() => {
                 const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null)
                     ? pendingEvilPenalties[activeChild]
                     : null;
 
-                if (currentPending) {
+                const yesterday = getLocalDateKey(-1);
+                const penaltyKey = currentPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${yesterday}`;
+                const isAlreadyLogged = !!evilPenaltyLog[penaltyKey];
+
+                if (currentPending && !isAlreadyLogged) {
                     const source = currentPending.source || 'auto';
                     setEvilPenaltySource(source);
                     const savedReason = currentPending.reason || '';
@@ -7727,13 +7807,21 @@ ${context}
                     setShowEvilWheel(true);
                     setEvilWheelResult(null);
                 } else if (!isEvilDemo) {
-                    // 当前成员没有待受惩罚：若转盘正在显示（从受罚成员切换而来），立即解除遮挡关闭转盘
+                    // 当前成员没有待受惩罚，或惩罚已在其他设备完成：立即解除遮挡关闭转盘
+                    if (currentPending && isAlreadyLogged) {
+                        setPendingEvilPenalties(prev => {
+                            const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
+                            delete next[activeChild];
+                            return next;
+                        });
+                        showToast('info', `检测到【${activeChild}】已在其他设备完成命运裁决，已自动同步解除转盘！`);
+                    }
                     setShowEvilWheel(false);
                     setEvilWheelResult(null);
                     setEvilPenaltySource(null);
                     setEvilPenaltyReason('');
                 }
-            }, [activeChild, pendingEvilPenalties, isEvilDemo]);
+            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo]);
 
             // 清理 wheelHistory 中被错误写入的 EVIL_PENALTY 对象（一次性修复）
             React.useEffect(() => {
@@ -7955,10 +8043,10 @@ ${context}
                         const reasonText = action.reason ? `\n事由：${action.reason}` : '';
                         showToast('error', `🚨【${operator}】对你下达了戒律惩罚！${reasonText}`, { duration: 8000 });
                         const target = action.targetChild || activeChild;
-                        const parentReason = action.reason || `${operator}下达戒律惩罚`;
+                        const parentPenaltyKey = action.id ? `${target}-PARENT_EVIL-${action.id}` : `${target}-PARENT_EVIL-${Date.now()}`;
                         setPendingEvilPenalties(prev => ({
                             ...(typeof prev === 'object' && prev !== null ? prev : {}),
-                            [target]: { source: 'parent', reason: parentReason, timestamp: Date.now() }
+                            [target]: { source: 'parent', reason: parentReason, timestamp: Date.now(), penaltyKey: parentPenaltyKey }
                         }));
                         setEvilPenaltySource('parent');
                         setEvilPenaltyReason(parentReason);
@@ -8031,6 +8119,17 @@ ${context}
 
             const spinEvilWheel = () => {
                 if (evilWheelSpinning) return;
+                // 防御：若非测试模式且该惩罚已在其他设备完成记录，直接拦截并关闭弹窗
+                if (!isEvilDemo) {
+                    const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
+                    const yesterday = getLocalDateKey(-1);
+                    const penaltyKey = currentPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${yesterday}`;
+                    if (evilPenaltyLog[penaltyKey]) {
+                        showToast('info', `【${activeChild}】的命运裁决已在其他设备完成，无需重复受罚！`);
+                        setShowEvilWheel(false);
+                        return;
+                    }
+                }
                 setEvilWheelSpinning(true);
                 const totalWeight = evilWheelConfig.reduce((sum, item) => sum + item.weight, 0);
                 let random = totalWeight > 0 ? Math.random() * totalWeight : 0;
@@ -8112,6 +8211,10 @@ ${context}
                             delete next[activeChild];
                             return next;
                         });
+                        // 立即触发云端同步，让其他停留在此页面的设备第一时间感知并解除！
+                        if (typeof window.triggerSyncUpload === 'function') {
+                            window.triggerSyncUpload();
+                        }
                     }
                 }, 3000);
             };
