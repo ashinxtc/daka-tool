@@ -73,6 +73,7 @@ import { ReadingPavilionModal } from './components/reading/ReadingPavilionModal'
 import { ReadingTransitionModal } from './components/reading/ReadingTransitionModal';
 import { HabitFloatingButton, HabitPavilionModal, PRESET_HABITS } from './components/habits';
 import { ParentGiftModal } from './components/modals/ParentGiftModal';
+import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
 import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
         // ===== Toast 系统已迁移至 src/components/common/Toast.jsx =====
@@ -2706,6 +2707,32 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 							name = `🧧 收到【${op}】红包`;
 						}
 						type = 'income';
+					} else if (key.includes('PARENT_DEDUCT')) {
+						// 家长扣款：Child-PARENT_DEDUCT-operator-timestamp 或 Child-PARENT_DEDUCT-operator__reason-timestamp
+						const ts = extractTimestamp(key);
+						date = isNaN(ts) ? getLocalDateKey(0) : tsToLocalDateKey(ts);
+						if (key.includes('__')) {
+							const parts = key.split('__');
+							const headParts = parts[0].split('-PARENT_DEDUCT-');
+							const opRaw = headParts[1] || '家长';
+							const op = opRaw.split('_')[0] || opRaw;
+							const tail = parts[1] || '';
+							const rawReason = tail.replace(/-\d{13}$/, '');
+							let cleanReason = '';
+							try {
+								cleanReason = decodeURIComponent(rawReason);
+							} catch (e) {
+								cleanReason = rawReason;
+							}
+							name = cleanReason ? `📉【${op}】扣除金元宝：${cleanReason}` : `📉【${op}】扣除金元宝`;
+						} else {
+							const parts = key.split('-PARENT_DEDUCT-');
+							const rest = parts[1] || '';
+							const opRaw = rest.replace(/-\d{13}$/, '') || '家长';
+							const op = opRaw.split('_')[0] || opRaw;
+							name = `📉【${op}】扣除金元宝`;
+						}
+						type = 'expense';
 					} else if (key.includes('WEEKEND')) {
                         const ts = extractTimestamp(key);
                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
@@ -8066,8 +8093,9 @@ ${context}
             };
             handleLaunchEvilWheelRef.current = handleLaunchEvilWheel;
 
-            // --- 监听并执行来自家长手机端派发的互动指令 (发红包、额外转盘、邪恶转盘) ---
+            // --- 监听并执行来自家长手机端派发的互动指令 (发红包、扣款、额外转盘、邪恶转盘) ---
             const [showParentGiftModal, setShowParentGiftModal] = useState(false);
+            const [parentDeductionNotice, setParentDeductionNotice] = useState(null);
             const processedParentActionsRef = React.useRef(new Set());
             const notifiedParentActionIdsRef = React.useRef(new Set());
 
@@ -8087,7 +8115,8 @@ ${context}
             // 家长指令执行逻辑：
             // 1. 戒律惩罚转盘 (evil_wheel)：当且仅当目标孩子回到自己账号时，强制唤醒触发惩罚！
             // 2. 红包与额外转盘：保留 pending 状态，由左侧悬浮礼包按钮承接，孩子自主点击拆领！
-            // 3. 拦截未授权设备的恶意指令
+            // 3. 家长扣款 (deduction)：立即扣减金元宝、记入明细，并弹出扣款通知单提醒孩子！
+            // 4. 拦截未授权设备的恶意指令
             React.useEffect(() => {
                 if (!parentActions || !Array.isArray(parentActions) || parentActions.length === 0) return;
 
@@ -8121,6 +8150,7 @@ ${context}
                         processedParentActionsRef.current.add(action.id);
                         hasUpdates = true;
                         const operator = action.operatorRole || '家长';
+                        const parentReason = action.reason || '长辈诫勉规劝';
                         const reasonText = action.reason ? `\n事由：${action.reason}` : '';
                         showToast('error', `🚨【${operator}】对你下达了戒律惩罚！${reasonText}`, { duration: 8000 });
                         const target = action.targetChild || activeChild;
@@ -8137,7 +8167,41 @@ ${context}
                         return { ...action, status: 'claimed', processedAt: Date.now() };
                     }
 
-                    // 2. 红包 / 额外转盘新到提示（温和 Toast 提醒，不自动消耗，待孩子点击悬浮按钮拆领）
+                    // 2. 家长扣款指令：立即扣减金元宝，记入历史明细，并弹出通知单告知孩子
+                    if (action.type === 'deduction' || action.type === 'parent_deduct') {
+                        if (processedParentActionsRef.current.has(action.id)) return action;
+                        processedParentActionsRef.current.add(action.id);
+                        hasUpdates = true;
+                        const operator = action.operatorRole || '家长';
+                        const amount = Math.abs(parseInt(action.amount, 10)) || 0;
+                        const reason = action.reason || '家庭账目支出扣除';
+                        const target = action.targetChild || activeChild;
+
+                        if (amount > 0) {
+                            const reasonPart = reason ? `__${encodeURIComponent(reason)}` : '';
+                            const historyKey = `${target}-PARENT_DEDUCT-${operator}_${action.id || 'act'}${reasonPart}-${action.timestamp || Date.now()}`;
+                            setWheelHistory(prev => ({
+                                ...prev,
+                                [historyKey]: -amount
+                            }));
+                            updateStats(target, 'gold_spend', amount, { source: 'parent_deduct', dateKey: getLocalDateKey(0) });
+                        }
+
+                        // 设置扣款通知弹窗展示给孩子
+                        setParentDeductionNotice({
+                            id: action.id,
+                            operatorRole: operator,
+                            amount: amount,
+                            reason: reason,
+                            timestamp: action.timestamp || Date.now()
+                        });
+
+                        showToast('warning', `📉【${operator}】下达了扣款通知：扣除 ${amount} 金元宝（${reason}）`, { duration: 6000 });
+
+                        return { ...action, status: 'claimed', processedAt: Date.now() };
+                    }
+
+                    // 3. 红包 / 额外转盘新到提示（温和 Toast 提醒，不自动消耗，待孩子点击悬浮按钮拆领）
                     if ((action.type === 'red_packet' || action.type === 'extra_wheel') && !notifiedParentActionIdsRef.current.has(action.id)) {
                         notifiedParentActionIdsRef.current.add(action.id);
                         const operator = action.operatorRole || '家长';
@@ -10142,6 +10206,13 @@ ${context}
 					  activeChild={activeChild}
 					  onClaimRedPacket={handleClaimRedPacket}
 					  onClaimWheel={handleClaimWheel}
+				  />
+
+				  <ParentDeductionModal
+					  show={!!parentDeductionNotice}
+					  onClose={() => setParentDeductionNotice(null)}
+					  notice={parentDeductionNotice}
+					  currentGold={totalGold}
 				  />
 
                   {editingEntry && <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} />}

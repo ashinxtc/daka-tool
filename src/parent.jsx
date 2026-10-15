@@ -168,6 +168,16 @@ const RED_PACKET_REASONS = [
     '坚持早睡早起好习惯！'
 ];
 
+const DEDUCT_REASONS = [
+    '共同承担家庭支出/分担开销',
+    '承担物品损坏维修赔偿',
+    '违规超时使用手机/平板/电脑',
+    '未按约定完成当日学业与任务',
+    '房间书桌杂乱未按约定收拾',
+    '违反家庭守则约定',
+    '任性浪费食物或物品'
+];
+
 const EXTRA_WHEEL_REASONS = [
     '古诗背诵一次通关',
     '口算天天练全对',
@@ -239,10 +249,16 @@ export const ParentApp = () => {
         setTimeout(() => setToast({ show: false, type: 'info', message: '' }), 3500);
     };
 
-    // 红包表单
+    // 红包与扣款表单
+    const [rewardSubTab, setRewardSubTab] = useState('packet'); // 'packet' | 'deduct'
     const [redPacketAmount, setRedPacketAmount] = useState('100');
     const [redPacketReason, setRedPacketReason] = useState('今天主动分担家务！');
     const [isSubmittingPacket, setIsSubmittingPacket] = useState(false);
+
+    // 扣款表单
+    const [deductAmount, setDeductAmount] = useState('50');
+    const [deductReason, setDeductReason] = useState('共同承担家庭支出/分担开销');
+    const [isSubmittingDeduct, setIsSubmittingDeduct] = useState(false);
 
     // 转盘表单
     const [selectedWheelType, setSelectedWheelType] = useState('gold'); // 'gold' | 'xp'
@@ -891,6 +907,42 @@ export const ParentApp = () => {
         }
     };
 
+    // 操作 1.5：发起扣款 (家庭支出共担/违约惩戒)
+    const handleSendDeduction = async () => {
+        const amount = parseInt(deductAmount, 10);
+        if (isNaN(amount) || amount <= 0) {
+            showToast('warning', '请输入有效的扣款金元宝数量！');
+            return;
+        }
+        setIsSubmittingDeduct(true);
+        try {
+            const newAction = {
+                id: `act_dd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                type: 'deduction',
+                targetChild: activeChild,
+                operatorRole,
+                operatorDeviceId: deviceId,
+                amount,
+                reason: deductReason.trim() || '家庭支出分担或违约扣除',
+                timestamp: Date.now(),
+                status: 'pending'
+            };
+
+            const currentActions = parentActions;
+            const updatedActions = [newAction, ...currentActions].slice(0, 100);
+
+            const ok = await updateCloudKeys({
+                app_parent_actions_v1: JSON.stringify(updatedActions)
+            });
+
+            if (ok) {
+                showToast('success', `📉 已向【${activeChild}】下达扣除 ${amount} 金元宝的通知！`);
+            }
+        } finally {
+            setIsSubmittingDeduct(false);
+        }
+    };
+
     // 操作 2：奖励额外转盘
     const handleRewardWheel = async () => {
         setIsSubmittingWheel(true);
@@ -1529,80 +1581,191 @@ export const ParentApp = () => {
                 )}
 
                 {activeTab === 'reward' && (
-                    <section className="bg-slate-900 rounded-3xl border border-amber-500/30 p-5 space-y-4 shadow-xl">
-                        <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
-                            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-2xl">
-                                🧧
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-black text-amber-300">皇室赏赐 · 金元宝红包</h3>
-                                <p className="text-[11px] text-slate-400">以【{operatorRole}】名义向孩子派送红包，主程序同步后将全屏撒花庆祝！</p>
-                            </div>
+                    <div className="space-y-4">
+                        {/* 顶部分段切换：发红包 VS 发起扣款 */}
+                        <div className="grid grid-cols-2 p-1 bg-slate-950/80 rounded-2xl border border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => setRewardSubTab('packet')}
+                                className={`py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${rewardSubTab === 'packet' ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-stone-950 shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                <span>🧧</span> 派发爱心红包
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRewardSubTab('deduct')}
+                                className={`py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${rewardSubTab === 'deduct' ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md shadow-rose-600/30' : 'text-slate-400 hover:text-slate-200'}`}
+                            >
+                                <span>📉</span> 发起账目扣款
+                            </button>
                         </div>
 
-                        {/* 快捷金额选择 */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-300 mb-2">赐予金元宝数量</label>
-                            <div className="grid grid-cols-4 gap-2 mb-2">
-                                {['50', '100', '200', '500'].map(amt => (
-                                    <button
-                                        key={amt}
-                                        type="button"
-                                        onClick={() => setRedPacketAmount(amt)}
-                                        className={`py-2 rounded-xl text-xs font-black border transition-all ${redPacketAmount === amt ? 'bg-amber-500 text-stone-950 border-amber-300 shadow-md shadow-amber-500/30' : 'bg-slate-800 text-amber-200 border-slate-700 hover:bg-slate-700'}`}
-                                    >
-                                        +{amt} 元宝
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="flex items-center gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
-                                <span className="text-xs text-slate-400 shrink-0">自定义金额:</span>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="50000"
-                                    value={redPacketAmount}
-                                    onChange={e => setRedPacketAmount(e.target.value)}
-                                    className="w-full bg-transparent text-sm font-bold text-amber-300 outline-none"
-                                />
-                                <span className="text-xs text-amber-400 shrink-0">元宝</span>
-                            </div>
-                        </div>
+                        {rewardSubTab === 'packet' ? (
+                            <section className="bg-slate-900 rounded-3xl border border-amber-500/30 p-5 space-y-4 shadow-xl">
+                                <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-2xl">
+                                        🧧
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-sm font-black text-amber-300">皇室赏赐 · 金元宝红包</h3>
+                                            <span className="text-[11px] text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                                                结余: {goldBalance} 💰
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">以【{operatorRole}】名义向孩子派送红包，主程序同步后将全屏撒花庆祝！</p>
+                                    </div>
+                                </div>
 
-                        {/* 激励寄语 */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-300 mb-2">鼓励寄语或封赏事由</label>
-                            <div className="flex flex-wrap gap-1.5 mb-2">
-                                {RED_PACKET_REASONS.map(r => (
-                                    <button
-                                        key={r}
-                                        type="button"
-                                        onClick={() => setRedPacketReason(r)}
-                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${redPacketReason === r ? 'bg-indigo-600/60 border-indigo-400 text-white' : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'}`}
-                                    >
-                                        {r}
-                                    </button>
-                                ))}
-                            </div>
-                            <input
-                                type="text"
-                                maxLength={40}
-                                value={redPacketReason}
-                                onChange={e => setRedPacketReason(e.target.value)}
-                                placeholder="如: 今天表现格外专注，继续加油！"
-                                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-amber-400"
-                            />
-                        </div>
+                                {/* 快捷金额选择 */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-300 mb-2">赐予金元宝数量</label>
+                                    <div className="grid grid-cols-4 gap-2 mb-2">
+                                        {['50', '100', '200', '500'].map(amt => (
+                                            <button
+                                                key={amt}
+                                                type="button"
+                                                onClick={() => setRedPacketAmount(amt)}
+                                                className={`py-2 rounded-xl text-xs font-black border transition-all ${redPacketAmount === amt ? 'bg-amber-500 text-stone-950 border-amber-300 shadow-md shadow-amber-500/30' : 'bg-slate-800 text-amber-200 border-slate-700 hover:bg-slate-700'}`}
+                                            >
+                                                +{amt} 元宝
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                                        <span className="text-xs text-slate-400 shrink-0">自定义金额:</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="50000"
+                                            value={redPacketAmount}
+                                            onChange={e => setRedPacketAmount(e.target.value)}
+                                            className="w-full bg-transparent text-sm font-bold text-amber-300 outline-none"
+                                        />
+                                        <span className="text-xs text-amber-400 shrink-0">元宝</span>
+                                    </div>
+                                </div>
 
-                        <button
-                            type="button"
-                            onClick={handleSendRedPacket}
-                            disabled={isSubmittingPacket}
-                            className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-stone-950 font-black text-sm rounded-2xl shadow-lg shadow-amber-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
-                        >
-                            {isSubmittingPacket ? '⏳ 正在赐福中...' : `🧧 赐予【${activeChild}】${redPacketAmount} 金元宝红包`}
-                        </button>
-                    </section>
+                                {/* 激励寄语 */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-300 mb-2">鼓励寄语或封赏事由</label>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {RED_PACKET_REASONS.map(r => (
+                                            <button
+                                                key={r}
+                                                type="button"
+                                                onClick={() => setRedPacketReason(r)}
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${redPacketReason === r ? 'bg-indigo-600/60 border-indigo-400 text-white' : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'}`}
+                                            >
+                                                {r}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        maxLength={40}
+                                        value={redPacketReason}
+                                        onChange={e => setRedPacketReason(e.target.value)}
+                                        placeholder="如: 今天表现格外专注，继续加油！"
+                                        className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-amber-400"
+                                    />
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSendRedPacket}
+                                    disabled={isSubmittingPacket}
+                                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-stone-950 font-black text-sm rounded-2xl shadow-lg shadow-amber-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+                                >
+                                    {isSubmittingPacket ? '⏳ 正在赐福中...' : `🧧 赐予【${activeChild}】${redPacketAmount} 金元宝红包`}
+                                </button>
+                            </section>
+                        ) : (
+                            <section className="bg-slate-900 rounded-3xl border border-rose-500/40 p-5 space-y-4 shadow-xl">
+                                <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+                                    <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-400/40 flex items-center justify-center text-2xl">
+                                        📉
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-sm font-black text-rose-300">账目调整 · 发起扣款</h3>
+                                            <span className="text-[11px] text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                                                结余: {goldBalance} 💰
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">以【{operatorRole}】名义发起扣款，用于违约责任或共同分担家庭支出。主程序将弹窗通告孩子！</p>
+                                    </div>
+                                </div>
+
+                                {/* 快捷金额选择 */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-300 mb-2">扣减金元宝数量</label>
+                                    <div className="grid grid-cols-4 gap-2 mb-2">
+                                        {['20', '50', '100', '200'].map(amt => (
+                                            <button
+                                                key={amt}
+                                                type="button"
+                                                onClick={() => setDeductAmount(amt)}
+                                                className={`py-2 rounded-xl text-xs font-black border transition-all ${deductAmount === amt ? 'bg-rose-600 text-white border-rose-400 shadow-md shadow-rose-600/30' : 'bg-slate-800 text-rose-200 border-slate-700 hover:bg-slate-700'}`}
+                                            >
+                                                -{amt} 元宝
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                                        <span className="text-xs text-slate-400 shrink-0">自定义扣款金额:</span>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="50000"
+                                            value={deductAmount}
+                                            onChange={e => setDeductAmount(e.target.value)}
+                                            className="w-full bg-transparent text-sm font-bold text-rose-300 outline-none font-mono"
+                                        />
+                                        <span className="text-xs text-rose-400 shrink-0">元宝</span>
+                                    </div>
+                                </div>
+
+                                {/* 扣款事由 */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-300 mb-2">扣款事由或分担说明</label>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {DEDUCT_REASONS.map(r => (
+                                            <button
+                                                key={r}
+                                                type="button"
+                                                onClick={() => setDeductReason(r)}
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors ${deductReason === r ? 'bg-rose-600/80 border-rose-400 text-white' : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'}`}
+                                            >
+                                                {r}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        maxLength={40}
+                                        value={deductReason}
+                                        onChange={e => setDeductReason(e.target.value)}
+                                        placeholder="如: 共同分担家庭支出、违约责任扣除..."
+                                        className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-rose-400"
+                                    />
+                                </div>
+
+                                <div className="text-[11px] text-slate-400 bg-rose-950/30 border border-rose-500/20 rounded-xl p-2.5 leading-relaxed">
+                                    💡 <b>成长提示：</b>扣除金元宝会如实记录在孩子的财富账本中，不会减少孩子的等级经验(XP)。电脑主程序在下一次同步时会自动弹窗提醒孩子。
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSendDeduction}
+                                    disabled={isSubmittingDeduct}
+                                    className="w-full py-3.5 bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-rose-900/30 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+                                >
+                                    {isSubmittingDeduct ? '⏳ 正在提交中...' : `📉 扣除【${activeChild}】${deductAmount} 金元宝`}
+                                </button>
+                            </section>
+                        )}
+                    </div>
                 )}
 
                 {activeTab === 'wheel' && (
@@ -1832,12 +1995,13 @@ export const ParentApp = () => {
                                     <div key={act.id} className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2.5 min-w-0">
                                             <span className="text-xl shrink-0">
-                                                {act.type === 'red_packet' ? '🧧' : act.type === 'extra_wheel' ? '🎡' : '💀'}
+                                                {act.type === 'red_packet' ? '🧧' : act.type === 'deduction' ? '📉' : act.type === 'extra_wheel' ? '🎡' : '💀'}
                                             </span>
                                             <div className="min-w-0">
                                                 <div className="text-xs font-bold text-slate-200 truncate">
                                                     【{act.operatorRole}】
                                                     {act.type === 'red_packet' ? `赐予 ${act.amount} 金元宝红包` :
+                                                     act.type === 'deduction' ? `扣除 ${act.amount} 金元宝` :
                                                      act.type === 'extra_wheel' ? `奖励 ${act.wheelType === 'xp' ? 'XP' : '金'}转盘 x1` :
                                                      `发起邪恶转盘惩罚`}
                                                 </div>
@@ -2043,7 +2207,7 @@ export const ParentApp = () => {
                         className={`flex flex-col items-center gap-1 py-1 transition-colors ${activeTab === 'reward' ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
                     >
                         <span className="text-base">🧧</span>
-                        <span className="text-[10px]">发红包</span>
+                        <span className="text-[10px]">红包/扣款</span>
                     </button>
                     <button
                         type="button"
