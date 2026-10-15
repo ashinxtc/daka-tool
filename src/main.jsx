@@ -7800,6 +7800,85 @@ ${context}
                 const isAlreadyLogged = !!evilPenaltyLog[penaltyKey];
 
                 if (currentPending && !isAlreadyLogged) {
+                    // 核心防护：若待惩罚是系统自动触发（auto），动态核验其判罚前提是否依然成立！
+                    // 典型场景：
+                    // 1. 设备启动时优先读取了未同步的旧本地缓存，稍后云端拉取下来其实昨日已满卡；
+                    // 2. 孩子在触发后进行了补打卡并达标；
+                    // 3. 对应日期已被家长豁免或使用冻结卡；
+                    // 一旦核对发现已经达标或不再违规，系统立即自动撤销该惩罚，绝不冤枉孩子！
+                    if (currentPending.source === 'auto') {
+                        const targetDateMatch = currentPending.penaltyKey?.match(new RegExp(`^${activeChild}-EVIL_PENALTY-(\\d{4}-\\d{2}-\\d{2})$`));
+                        const targetDate = targetDateMatch ? targetDateMatch[1] : yesterday;
+
+                        const freezeDates = stats?.[activeChild]?.freezeDates || [];
+                        const childExemptedDays = exemptedDays?.[activeChild] || [];
+                        const isExempt = freezeDates.includes(targetDate) || childExemptedDays.includes(targetDate);
+
+                        const childTasks = tasks[activeChild] || [];
+                        const targetMustTasks = childTasks
+                            .filter(t => t.frequencyType === 'daily_must')
+                            .filter(t => !t.startDate || targetDate >= t.startDate)
+                            .filter(t => !t.earlyCompleted);
+                        const targetAllTasks = childTasks
+                            .filter(t => !t.startDate || targetDate >= t.startDate)
+                            .filter(t => !t.earlyCompleted);
+
+                        const cfg = {
+                            ...DEFAULT_EVIL_TRIGGER_CONFIG,
+                            ...(typeof evilTriggerConfig === 'object' && evilTriggerConfig !== null ? evilTriggerConfig : {})
+                        };
+
+                        let stillViolates = false;
+                        if (!isExempt) {
+                            if (cfg.mustAllUndone && targetMustTasks.length > 0) {
+                                const done = targetMustTasks.filter(t => checkins[activeChild]?.[t.id]?.[targetDate]).length;
+                                if (done === 0) stillViolates = true;
+                            }
+                            if (cfg.mustRateEnabled && targetMustTasks.length > 0) {
+                                const done = targetMustTasks.filter(t => checkins[activeChild]?.[t.id]?.[targetDate]).length;
+                                const rate = Math.round((done / targetMustTasks.length) * 100);
+                                const threshold = Math.max(5, Math.min(100, Number(cfg.mustRateThreshold) || 50));
+                                if (rate < threshold) stillViolates = true;
+                            }
+                            if (cfg.overallRateEnabled && targetAllTasks.length > 0) {
+                                const done = targetAllTasks.filter(t => checkins[activeChild]?.[t.id]?.[targetDate]).length;
+                                const rate = Math.round((done / targetAllTasks.length) * 100);
+                                const threshold = Math.max(5, Math.min(100, Number(cfg.overallRateThreshold) || 40));
+                                if (rate < threshold) stillViolates = true;
+                            }
+                            if (cfg.consecutiveUndoneEnabled && targetMustTasks.length > 0) {
+                                const N = Math.max(2, Math.min(30, parseInt(cfg.consecutiveDays, 10) || 3));
+                                const pastNDates = [];
+                                for (let i = 0; i < N; i++) {
+                                    pastNDates.push(dateKeySubtractDays(targetDate, i));
+                                }
+                                const earliestDate = pastNDates[pastNDates.length - 1];
+                                const neglectedTasks = targetMustTasks.filter(t => {
+                                    if (t.startDate && t.startDate > earliestDate) return false;
+                                    return pastNDates.every(d => {
+                                        if (freezeDates.includes(d) || childExemptedDays.includes(d)) return false;
+                                        return !checkins[activeChild]?.[t.id]?.[d];
+                                    });
+                                });
+                                if (neglectedTasks.length > 0) stillViolates = true;
+                            }
+                        }
+
+                        if (!stillViolates) {
+                            setPendingEvilPenalties(prev => {
+                                const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
+                                delete next[activeChild];
+                                return next;
+                            });
+                            setShowEvilWheel(false);
+                            setEvilWheelResult(null);
+                            setEvilPenaltySource(null);
+                            setEvilPenaltyReason('');
+                            showToast('success', `🎉 经系统核对，【${activeChild}】在 ${targetDate} 的打卡已全额达标，已自动撤销惩罚！`);
+                            return;
+                        }
+                    }
+
                     const source = currentPending.source || 'auto';
                     setEvilPenaltySource(source);
                     const savedReason = currentPending.reason || '';
@@ -7821,7 +7900,7 @@ ${context}
                     setEvilPenaltySource(null);
                     setEvilPenaltyReason('');
                 }
-            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo]);
+            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo, checkins, tasks, stats, exemptedDays, evilTriggerConfig]);
 
             // 清理 wheelHistory 中被错误写入的 EVIL_PENALTY 对象（一次性修复）
             React.useEffect(() => {
@@ -7839,6 +7918,8 @@ ${context}
             const evilCheckDoneRef = React.useRef(new Set());
             React.useEffect(() => {
                 if (!evilAutoTrigger) return;
+                // 若配置了家庭同步且本设备尚未完成至少一次云端拉取，暂时等待，防止冷启动时以空数据误罚
+                if (syncCode && storage.getItem('_sync_has_pulled_v1') !== '1') return;
                 const yesterday = getLocalDateKey(-1);
                 const penaltyKey = `${activeChild}-EVIL_PENALTY-${yesterday}`;
                 const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null)
