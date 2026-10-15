@@ -20,41 +20,142 @@ const getLocalDateKey = (offsetDays = 0) => {
     return `${year}-${month}-${day}`;
 };
 
-// 常见境界等级换算（参考主程序 levels 估算）
-const computeRealmInfo = (xp = 0) => {
-    const realms = [
-        { name: '炼气期', levels: 9, baseXp: 100 },
-        { name: '筑基期', levels: 9, baseXp: 300 },
-        { name: '结丹期', levels: 9, baseXp: 800 },
-        { name: '元婴期', levels: 9, baseXp: 2000 },
-        { name: '化神期', levels: 9, baseXp: 5000 },
-    ];
-    let remainingXp = Math.max(0, xp);
-    for (let r = 0; r < realms.length; r++) {
-        const realm = realms[r];
-        for (let lvl = 1; lvl <= realm.levels; lvl++) {
-            const cost = realm.baseXp * lvl;
-            if (remainingXp < cost) {
-                return {
-                    realmName: realm.name,
-                    levelNum: lvl,
-                    fullName: `${realm.name} 第${lvl}层`,
-                    currentXp: remainingXp,
-                    neededXp: cost,
-                    progressPercent: Math.min(100, Math.round((remainingXp / cost) * 100))
-                };
-            }
-            remainingXp -= cost;
-        }
+import { getLevelInfo, getNextLevelInfo } from './utils/levels';
+
+// 日期减去天数辅助函数
+const dateKeySubtractDays = (dateStr, days) => {
+    try {
+        const d = new Date(dateStr);
+        d.setDate(d.getDate() - days);
+        return d.toISOString().split('T')[0];
+    } catch (e) {
+        return dateStr;
     }
-    return {
-        realmName: '大乘圆满',
-        levelNum: 9,
-        fullName: '大乘圆满天尊',
-        currentXp: remainingXp,
-        neededXp: 99999,
-        progressPercent: 100
-    };
+};
+
+// 任务打卡总人次统计（支持数组结构与老版数字结构）
+const getTaskTotalSessions = (taskRecord) => {
+    if (!taskRecord || typeof taskRecord !== 'object') return 0;
+    return Object.values(taskRecord).reduce((sum, val) => sum + (Array.isArray(val) ? val.length : 1), 0);
+};
+
+// 任务类型判定辅助函数（与主程序 TaskDashboardTrack 保持一致）
+const isHabitTask = (t) => !t ? false : (t.frequencyType === 'habit' || (!t.frequencyType && (!!t.isHabit || !!t.habitConfig?.isHabit)));
+const isReadingTask = (t) => !t ? false : (!isHabitTask(t) && (t.frequencyType === 'reading' || (!t.frequencyType && !!t.readingConfig?.isReading)));
+
+// 完整财富计算（与主程序 calculateTotalGold 保持完全一致）
+const calculateTotalGold = (cCheckins = {}, cWheelHistory = {}, child = '', cBuffs = {}, cTasks = {}) => {
+    let total = 0;
+    const childBuffs = cBuffs?.[child] || {};
+
+    let childTasksList = [];
+    if (Array.isArray(cTasks)) {
+        childTasksList = cTasks.filter(t => t && (!t.assignedTo || t.assignedTo === child));
+    } else if (cTasks && typeof cTasks === 'object') {
+        childTasksList = Array.isArray(cTasks[child]) ? cTasks[child] : [];
+    }
+
+    childTasksList.forEach(task => {
+        const record = cCheckins[child]?.[task.id] || {};
+        const currentCount = Object.keys(record).length;
+        
+        Object.keys(record).forEach(date => {
+            const val = record[date];
+            // 多次打卡数组
+            if (Array.isArray(val)) {
+                val.forEach(entry => {
+                    const t = entry.t || 0;
+                    const histKey = t ? `${child}-TASK-${task.id}-${date}_${t}` : `${child}-TASK-${task.id}-${date}`;
+                    if (cWheelHistory[histKey]) return;
+                    let multiplier = 1;
+                    const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
+                    if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
+                        multiplier = childBuffs.investMultiplier;
+                    }
+                    total += (task.reward || 0) * multiplier;
+                });
+                return;
+            }
+            // 单次打卡
+            const historyKey = `${child}-TASK-${task.id}-${date}`;
+            if (cWheelHistory[historyKey]) return;
+            let multiplier = 1;
+            const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
+            if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
+                multiplier = childBuffs.investMultiplier;
+            }
+            total += (task.reward || 0) * multiplier;
+        });
+
+        const freq = task.frequencyType || 'count';
+        if (freq === 'count' && currentCount >= (task.targetCount || 0)) total += (task.completedReward || 0);
+        if ((freq === 'daily_must' || freq === 'weekly_optional') && task.earlyCompleted) total += (task.completedReward || 0);
+    });
+
+    Object.keys(cWheelHistory).forEach(key => {
+        if (key.startsWith(`${child}-`)) {
+            total += (typeof cWheelHistory[key] === 'number' ? cWheelHistory[key] : 0);
+        }
+    });
+    return Math.max(0, total);
+};
+
+// 完整经验计算（与主程序 currentXP 保持完全一致）
+const calculateTotalXP = (child = '', cCheckins = {}, cTasks = {}, cWheelHistory = {}, cAchievements = {}, cXpHistory = {}) => {
+    let xp = 0;
+    
+    // 1. 打卡经验: 10 XP/次
+    const childCheckins = cCheckins[child] || {};
+    const totalCheckinsCount = Object.values(childCheckins).reduce((sum, taskRecord) => {
+        return sum + getTaskTotalSessions(taskRecord);
+    }, 0);
+    xp += totalCheckinsCount * 10;
+    
+    // 2. 财富经验: 1 XP/1 金元宝 (净收入，不扣除消费)
+    let earnedGold = 0;
+    let childTasksList = [];
+    if (Array.isArray(cTasks)) {
+        childTasksList = cTasks.filter(t => t && (!t.assignedTo || t.assignedTo === child));
+    } else if (cTasks && typeof cTasks === 'object') {
+        childTasksList = Array.isArray(cTasks[child]) ? cTasks[child] : [];
+    }
+
+    childTasksList.forEach(task => {
+        const record = childCheckins[task.id] || {};
+        const count = Object.keys(record).length;
+        earnedGold += count * (task.reward || 0);
+        const freq = task.frequencyType || 'count';
+        if (freq === 'count' && count >= (task.targetCount || 0)) earnedGold += (task.completedReward || 0);
+    });
+    Object.keys(cWheelHistory).forEach(key => {
+        // 排除转盘惩罚和商店消费，只计算正向收益转化为经验
+        if (key.startsWith(`${child}-`) && !key.includes('EVIL') && !key.includes('SHOP') && (cWheelHistory[key] > 0)) { 
+            earnedGold += cWheelHistory[key];
+        }
+    });
+    xp += earnedGold; // 1 Gold = 1 XP
+    
+    // 3. 成就经验
+    const childAch = cAchievements[child] || {};
+    const badges = (typeof window !== 'undefined' && (window.AchievementSystem?.BADGES || window.BADGES)) || [];
+    Object.keys(childAch).forEach(achId => {
+        const badge = badges.find(b => b.id === achId);
+        if (badge) {
+            if (badge.rarity === 'common') xp += 50;
+            else if (badge.rarity === 'rare') xp += 200;
+            else if (badge.rarity === 'epic') xp += 800;
+            else if (badge.rarity === 'legendary') xp += 3000;
+        }
+    });
+
+    // 4. 纯经验类奇遇 (xpHistory)
+    Object.keys(cXpHistory).forEach(key => {
+        if (key.startsWith(`${child}-`)) {
+            xp += (typeof cXpHistory[key] === 'number' ? cXpHistory[key] : 0);
+        }
+    });
+
+    return Math.max(0, xp);
 };
 
 // 预设快捷评语与惩罚事由
@@ -480,31 +581,50 @@ export const ParentApp = () => {
         }
     }, [cloudData]);
 
-    // 计算当前孩子的财富与经验
+    const activeBuffs = useMemo(() => {
+        if (!cloudData?.app_active_buffs_v1) return {};
+        try {
+            const parsed = JSON.parse(cloudData.app_active_buffs_v1);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }, [cloudData]);
+
+    const achievements = useMemo(() => {
+        if (!cloudData?.app_achievements_v1) return {};
+        try {
+            const parsed = JSON.parse(cloudData.app_achievements_v1);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }, [cloudData]);
+
+    const wheelHistory = useMemo(() => {
+        if (!cloudData?.app_wheel_history) return {};
+        try {
+            const parsed = JSON.parse(cloudData.app_wheel_history);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }, [cloudData]);
+
+    const xpHistory = useMemo(() => {
+        if (!cloudData?.app_xp_history) return {};
+        try {
+            const parsed = JSON.parse(cloudData.app_xp_history);
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }, [cloudData]);
+
+    // 计算当前孩子的财富与经验与星星（与主程序 calculateTotalGold / currentXP 算法 100% 同步）
     const { goldBalance, totalXp, starCount } = useMemo(() => {
         if (!cloudData || !activeChild) return { goldBalance: 0, totalXp: 0, starCount: 0 };
-        let gold = 0;
-        let xp = 0;
         let stars = 0;
-
-        try {
-            const wh = JSON.parse(cloudData.app_wheel_history || '{}');
-            if (wh && typeof wh === 'object') {
-                Object.entries(wh).forEach(([k, v]) => {
-                    if (k.startsWith(`${activeChild}-`)) gold += (typeof v === 'number' ? v : 0);
-                });
-            }
-        } catch (e) {}
-
-        try {
-            const xph = JSON.parse(cloudData.app_xp_history || '{}');
-            if (xph && typeof xph === 'object') {
-                Object.entries(xph).forEach(([k, v]) => {
-                    if (k.startsWith(`${activeChild}-`)) xp += (typeof v === 'number' ? v : 0);
-                });
-            }
-        } catch (e) {}
-
         try {
             const starData = JSON.parse(cloudData.app_stars_v1 || '{}');
             if (starData && typeof starData === 'object') {
@@ -512,10 +632,19 @@ export const ParentApp = () => {
             }
         } catch (e) {}
 
-        return { goldBalance: Math.max(0, gold), totalXp: Math.max(0, xp), starCount: stars };
-    }, [cloudData, activeChild]);
+        const gold = calculateTotalGold(checkins, wheelHistory, activeChild, activeBuffs, tasks);
+        const xp = calculateTotalXP(activeChild, checkins, tasks, wheelHistory, achievements, xpHistory);
 
-    const realmInfo = useMemo(() => computeRealmInfo(totalXp), [totalXp]);
+        return { goldBalance: Math.max(0, gold), totalXp: Math.max(0, xp), starCount: stars };
+    }, [cloudData, activeChild, checkins, wheelHistory, activeBuffs, tasks, achievements, xpHistory]);
+
+    // 与主程序一致的等级计算
+    const levelInfo = useMemo(() => getLevelInfo(totalXp), [totalXp]);
+    const nextLevelInfo = useMemo(() => getNextLevelInfo(levelInfo.level), [levelInfo.level]);
+    const xpNeededForNext = nextLevelInfo ? Math.max(0, nextLevelInfo.xp - totalXp) : 0;
+    const levelProgressPercent = nextLevelInfo 
+        ? Math.min(100, Math.round(((totalXp - levelInfo.xp) / Math.max(1, (nextLevelInfo.xp - levelInfo.xp))) * 100))
+        : 100;
 
     // 计算周一到周日区间
     const weekRange = useMemo(() => {
@@ -529,10 +658,12 @@ export const ParentApp = () => {
         return { start: fmt(monday), end: fmt(sunday) };
     }, []);
 
-    // 计算今日打卡进度与任务列表
+    // 计算今日打卡进度与任务列表（明确独立出伴读阅读专栏与习惯养成规范，与主程序泳道完全对齐）
     const todayDateKey = getLocalDateKey(0);
     const { 
         dailyMustTasks, 
+        readingTasks,
+        habitTasks,
         weeklyOptionalTasks, 
         countTasks, 
         dailyMustDoneCount, 
@@ -555,7 +686,10 @@ export const ParentApp = () => {
             if (task.earlyCompleted) return false;
             if (task.startDate && todayDateKey < task.startDate) return false;
             const freq = task.frequencyType || 'count';
-            if (freq === 'count') {
+            const isReading = isReadingTask(task);
+            const isHabit = isHabitTask(task);
+            // 每日必做、每周选做、伴读、生活习惯不按总目标次数自动归档，始终在进行中
+            if (!isReading && !isHabit && freq === 'count') {
                 const rec = childCheckins[task.id] || {};
                 const currentCount = Object.keys(rec).length;
                 if (currentCount >= (task.targetCount || 1)) return false; // 已达成目标归档
@@ -564,6 +698,8 @@ export const ParentApp = () => {
         });
 
         const dailyMust = [];
+        const readingList = [];
+        const habitList = [];
         const weeklyOpt = [];
         const countList = [];
 
@@ -571,16 +707,35 @@ export const ParentApp = () => {
             const taskRecord = childCheckins[task.id] || {};
             const checkinVal = taskRecord[todayDateKey];
             const isCompletedToday = Array.isArray(checkinVal) ? checkinVal.length > 0 : !!checkinVal;
-            const freq = task.frequencyType || 'count';
 
-            if (freq === 'daily_must') {
+            if (isReadingTask(task)) {
+                // 伴读阅读专栏独立模块
+                readingList.push({
+                    ...task,
+                    displayName: task.name || task.title || '伴读阅读',
+                    isCompleted: isCompletedToday,
+                    checkinVal,
+                    readingConfig: task.readingConfig || {}
+                });
+            } else if (isHabitTask(task)) {
+                // 生活习惯养成独立模块
+                habitList.push({
+                    ...task,
+                    displayName: task.name || task.title || '习惯规范',
+                    isCompleted: isCompletedToday,
+                    checkinVal,
+                    habitConfig: task.habitConfig || {}
+                });
+            } else if (task.frequencyType === 'daily_must') {
+                // 每日必做任务
                 dailyMust.push({
                     ...task,
                     displayName: task.name || task.title || '必做任务',
                     isCompleted: isCompletedToday,
                     checkinVal
                 });
-            } else if (freq === 'weekly_optional') {
+            } else if (task.frequencyType === 'weekly_optional') {
+                // 每周选做任务
                 const weekCheckins = Object.keys(taskRecord).filter(d => d >= weekRange.start && d <= weekRange.end).length;
                 const weeklyTarget = task.weeklyTargetCount ?? 3;
                 weeklyOpt.push({
@@ -593,11 +748,12 @@ export const ParentApp = () => {
                     checkinVal
                 });
             } else {
+                // 目标按次任务
                 const totalCount = Object.keys(taskRecord).length;
                 const targetCount = task.targetCount || 1;
                 countList.push({
                     ...task,
-                    displayName: task.name || task.title || '打卡任务',
+                    displayName: task.name || task.title || '按次打卡',
                     isCompleted: isCompletedToday,
                     totalCount,
                     targetCount,
@@ -614,6 +770,8 @@ export const ParentApp = () => {
 
         return {
             dailyMustTasks: dailyMust,
+            readingTasks: readingList,
+            habitTasks: habitList,
             weeklyOptionalTasks: weeklyOpt,
             countTasks: countList,
             dailyMustDoneCount: dailyDone,
@@ -1046,8 +1204,9 @@ export const ParentApp = () => {
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h2 className="text-base font-black text-white">{activeChild}</h2>
-                                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-bold">
-                                        {realmInfo.fullName}
+                                    <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-purple-500/25 to-indigo-500/25 border border-purple-400/40 text-amber-200 text-[10px] font-black flex items-center gap-1 shadow-xs">
+                                        <span className="text-white">Lv.{levelInfo.level}</span>
+                                        <span>{levelInfo.name}</span>
                                     </span>
                                 </div>
                                 <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
@@ -1058,6 +1217,12 @@ export const ParentApp = () => {
                                             <>今日打卡：<b className="text-amber-400">{totalTodayDoneCount}</b> / {totalTodayCount} 项</>
                                         )}
                                     </span>
+                                    {levelInfo.era && (
+                                        <>
+                                            <span className="text-slate-600">·</span>
+                                            <span className="text-slate-400">{levelInfo.era}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1081,7 +1246,7 @@ export const ParentApp = () => {
                         </div>
                     </div>
 
-                    {/* 财富、经验、星星数据统计条 */}
+                    {/* 财富、经验、星星数据统计条（与主程序一致） */}
                     <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80 text-center">
                         <div>
                             <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
@@ -1091,7 +1256,7 @@ export const ParentApp = () => {
                         </div>
                         <div>
                             <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                                <span>⚡</span> 修仙经验
+                                <span>⚡</span> 累积经验
                             </div>
                             <div className="text-sm font-black text-indigo-300 mt-0.5">{totalXp}</div>
                         </div>
@@ -1102,6 +1267,25 @@ export const ParentApp = () => {
                             <div className="text-sm font-black text-yellow-300 mt-0.5">{starCount}</div>
                         </div>
                     </div>
+
+                    {/* 升级修为进度条 */}
+                    {nextLevelInfo && (
+                        <div className="mt-3 pt-2.5 border-t border-slate-800/60">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                                <span>修为晋升进度</span>
+                                <span className="font-mono text-indigo-300">
+                                    {totalXp} / {nextLevelInfo.xp} XP
+                                    <span className="text-slate-500 ml-1.5">(距晋升下阶段差 {xpNeededForNext} XP)</span>
+                                </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-amber-400 transition-all duration-700 rounded-full"
+                                    style={{ width: `${levelProgressPercent}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </section>
 
                 {/* 分页内容渲染 */}
@@ -1163,7 +1347,96 @@ export const ParentApp = () => {
                             </div>
                         )}
 
-                        {/* 2. 每周选做任务 */}
+                        {/* 2. 伴读阅读专栏（独立模块） */}
+                        {readingTasks.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                                <div className="text-[11px] font-black text-purple-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                                        伴读阅读专栏 ({readingTasks.filter(t => t.isCompleted).length}/{readingTasks.length})
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-normal">书香润心灵 · 陪伴成长</span>
+                                </div>
+                                {readingTasks.map(t => (
+                                    <div
+                                        key={t.id}
+                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/60 border-purple-500/30' : 'bg-purple-950/20 border-purple-500/40 shadow-xs shadow-purple-950/40'}`}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-xl shrink-0">{t.icon || '📖'}</span>
+                                            <div className="min-w-0">
+                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-300' : 'text-purple-100'}`}>
+                                                    {t.displayName}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                                    <span className="text-amber-400">+{t.reward || 0}元宝</span>
+                                                    <span className="text-indigo-300">+{t.xpReward || 0}XP</span>
+                                                    {t.readingConfig?.targetMinutes && (
+                                                        <span className="text-purple-300">目标 {t.readingConfig.targetMinutes} 分钟</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="shrink-0">
+                                            {t.isCompleted ? (
+                                                <span className="px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold border border-purple-500/40 flex items-center gap-1">
+                                                    <span>✅</span> 今日已伴读
+                                                </span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-full bg-purple-900/30 text-purple-300 text-[10px] font-bold border border-purple-700/50">
+                                                    ⏳ 今日待伴读
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* 3. 习惯养成规范（独立模块） */}
+                        {habitTasks.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                                <div className="text-[11px] font-black text-emerald-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                        习惯养成规范 ({habitTasks.filter(t => t.isCompleted).length}/{habitTasks.length})
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 font-normal">自律好习惯 · 茁壮成长</span>
+                                </div>
+                                {habitTasks.map(t => (
+                                    <div
+                                        key={t.id}
+                                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${t.isCompleted ? 'bg-slate-900/60 border-emerald-500/30' : 'bg-emerald-950/20 border-emerald-500/40 shadow-xs shadow-emerald-950/40'}`}
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="text-xl shrink-0">{t.icon || '🌱'}</span>
+                                            <div className="min-w-0">
+                                                <div className={`text-xs font-bold truncate ${t.isCompleted ? 'text-slate-300' : 'text-emerald-100'}`}>
+                                                    {t.displayName}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                                    <span className="text-amber-400">+{t.reward || 0}元宝</span>
+                                                    <span className="text-indigo-300">+{t.xpReward || 0}XP</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="shrink-0">
+                                            {t.isCompleted ? (
+                                                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/40 flex items-center gap-1">
+                                                    <span>✅</span> 今日已养成
+                                                </span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-full bg-emerald-900/30 text-emerald-300 text-[10px] font-bold border border-emerald-700/50">
+                                                    ⏳ 今日待打卡
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* 4. 每周选做任务 */}
                         {weeklyOptionalTasks.length > 0 && (
                             <div className="space-y-2 pt-1">
                                 <div className="text-[11px] font-black text-sky-400 flex items-center justify-between">
@@ -1202,7 +1475,7 @@ export const ParentApp = () => {
                             </div>
                         )}
 
-                        {/* 3. 目标按次任务 */}
+                        {/* 5. 目标按次任务 */}
                         {countTasks.length > 0 && (
                             <div className="space-y-2 pt-1">
                                 <div className="text-[11px] font-black text-amber-400 flex items-center justify-between">
@@ -1241,7 +1514,7 @@ export const ParentApp = () => {
                             </div>
                         )}
 
-                        {(!cloudData || (dailyMustTasks.length === 0 && weeklyOptionalTasks.length === 0 && countTasks.length === 0)) && (
+                        {(!cloudData || (dailyMustTasks.length === 0 && readingTasks.length === 0 && habitTasks.length === 0 && weeklyOptionalTasks.length === 0 && countTasks.length === 0)) && (
                             <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-5 text-center space-y-2 mt-2">
                                 <div className="text-2xl inline-block">☁️</div>
                                 <div className="text-xs font-bold text-amber-300">
