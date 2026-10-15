@@ -1,5 +1,6 @@
 import React from 'react';
 import { XIcon } from '../icons.jsx';
+import { getThemeHeaderStyle } from '../../data/themes.js';
 
 // 企业微信家长消息面板
 // 企业微信家长消息面板 - 升级为亲情传讯司·飞鸽家书
@@ -11,7 +12,10 @@ export const FamilyMessagePanel = ({ show, onClose, messages, activeChild, onSen
         <div className="fixed inset-0 bg-black/75 z-[85] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
             <div className="bg-white rounded-3xl w-full max-w-xl max-h-[88vh] shadow-2xl flex flex-col overflow-hidden border-2 border-emerald-400/40 animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
                 {/* 顶栏 */}
-                <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-800 text-white flex justify-between items-center shadow-md relative border-b border-white/20">
+                <div 
+                    className="p-4 sm:p-5 bg-emerald-700 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-800 text-white flex justify-between items-center shadow-md relative border-b border-white/20 modal-header-theme"
+                    style={{ backgroundColor: '#047857', backgroundImage: 'linear-gradient(to right, #059669, #0d9488, #065f46)' }}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl border border-white/30 shadow-inner">
                             💌
@@ -226,10 +230,13 @@ export const ChatDrawer = ({ show, onClose, theme, activeChild, aiChatHistory, s
             return (
                 <div className="fixed inset-0 z-[120] flex justify-end" onClick={onClose}>
                     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-                    <div className="relative w-full max-w-sm h-full bg-white shadow-2xl flex flex-col animate-slide-in-right border-l-2 border-indigo-400/40"
+                    <div className={`relative w-full max-w-sm h-full bg-white shadow-2xl flex flex-col animate-slide-in-right border-l-2 ${theme?.border || 'border-indigo-400/40'}`}
                          onClick={e => e.stopPropagation()}>
                         {/* 头部 */}
-                        <div className={`p-4 sm:p-5 bg-gradient-to-r ${theme.gradient || 'from-indigo-600 via-purple-600 to-indigo-800'} text-white flex items-center gap-3 shrink-0 shadow-md border-b border-white/20`}>
+                        <div 
+                            className={`p-4 sm:p-5 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient || 'from-indigo-600 via-purple-600 to-indigo-800'} text-white flex items-center gap-3 shrink-0 shadow-md border-b border-white/20 modal-header-theme`}
+                            style={getThemeHeaderStyle(theme)}
+                        >
                             <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-2xl border border-white/30 shadow-inner">🎓</div>
                             <div className="flex-1">
                                 <div className="font-black text-lg tracking-wide flex items-center gap-2">

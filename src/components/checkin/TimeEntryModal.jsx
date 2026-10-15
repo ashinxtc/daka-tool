@@ -153,7 +153,10 @@ export const TimeEntryModal = ({
         >
             <div className="bg-white/95 rounded-3xl w-full max-w-md shadow-[0_20px_60px_rgba(0,0,0,0.25)] border border-white/80 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200">
                 {/* 弹窗顶部标头 */}
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50">
+                <div 
+                    className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50"
+                    style={{ backgroundColor: '#f9fafb' }}
+                >
                     <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xl shadow-md shadow-orange-200/50 shrink-0">
                             {subject.icon}

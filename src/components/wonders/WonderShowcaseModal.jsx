@@ -72,7 +72,10 @@ export const WonderShowcaseModal = ({ isOpen, onClose, initialWonderId = 'zhouyu
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md animate-fadeIn">
             <div className="relative w-full max-w-6xl max-h-[92vh] flex flex-col bg-stone-900 border border-amber-600/40 rounded-2xl shadow-2xl overflow-hidden text-stone-100">
                 {/* 顶栏 Header */}
-                <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-stone-950 via-stone-900 to-amber-950/60 border-b border-amber-700/30">
+                <div 
+                    className="flex items-center justify-between px-6 py-4 bg-stone-950 bg-gradient-to-r from-stone-950 via-stone-900 to-amber-950/60 border-b border-amber-700/30 modal-header-theme"
+                    style={{ backgroundColor: '#0c0a09', backgroundImage: 'linear-gradient(to right, #0c0a09, #1c1917, #292524)' }}
+                >
                     <div className="flex items-center space-x-3">
                         <span className="text-2xl p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">🏛️</span>
                         <div>

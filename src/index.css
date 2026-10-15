@@ -290,4 +290,46 @@
   50% { opacity: 1; transform: scale(1.25); filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
 }
 
+/* =========================================================
+   低性能模式与老旧设备/WebView 兼容层：
+   1. 解决 Tailwind v4 默认带有 'in oklab' 的渐变在旧版 WebKit/Chromium
+      解析失败并丢失背景导致全白、文字看不清的问题；
+   2. 强制渐变使用全球兼容的标准 sRGB 渐变插值，杜绝 CSS 属性被整行抛弃；
+   3. 弹窗标头主题色保真，杜绝白屏穿透。
+   ========================================================= */
+:root {
+  --tw-gradient-position: to right;
+}
+
+.bg-gradient-to-r {
+  --tw-gradient-position: to right !important;
+}
+.bg-gradient-to-l {
+  --tw-gradient-position: to left !important;
+}
+.bg-gradient-to-t {
+  --tw-gradient-position: to top !important;
+}
+.bg-gradient-to-b {
+  --tw-gradient-position: to bottom !important;
+}
+.bg-gradient-to-tr {
+  --tw-gradient-position: to top right !important;
+}
+.bg-gradient-to-br {
+  --tw-gradient-position: to bottom right !important;
+}
+.bg-gradient-to-tl {
+  --tw-gradient-position: to top left !important;
+}
+.bg-gradient-to-bl {
+  --tw-gradient-position: to bottom left !important;
+}
+
+/* 低性能模式弹窗顶栏强化：必须具有不透明实体底色兜底，避免透明或白底透出 */
+.modal-header-theme {
+  background-color: var(--theme-solid-color, #4f46e5);
+}
+
+
 

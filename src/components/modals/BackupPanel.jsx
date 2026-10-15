@@ -261,7 +261,10 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
                 onClick={e => e.stopPropagation()}
             >
                 {/* 标头 */}
-                <div className="bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-purple-900/90 px-6 py-4.5 border-b border-indigo-500/30 flex justify-between items-center text-white shrink-0">
+                <div 
+                    className="bg-blue-900 bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-purple-900/90 px-6 py-4.5 border-b border-indigo-500/30 flex justify-between items-center text-white shrink-0 modal-header-theme"
+                    style={{ backgroundColor: '#1e3a8a', backgroundImage: 'linear-gradient(to right, #1e3a8a, #312e81, #581c87)' }}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-2xl shadow-inner shadow-indigo-500/50">
                             💾

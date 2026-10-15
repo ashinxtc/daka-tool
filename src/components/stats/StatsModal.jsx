@@ -3,6 +3,7 @@ import Chart from 'chart.js/auto';
 import { XIcon, Clock } from '../icons.jsx';
 import { getLocalDateKey, dateObjToLocalKey } from '../../utils/date.js';
 import { getCheckinMinutes } from '../../utils/checkin.js';
+import { getThemeHeaderStyle } from '../../data/themes.js';
 
 // --- 时长格式化辅助函数 ---
 export const formatDurationMinutes = (minutes) => {
@@ -489,9 +490,12 @@ export const StatsModal = ({ show, onClose, checkins, tasks, activeChild, theme,
 
             return (
                 <div className="fixed inset-0 z-[85] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
-                    <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] shadow-[0_25px_60px_-15px_rgba(99,102,241,0.3)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 border-2 border-indigo-400/40 relative" onClick={e => e.stopPropagation()}>
+                    <div className={`bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] shadow-[0_25px_60px_-15px_rgba(99,102,241,0.3)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 border-2 ${theme?.border || 'border-indigo-400/40'} relative`} onClick={e => e.stopPropagation()}>
                         {/* 头部 */}
-                        <div className={`p-5 sm:p-6 border-b bg-gradient-to-r ${theme.gradient} text-white shrink-0 shadow-md relative`}>
+                        <div 
+                            className={`p-5 sm:p-6 border-b ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white shrink-0 shadow-md relative modal-header-theme`}
+                            style={getThemeHeaderStyle(theme)}
+                        >
                             <div className="flex justify-between items-center mb-4">
                                 <div className="flex items-center gap-3">
                                     <div className="w-11 h-11 rounded-2xl bg-white/20 border border-white/40 flex items-center justify-center text-2xl shadow-inner shadow-white/30">

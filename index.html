@@ -1265,6 +1265,11 @@
             will-change: auto !important;
             backface-visibility: visible !important;
         }
+        /* 低性能模式弹窗顶栏主题色保真：杜绝老旧浏览器解析失败导致的白屏遮挡 */
+        .low-perf-mode .modal-header-theme {
+            -webkit-backface-visibility: visible !important;
+            backface-visibility: visible !important;
+        }
 
         /* 宠物专用动画 */
         @keyframes pet-wiggle {

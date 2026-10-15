@@ -201,7 +201,10 @@ export const HabitPavilionModal = ({
         className="bg-slate-50 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] overflow-hidden border border-emerald-100"
       >
         {/* 顶部元气看板 Banner */}
-        <div className="relative bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white p-5 sm:p-6 shrink-0 shadow-md">
+        <div 
+          className="relative bg-emerald-700 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white p-5 sm:p-6 shrink-0 shadow-md modal-header-theme"
+          style={{ backgroundColor: '#047857', backgroundImage: 'linear-gradient(to right, #059669, #0d9488, #0891b2)' }}
+        >
           {/* 背景微光与几何装饰 */}
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.2),transparent_60%)] pointer-events-none" />
 

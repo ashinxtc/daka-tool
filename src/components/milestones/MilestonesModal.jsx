@@ -2,6 +2,7 @@ import React from 'react';
 import { XIcon, Coins, Sparkles, BookOpen, Trophy, TrendingUp, CalendarIcon } from '../icons.jsx';
 import { getLevelInfo } from '../../utils/levels.js';
 import { RANDOM_EVENTS } from '../../data/randomEvents.js';
+import { getThemeHeaderStyle } from '../../data/themes.js';
 
 // ===== 纵向居中时间轴组件（轴线居中，卡片左右交替）=====
 export const VerticalTimeline = ({ items, renderCard, renderDot, emptyIcon, emptyText }) => {
@@ -360,9 +361,12 @@ export const MilestonesModal = ({
             className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-4xl h-[88vh] flex flex-col overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.35)] border border-white/80 animate-in zoom-in-95 duration-200">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-4xl h-[88vh] flex flex-col overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.35)] border ${theme?.border || 'border-white/80'} animate-in zoom-in-95 duration-200`}>
                 {/* 标头 */}
-                <div className={`px-6 py-4 bg-gradient-to-r ${theme.gradient} text-white shrink-0 shadow-md relative z-10`}>
+                <div 
+                    className={`px-6 py-4 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white shrink-0 shadow-md relative z-10 modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex justify-between items-center mb-3">
                         <div className="flex items-center gap-3">
                             <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white text-2xl shadow-inner border border-white/30">

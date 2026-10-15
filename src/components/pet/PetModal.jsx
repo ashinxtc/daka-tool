@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XIcon } from '../icons';
+import { getThemeHeaderStyle } from '../../data/themes';
 
 // --- 全局数据安全读取与降级 ---
 const petCatalog = (typeof window !== 'undefined' && window.PET_CATALOG) ? window.PET_CATALOG : [];
@@ -1814,9 +1815,12 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
 
             return (
                 <div className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
-                    <div className="bg-gradient-to-b from-amber-50 via-orange-50/60 to-rose-50/40 rounded-t-3xl sm:rounded-3xl w-full max-w-lg sm:max-w-4xl h-[92vh] sm:h-[88vh] shadow-2xl flex flex-col overflow-hidden border-2 border-amber-400/40 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
+                    <div className={`bg-gradient-to-b from-amber-50 via-orange-50/60 to-rose-50/40 rounded-t-3xl sm:rounded-3xl w-full max-w-lg sm:max-w-4xl h-[92vh] sm:h-[88vh] shadow-2xl flex flex-col overflow-hidden border-2 ${theme?.border || 'border-amber-400/40'} animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300`} onClick={e => e.stopPropagation()}>
                         {/* 顶部栏 */}
-                        <div className={`p-4 sm:p-5 bg-gradient-to-r ${theme.gradient || 'from-amber-500 via-orange-500 to-rose-500'} text-white flex justify-between items-center shrink-0 shadow-lg relative z-10 border-b border-white/20`}>
+                        <div 
+                            className={`p-4 sm:p-5 ${theme?.solidBg || 'bg-amber-600'} bg-gradient-to-r ${theme?.gradient || 'from-amber-500 via-orange-500 to-rose-500'} text-white flex justify-between items-center shrink-0 shadow-lg relative z-10 border-b border-white/20 modal-header-theme`}
+                            style={getThemeHeaderStyle(theme)}
+                        >
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl border border-white/30 shadow-inner">
                                     🐾

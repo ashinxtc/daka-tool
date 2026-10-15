@@ -26,7 +26,10 @@ export const WeeklyPayrollModal = ({ show, onClose, payrollData, theme = {}, onC
                 onClick={e => e.stopPropagation()}
             >
                 {/* 顶栏：皇家周俸令横额 */}
-                <div className="bg-gradient-to-r from-amber-700 via-amber-600 to-yellow-600 px-5 py-4 text-white relative shrink-0 shadow-md">
+                <div 
+                    className="bg-amber-700 bg-gradient-to-r from-amber-700 via-amber-600 to-yellow-600 px-5 py-4 text-white relative shrink-0 shadow-md modal-header-theme"
+                    style={{ backgroundColor: '#b45309', backgroundImage: 'linear-gradient(to right, #b45309, #d97706, #ca8a04)' }}
+                >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
                             <div className="w-10 h-10 rounded-2xl bg-white/15 border border-white/30 flex items-center justify-center text-2xl shadow-inner">

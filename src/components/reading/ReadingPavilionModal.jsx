@@ -43,7 +43,10 @@ export const ReadingPavilionModal = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部标题区 */}
-        <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 px-6 py-4 text-white relative shrink-0">
+        <div 
+          className="bg-amber-700 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 px-6 py-4 text-white relative shrink-0 modal-header-theme"
+          style={{ backgroundColor: '#b45309', backgroundImage: 'linear-gradient(to right, #d97706, #ea580c, #b45309)' }}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-2xl shadow-inner">

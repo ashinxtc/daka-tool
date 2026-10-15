@@ -857,7 +857,10 @@ export const ExchangePanel = ({
             <div className="bg-white/95 rounded-3xl w-full max-w-xl max-h-[90vh] shadow-[0_25px_60px_rgba(0,0,0,0.35)] border border-white/80 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative">
                 
                 {/* 1. 钱庄顶栏 */}
-                <div className="px-5 sm:px-6 py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white flex justify-between items-center shrink-0 shadow-md relative z-10">
+                <div 
+                    className="px-5 sm:px-6 py-4 bg-amber-600 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white flex justify-between items-center shrink-0 shadow-md relative z-10 modal-header-theme"
+                    style={{ backgroundColor: '#d97706', backgroundImage: 'linear-gradient(to right, #f59e0b, #f97316, #d97706)' }}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-2xl shadow-inner border border-white/30">
                             💱

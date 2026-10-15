@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { TrendingUp, XIcon, FileText, BookOpen, CheckCircle2, Lock, Sparkles, Trophy } from '../icons.jsx';
 import { getLevelInfo, getLevelsByEra } from '../../utils/levels.js';
+import { getThemeHeaderStyle } from '../../data/themes.js';
 
 // 获取外部 levels.js 中的 ERA_INFOS / ERA_COLORS
 const getEraInfos = () => (typeof window !== 'undefined' && window.ERA_INFOS) ? window.ERA_INFOS : ((typeof ERA_INFOS !== 'undefined') ? ERA_INFOS : {});
@@ -36,9 +37,12 @@ export const EvolutionPathModal = ({ show, onClose, currentXP = 0, theme }) => {
             className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-4xl h-[90vh] shadow-[0_25px_60px_rgba(0,0,0,0.35)] border border-white/80 flex flex-col overflow-hidden relative animate-in zoom-in-95 duration-200">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-4xl h-[90vh] shadow-[0_25px_60px_rgba(0,0,0,0.35)] border ${theme?.border || 'border-white/80'} flex flex-col overflow-hidden relative animate-in zoom-in-95 duration-200`}>
                 {/* 顶栏 */}
-                <div className={`px-6 py-4 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-md relative z-10`}>
+                <div 
+                    className={`px-6 py-4 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white flex justify-between items-center shrink-0 shadow-md relative z-10 modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white text-2xl shadow-inner border border-white/30">
                             <TrendingUp className="w-6 h-6 text-white" />
@@ -201,9 +205,12 @@ export const GoldHistoryModal = ({ show, onClose, transactions = [], theme }) =>
             className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-white/80 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)] border ${theme?.border || 'border-white/80'} overflow-hidden animate-in zoom-in-95 duration-200`}>
                 {/* 标头 */}
-                <div className={`p-5 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-md`}>
+                <div 
+                    className={`p-5 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white flex justify-between items-center shrink-0 shadow-md modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl shadow-inner border border-white/30">
                             🪙
@@ -357,9 +364,12 @@ export const StarHistoryModal = ({ show, onClose, starTransactions = [], theme }
             className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-white/80 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)] border ${theme?.border || 'border-white/80'} overflow-hidden animate-in zoom-in-95 duration-200`}>
                 {/* 标头 */}
-                <div className={`p-5 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-md`}>
+                <div 
+                    className={`p-5 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white flex justify-between items-center shrink-0 shadow-md modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl shadow-inner border border-white/30">
                             ⭐
@@ -511,9 +521,12 @@ export const XPHistoryModal = ({ show, onClose, xpTransactions = [], theme }) =>
             className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-white/80 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)] border ${theme?.border || 'border-white/80'} overflow-hidden animate-in zoom-in-95 duration-200`}>
                 {/* 标头 */}
-                <div className={`p-5 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-md`}>
+                <div 
+                    className={`p-5 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white flex justify-between items-center shrink-0 shadow-md modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl shadow-inner border border-white/30">
                             ✨

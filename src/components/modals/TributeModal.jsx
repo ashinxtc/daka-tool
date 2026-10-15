@@ -80,7 +80,10 @@ export const TributeModal = ({
         >
             <div className="bg-gradient-to-b from-amber-50/95 via-white to-orange-50/90 rounded-3xl shadow-[0_25px_60px_rgba(245,158,11,0.25)] border-2 border-amber-300/80 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
                 {/* 皇室圣旨顶部纹章标头 */}
-                <div className="relative px-6 py-4 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 text-white flex items-center justify-between shadow-md">
+                <div 
+                    className="relative px-6 py-4 bg-amber-600 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 text-white flex items-center justify-between shadow-md modal-header-theme"
+                    style={{ backgroundColor: '#d97706', backgroundImage: 'linear-gradient(to right, #f59e0b, #d97706, #eab308)' }}
+                >
                     <div className="flex items-center gap-2.5">
                         <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-2xl shadow-inner">
                             👑

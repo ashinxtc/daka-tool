@@ -89,7 +89,10 @@ export const ReadingCheckinModal = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部标题栏 */}
-        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 px-6 py-4 text-white relative">
+        <div 
+          className="bg-amber-600 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 px-6 py-4 text-white relative modal-header-theme"
+          style={{ backgroundColor: '#d97706', backgroundImage: 'linear-gradient(to right, #f59e0b, #f97316, #d97706)' }}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="text-2xl filter drop-shadow-xs">{cfg.coverEmoji || '📖'}</span>

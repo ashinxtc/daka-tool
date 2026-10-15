@@ -82,7 +82,10 @@ export const ParentGiftModal = ({
 
                 {isRedPacket ? (
                     /* 🧧 传统中国红金元宝红包卡片 */
-                    <div className="bg-gradient-to-b from-red-600 via-red-600 to-rose-700 text-white p-6 pt-8 text-center flex flex-col items-center relative overflow-hidden border-2 border-amber-400/40 shadow-inner">
+                    <div 
+                        className="bg-red-600 bg-gradient-to-b from-red-600 via-red-600 to-rose-700 text-white p-6 pt-8 text-center flex flex-col items-center relative overflow-hidden border-2 border-amber-400/40 shadow-inner modal-header-theme"
+                        style={{ backgroundColor: '#dc2626', backgroundImage: 'linear-gradient(to bottom, #dc2626, #dc2626, #be123c)' }}
+                    >
                         {/* 顶栏暗花背景 */}
                         <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-amber-400/10 to-transparent pointer-events-none" />
                         
@@ -142,7 +145,10 @@ export const ParentGiftModal = ({
                     </div>
                 ) : (
                     /* 🎡 仙缘转盘赏赐卡片 */
-                    <div className="bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950 text-white p-6 pt-8 text-center flex flex-col items-center relative overflow-hidden border-2 border-indigo-500/40 shadow-inner">
+                    <div 
+                        className="bg-indigo-950 bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-950 text-white p-6 pt-8 text-center flex flex-col items-center relative overflow-hidden border-2 border-indigo-500/40 shadow-inner modal-header-theme"
+                        style={{ backgroundColor: '#1e1b4b', backgroundImage: 'linear-gradient(to bottom, #1e1b4b, #0f172a, #020617)' }}
+                    >
                         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 border-2 border-white shadow-lg flex items-center justify-center text-3xl mb-3 shadow-indigo-950">
                             🎡
                         </div>

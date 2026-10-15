@@ -6,7 +6,10 @@ export const WheelChoiceModal = ({ show, onClose, onSelect }) => {
     if (!show) return null;
     return (
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="relative w-full max-w-md bg-gradient-to-b from-slate-900 via-slate-900/95 to-amber-950/40 rounded-3xl p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(245,158,11,0.3)] border-2 border-amber-400/40 backdrop-blur-xl text-center overflow-hidden">
+            <div 
+                className="relative w-full max-w-md bg-slate-900 bg-gradient-to-b from-slate-900 via-slate-900/95 to-amber-950/40 rounded-3xl p-6 sm:p-7 shadow-[0_25px_60px_-15px_rgba(245,158,11,0.3)] border-2 border-amber-400/40 backdrop-blur-xl text-center overflow-hidden modal-header-theme"
+                style={{ backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(to bottom, #0f172a, #0f172a, #451a03)' }}
+            >
                 {/* 顶栏光晕与流光 */}
                 <div className="absolute top-0 left-0 right-0 h-36 bg-gradient-to-b from-amber-500/15 via-amber-500/5 to-transparent pointer-events-none"></div>
                 <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-400/10 rounded-full blur-2xl pointer-events-none"></div>
@@ -99,8 +102,8 @@ export const WheelModal = ({
 
     // 主题色彩与渐变
     const modalBg = isXP
-        ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 border-indigo-500/40'
-        : 'bg-gradient-to-b from-slate-950 via-slate-900 to-amber-950 border-amber-500/40';
+        ? 'bg-slate-950 bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 border-indigo-500/40'
+        : 'bg-slate-950 bg-gradient-to-b from-slate-950 via-slate-900 to-amber-950 border-amber-500/40';
 
     const rimGradient = isXP
         ? 'bg-gradient-to-tr from-cyan-500 via-indigo-600 to-purple-600 shadow-[0_0_30px_rgba(99,102,241,0.4)]'
@@ -124,9 +127,10 @@ export const WheelModal = ({
     return (
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
             <div
-                className={`relative ${modalBg} rounded-3xl w-full max-w-md p-6 shadow-2xl overflow-hidden flex flex-col items-center border-2 transition-transform duration-300 ${
+                className={`relative ${modalBg} rounded-3xl w-full max-w-md p-6 shadow-2xl overflow-hidden flex flex-col items-center border-2 transition-transform duration-300 modal-header-theme ${
                     wheelResult ? 'scale-105' : 'scale-100'
                 }`}
+                style={{ backgroundColor: '#020617' }}
             >
                 {/* 顶部环境光 */}
                 <div
@@ -382,7 +386,10 @@ export const EvilWheelModal = ({
 
     return (
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300 overflow-y-auto">
-            <div className="relative bg-gradient-to-b from-slate-950 via-red-950/80 to-slate-950 rounded-3xl w-full max-w-md p-5 sm:p-6 shadow-[0_0_50px_rgba(239,68,68,0.3)] overflow-hidden flex flex-col items-center border-2 border-red-700/60 my-auto">
+            <div 
+                className="relative bg-slate-950 bg-gradient-to-b from-slate-950 via-red-950/80 to-slate-950 rounded-3xl w-full max-w-md p-5 sm:p-6 shadow-[0_0_50px_rgba(239,68,68,0.3)] overflow-hidden flex flex-col items-center border-2 border-red-700/60 my-auto modal-header-theme"
+                style={{ backgroundColor: '#020617', backgroundImage: 'linear-gradient(to bottom, #020617, #450a0a, #020617)' }}
+            >
                 {/* 顶部血色暗涌 */}
                 <div className="absolute top-0 left-0 right-0 h-36 bg-gradient-to-b from-red-600/20 via-red-900/10 to-transparent pointer-events-none"></div>
 

@@ -361,7 +361,10 @@ export const HomeworkExamRecordModal = ({ show, onClose, theme, activeChild, hom
                 <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
                     <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[88vh] shadow-2xl flex flex-col overflow-hidden border-2 border-indigo-400/40 animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
                         {/* 顶栏标头 */}
-                        <div className="p-5 border-b bg-gradient-to-r from-amber-600 via-indigo-700 to-indigo-950 text-white shrink-0 flex justify-between items-center shadow-md relative">
+                        <div 
+                            className="p-5 border-b bg-indigo-900 bg-gradient-to-r from-amber-600 via-indigo-700 to-indigo-950 text-white shrink-0 flex justify-between items-center shadow-md relative modal-header-theme"
+                            style={{ backgroundColor: '#312e81', backgroundImage: 'linear-gradient(to right, #d97706, #4338ca, #1e1b4b)' }}
+                        >
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center text-2xl backdrop-blur-md border border-white/20 shadow-inner">
                                     📜

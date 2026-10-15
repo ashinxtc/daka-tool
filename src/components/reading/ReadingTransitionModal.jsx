@@ -65,7 +65,10 @@ export const ReadingTransitionModal = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部标题栏 */}
-        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 px-6 py-4 text-white relative shrink-0">
+        <div 
+          className="bg-amber-600 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 px-6 py-4 text-white relative shrink-0 modal-header-theme"
+          style={{ backgroundColor: '#d97706', backgroundImage: 'linear-gradient(to right, #f59e0b, #f97316, #d97706)' }}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="text-2xl filter drop-shadow-xs">📚</span>

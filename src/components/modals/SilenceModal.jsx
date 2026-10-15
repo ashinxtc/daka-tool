@@ -64,7 +64,10 @@ export const SilenceModal = ({
                 <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-violet-600/25 via-indigo-600/10 to-transparent pointer-events-none"></div>
 
                 {/* 标头 */}
-                <div className="bg-gradient-to-r from-violet-900/90 via-indigo-900/90 to-purple-950/90 px-6 py-4.5 border-b border-indigo-500/30 relative">
+                <div 
+                    className="bg-violet-900 bg-gradient-to-r from-violet-900/90 via-indigo-900/90 to-purple-950/90 px-6 py-4.5 border-b border-indigo-500/30 relative modal-header-theme"
+                    style={{ backgroundColor: '#4c1d95', backgroundImage: 'linear-gradient(to right, #4c1d95, #312e81, #3b0764)' }}
+                >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-violet-500/20 border border-violet-400/40 flex items-center justify-center text-2xl shadow-inner shadow-violet-500/50">

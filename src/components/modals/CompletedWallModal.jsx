@@ -1,5 +1,6 @@
 import React from 'react';
 import { Target, XIcon, Trophy, CheckCircle2, CalendarIcon, Coins, Sparkles, Medal } from '../icons';
+import { getThemeHeaderStyle } from '../../data/themes';
 
 // --- 【目标达成墙 · 荣耀殿堂】CompletedWallModal ---
 export const CompletedWallModal = ({ show, onClose, completedTasks = [], checkins = {}, activeChild, theme }) => {
@@ -21,9 +22,12 @@ export const CompletedWallModal = ({ show, onClose, completedTasks = [], checkin
             className="fixed inset-0 bg-black/70 backdrop-blur-md z-[80] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-4xl max-h-[88vh] flex flex-col shadow-[0_25px_60px_rgba(0,0,0,0.35)] border border-white/80 overflow-hidden animate-in zoom-in-95 duration-200 relative">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-4xl max-h-[88vh] flex flex-col shadow-[0_25px_60px_rgba(0,0,0,0.35)] border ${theme?.border || 'border-white/80'} overflow-hidden animate-in zoom-in-95 duration-200 relative`}>
                 {/* 殿堂级标头 */}
-                <div className={`px-6 py-4 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-md relative z-10`}>
+                <div 
+                    className={`px-6 py-4 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white flex justify-between items-center shrink-0 shadow-md relative z-10 modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white text-2xl shadow-inner border border-white/30">
                             🎯

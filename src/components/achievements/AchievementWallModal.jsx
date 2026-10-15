@@ -242,7 +242,10 @@ export const AchievementWallModal = ({ show, onClose, achievements, theme, check
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}>
                     <div className="bg-white rounded-3xl w-full max-w-4xl h-[88vh] shadow-2xl flex flex-col overflow-hidden relative border-2 border-amber-400/40 animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
                         {/* 殿堂级顶栏 */}
-                        <div className="p-5 sm:p-6 bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-800 text-white flex justify-between items-center shrink-0 shadow-lg relative z-10 border-b border-amber-400/40">
+                        <div 
+                            className="p-5 sm:p-6 bg-amber-700 bg-gradient-to-r from-amber-600 via-yellow-600 to-amber-800 text-white flex justify-between items-center shrink-0 shadow-lg relative z-10 border-b border-amber-400/40 modal-header-theme"
+                            style={{ backgroundColor: '#b45309', backgroundImage: 'linear-gradient(to right, #d97706, #ca8a04, #92400e)' }}
+                        >
                             <div className="flex items-center gap-4">
                                 <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shadow-inner border border-white/30 text-3xl">
                                     🏛️

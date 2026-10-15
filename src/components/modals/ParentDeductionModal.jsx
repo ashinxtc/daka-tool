@@ -23,7 +23,10 @@ export const ParentDeductionModal = ({
             className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="relative w-full max-w-sm overflow-hidden rounded-3xl shadow-2xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-rose-500/40 text-white animate-in zoom-in-95 duration-200">
+            <div 
+                className="relative w-full max-w-sm overflow-hidden rounded-3xl shadow-2xl bg-slate-900 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-rose-500/40 text-white animate-in zoom-in-95 duration-200 modal-header-theme"
+                style={{ backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(to bottom, #0f172a, #0f172a, #020617)' }}
+            >
                 {/* 右上角关闭按钮 */}
                 <button
                     onClick={onClose}

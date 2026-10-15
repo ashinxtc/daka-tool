@@ -51,7 +51,10 @@ export const ThemeSelectionModal = ({
         >
             <div className="bg-white/95 rounded-3xl w-full max-w-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/60 overflow-hidden flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200">
                 {/* 弹窗顶部标头 */}
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50">
+                <div 
+                    className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50"
+                    style={{ backgroundColor: '#f9fafb' }}
+                >
                     <div className="flex items-center gap-2.5">
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-400 to-rose-400 flex items-center justify-center text-white shadow-md shadow-amber-200/50">
                             <Palette className="w-5 h-5" />

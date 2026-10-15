@@ -3,6 +3,7 @@ import { SHOP_ITEMS, checkItemRestriction } from '../../data/shopItems';
 import { Zap, Lock, Coins, XIcon, CheckCircle2, Sparkles, Shield, Gift } from '../icons';
 import { getLocalDateKey } from '../../utils/date';
 import { QRCodeView } from '../../utils/qrcode';
+import { getThemeHeaderStyle } from '../../data/themes';
 
 const showToast = (type, message, options) => {
     if (window.showToast) window.showToast(type, message, options);
@@ -89,9 +90,12 @@ export const ShopModal = ({
             className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-4xl h-[88vh] shadow-[0_25px_60px_rgba(0,0,0,0.35)] border border-white/80 flex flex-col overflow-hidden relative animate-in zoom-in-95 duration-200">
+            <div className={`bg-white/95 rounded-3xl w-full max-w-4xl h-[88vh] shadow-[0_25px_60px_rgba(0,0,0,0.35)] border ${theme?.border || 'border-white/80'} flex flex-col overflow-hidden relative animate-in zoom-in-95 duration-200`}>
                 {/* 顶部殿堂级标头 */}
-                <div className={`px-6 py-4 bg-gradient-to-r ${theme.gradient} text-white flex justify-between items-center shrink-0 shadow-md relative z-10`}>
+                <div 
+                    className={`px-6 py-4 ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white flex justify-between items-center shrink-0 shadow-md relative z-10 modal-header-theme`}
+                    style={getThemeHeaderStyle(theme)}
+                >
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-2xl shadow-inner border border-white/30">
                             🏪
@@ -629,8 +633,11 @@ export const ShopModal = ({
                             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" 
                             onClick={() => setPurchaseModal(null)}
                         >
-                            <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden border border-white animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                                <div className={`bg-gradient-to-r ${theme.gradient} px-5 py-4 flex items-center justify-between text-white`}>
+                            <div className={`bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden border ${theme?.border || 'border-white'} animate-in zoom-in-95 duration-200`} onClick={e => e.stopPropagation()}>
+                                <div 
+                                    className={`${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} px-5 py-4 flex items-center justify-between text-white modal-header-theme`}
+                                    style={getThemeHeaderStyle(theme)}
+                                >
                                     <span className="font-black text-base flex items-center gap-1.5">
                                         <span>🛒</span> 确认选购商品
                                     </span>
