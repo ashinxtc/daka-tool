@@ -9660,7 +9660,6 @@ ${context}
                             dailyStars={todayStars} 
                             theme={theme} 
                             hasActiveBg={hasActiveBg} 
-                            onOpenStarDetails={() => handleOpenSettings('gamification')} 
                             escrow={escrowPenalties[activeChild]}
                         />
                     )}

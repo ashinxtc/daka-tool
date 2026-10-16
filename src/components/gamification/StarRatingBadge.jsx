@@ -8,7 +8,6 @@ import { Sparkles, Shield, Trophy, Flame } from '../icons.jsx';
 export const StarRatingBadge = ({
     dailyStars,
     theme,
-    onOpenStarDetails,
     hasActiveBg = false,
     escrow = null
 }) => {
@@ -120,38 +119,23 @@ export const StarRatingBadge = ({
             </div>
 
             {/* 右侧：紧凑进度与统计 */}
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                <div className="flex flex-col items-end">
-                    <span className={`text-xs font-semibold ${hasActiveBg ? 'text-slate-300' : 'text-slate-600'}`}>
-                        必做进度：<span className={hasActiveBg ? 'text-amber-400 font-bold' : 'text-amber-600 font-bold'}>{completed}</span> / {total} 项 ({rate}%)
-                    </span>
-                    <div className={`w-28 sm:w-36 h-2 rounded-full overflow-hidden mt-1 p-0.5 border ${
-                        hasActiveBg ? 'bg-slate-800/80 border-slate-700/80' : 'bg-slate-100 border-slate-200'
-                    }`}>
-                        <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                                star === 3 ? 'bg-gradient-to-r from-amber-400 to-yellow-500' :
-                                star === 2 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' :
-                                star === 1 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' :
-                                (hasActiveBg ? 'bg-slate-600' : 'bg-slate-300')
-                            }`}
-                            style={{ width: `${Math.min(100, rate)}%` }}
-                        />
-                    </div>
-                </div>
-
-                {onOpenStarDetails && (
-                    <button
-                        onClick={onOpenStarDetails}
-                        className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all shadow-2xs cursor-pointer ${
-                            hasActiveBg 
-                                ? 'text-slate-200 hover:text-white bg-slate-800/90 hover:bg-slate-700 border border-slate-700 active:scale-95' 
-                                : 'text-amber-800 hover:text-amber-900 bg-white hover:bg-amber-50/80 border border-amber-200 hover:border-amber-300 active:scale-95'
+            <div className="flex flex-col items-end w-full sm:w-auto shrink-0">
+                <span className={`text-xs font-semibold ${hasActiveBg ? 'text-slate-300' : 'text-slate-600'}`}>
+                    必做进度：<span className={hasActiveBg ? 'text-amber-400 font-bold' : 'text-amber-600 font-bold'}>{completed}</span> / {total} 项 ({rate}%)
+                </span>
+                <div className={`w-28 sm:w-36 h-2 rounded-full overflow-hidden mt-1 p-0.5 border ${
+                    hasActiveBg ? 'bg-slate-800/80 border-slate-700/80' : 'bg-slate-100 border-slate-200'
+                }`}>
+                    <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                            star === 3 ? 'bg-gradient-to-r from-amber-400 to-yellow-500' :
+                            star === 2 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' :
+                            star === 1 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' :
+                            (hasActiveBg ? 'bg-slate-600' : 'bg-slate-300')
                         }`}
-                    >
-                        规则
-                    </button>
-                )}
+                        style={{ width: `${Math.min(100, rate)}%` }}
+                    />
+                </div>
             </div>
         </div>
     );
