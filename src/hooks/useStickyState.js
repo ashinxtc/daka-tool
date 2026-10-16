@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { storage } from '../utils/storage.js';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { storage, flushPendingState } from '../utils/storage.js';
+import { readStoredValue } from '../utils/storedValues.js';
+const NO_EXTERNAL_COMMIT = Symbol('no external commit');
 
 // --- 自定义 Hook：持久化 State ---
 // 全局 pending 写入注册表，用于 beforeunload 刷新
@@ -21,18 +23,20 @@ export const useStickyState = (defaultValue, key) => {
     const [value, setValue] = useState(() => {
         try {
             const stickyValue = storage.getItem(key);
-            return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
+            return readStoredValue(stickyValue, defaultValue);
         } catch (e) {
             return defaultValue;
         }
     });
     const timerRef = useRef(null);
     const isFirstRender = useRef(true);
-    const externallyCommitted = useRef(null);
+    const externallyCommitted = useRef(NO_EXTERNAL_COMMIT);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (isFirstRender.current) { isFirstRender.current = false; return; }
-        if (externallyCommitted.current === value) { externallyCommitted.current = null; return; }
+        const committed = externallyCommitted.current;
+        externallyCommitted.current = NO_EXTERNAL_COMMIT;
+        if (committed !== NO_EXTERNAL_COMMIT && Object.is(committed, value)) return;
         if (typeof window !== 'undefined' && window._syncReloading) return; // 同步重载期间不写入，防止覆盖云端数据
         if (timerRef.current) clearTimeout(timerRef.current);
         if (typeof window !== 'undefined') {
@@ -40,22 +44,17 @@ export const useStickyState = (defaultValue, key) => {
         }
         timerRef.current = setTimeout(() => {
             try {
-                storage.setItem(key, JSON.stringify(value));
-                storage.markKeyVersion(key); // 记录本地修改版本（同步合并用）
-                if (typeof window !== 'undefined') {
-                    delete window._pendingWrites[key]; // 写入完成，清除 pending
-                }
+                flushPendingState();
             } catch (error) {
                 console.error(`Error setting key "${key}":`, error);
             }
         }, 300);
         return () => {
             clearTimeout(timerRef.current);
-            if (typeof window !== 'undefined') {
-                delete window._pendingWrites[key];
-            }
         };
     }, [key, value]);
+
+    useEffect(() => () => { flushPendingState(); }, [key]);
 
     // 监听云端同步合并事件，从 storage 刷新 state 而无需 reload
     useEffect(() => {
@@ -66,7 +65,7 @@ export const useStickyState = (defaultValue, key) => {
             try {
                 const fresh = storage.getItem(key);
                 if (fresh !== null) {
-                    const parsed = JSON.parse(fresh);
+                    const parsed = readStoredValue(fresh, defaultValue);
                     externallyCommitted.current = parsed;
                     setValue(parsed);
                 }

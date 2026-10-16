@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { EXCHANGE_WORKER_URL } from '../../constants/api.js';
 import { getLocalDateKey } from '../../utils/date.js';
 import { storage } from '../../utils/storage.js';
+import { readStoredString } from '../../utils/storedValues.js';
 import { XIcon, Coins, TrendingUp, Sparkles, CheckCircle2 } from '../icons.jsx';
 
 // 网络请求超时包装器（防止移动端弱网/断网时无限期挂起，强制穿透缓存获取实时最新数据）
@@ -689,7 +690,7 @@ export const ExchangePanel = ({
     // 家长当面核销（即使完全无网也能瞬间完成结清与扣减）
     const handleParentDirectVerify = () => {
         if (!applyResult) return;
-        const parentPwd = storage.getItem('app_settings_password');
+        const parentPwd = readStoredString(storage.getItem('app_settings_password'));
         let promptMsg = `【👨‍👩‍👧 家长当面核销确认】\n孩子申请兑换零花钱：¥${(applyResult.cnyAmount || targetCny).toFixed(2)} 元\n需扣减金元宝：${applyResult.goldAmount || neededGold} 个\n\n`;
         if (parentPwd) {
             promptMsg += '请家长确认已向孩子给付现金或转账，并输入家长管理密码确认核销：';

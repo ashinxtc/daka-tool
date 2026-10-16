@@ -47,7 +47,9 @@ import { CompletedWallModal } from './components/modals/CompletedWallModal';
 import { TesterDashboard } from './components/tester/TesterDashboard';
 import { getHolidayInfo, getHeaderTheme, isDateHolidayOrWeekend } from './utils/holidays';
 import { useStickyState, markKeyVersion } from './hooks/useStickyState';
-import { storage, initStorage, commitDurable } from './utils/storage';
+import { storage, commitDurable, canSyncStorage, getStorageState, flushPendingState } from './utils/storage';
+import StorageGate from './components/common/StorageGate';
+import { selectAndRestoreBackup } from './utils/backup';
 import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
@@ -5070,15 +5072,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             const collectSyncData = () => {
-                // H3: 先刷新所有 pending 写入，确保读到最新数据
-                if (window._pendingWrites) {
-                    Object.entries(window._pendingWrites).forEach(([k, v]) => {
-                        try {
-                            storage.setItem(k, JSON.stringify(v));
-                            storage.markKeyVersion(k);
-                        } catch (e) {}
-                    });
-                }
+                if (!canSyncStorage()) throw new Error('本地数据尚未安全保存，暂缓同步。');
+                flushPendingState();
                 const rawData = storage.getAllSyncData();
                 const data = stripTesterDataFromPayload(rawData);
                 data._syncTs = Date.now();
@@ -5111,7 +5106,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             }, []);
 
             const syncToCloud = async (force = false) => {
-                if (!syncCode) return;
+                if (!syncCode || !canSyncStorage()) return;
+                const storageEpoch = getStorageState().epoch;
                 // 优先从 storage 读取最新 profiles 镜像，防止 React 闭包陈旧
                 let currentProfiles = profiles;
                 try {
@@ -5186,6 +5182,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     // KV 同 key 限 1 写/秒：429/超限时退避重试（最多 3 次）
                     let resp = null;
                     for (let attempt = 0; attempt < 3; attempt++) {
+                        if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
                         resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -5194,6 +5191,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         if (resp.status !== 429) break;
                         await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
                     }
+                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
                     if (!resp.ok) throw new Error(`上传失败 (${resp.status})`);
                     const newHash = hashSyncPayload(data);
                     storage.setItem('_sync_last_hash', newHash);
@@ -5219,11 +5217,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             const syncFromCloud = async () => {
-                if (!syncCode) return;
+                if (!syncCode || !canSyncStorage()) return;
+                const storageEpoch = getStorageState().epoch;
                 if (!acquireSyncLock()) return; // 并发保护
                 setSyncStatus('syncing');
                 try {
                     const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
+                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
                     if (resp.status === 404) {
                         // 云端无数据，直接上传（不释放锁，内联执行）
                         storage.setItem('_sync_has_pulled_v1', '1');
@@ -5234,6 +5234,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(data)
                             });
+                            if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
                             if (resp2.ok) {
                                 storage.setItem('_sync_last_hash', hashSyncPayload(data));
                                 storage.setItem('_sync_local_ts', String(data._syncTs));
@@ -5245,6 +5246,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                     if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
                     const cloudDataRaw = await resp.json();
+                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
+                    flushPendingState();
                     const cloudData = stripTesterDataFromPayload(cloudDataRaw);
                     storage.setItem('_sync_has_pulled_v1', '1');
 
@@ -5350,7 +5353,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const delay = active ? 3500 : 8000;
                     pollTimer = setTimeout(async () => {
                         if (stopped) return;
-                        if (document.visibilityState === 'visible' && !syncLockRef.current) {
+                        if (document.visibilityState === 'visible' && canSyncStorage() && !syncLockRef.current) {
                             try {
                                 const resp = await fetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
                                 if (resp.ok) {
@@ -8999,6 +9002,8 @@ ${context}
 			// 如果当前设备没有任何账户记录，直接拦截并全屏显示初始引导页，防止任何误操作触发底层数据
 			if (profiles.length === 0) {
 				const handleWelcomeSync = async () => {
+                    if (!canSyncStorage()) return;
+                    const storageEpoch = getStorageState().epoch;
 					const code = welcomeSyncCodeInput.trim();
 					if (!code) {
 						setWelcomeSyncError('请输入家庭私密同步码');
@@ -9014,6 +9019,7 @@ ${context}
 						}
 						if (!resp.ok) throw new Error(`云端服务响应异常 (${resp.status})`);
 						const cloudDataRaw = await resp.json();
+                        if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
 						if (!cloudDataRaw || typeof cloudDataRaw !== 'object') {
 							setWelcomeSyncError(`同步码【${code}】的数据格式异常，请核对`);
 							return;
@@ -9264,94 +9270,7 @@ ${context}
 
 								<button 
 									onClick={() => {
-										const input = document.createElement('input');
-										input.type = 'file';
-										input.accept = '.json';
-										input.onchange = (e) => {
-											const file = e.target.files[0];
-											if (!file) return;
-											const reader = new FileReader();
-											reader.onload = (event) => {
-												try {
-													const data = JSON.parse(event.target.result);
-													if (!data.version) {
-														showToast('warning', '无效的备份文件：缺少版本声明！');
-														return;
-													}
-													const keyMapping = {
-														tasks: 'app_tasks_v2', checkins: 'app_checkins_v2', profiles: 'app_profiles_v1',
-														achievements: 'app_achievements_v1', stats: 'app_stats_v1', inventory: 'app_inventory_v1',
-														activeBuffs: 'app_active_buffs_v1', redeemedCoupons: 'app_coupons_v1', equippedGear: 'app_equipped_gear_v1',
-														milestones: 'app_milestones_v1', globalMessages: 'app_global_messages_v2', globalDates: 'app_global_dates',
-														wheelConfig: 'app_wheel_config', wheelSettings: 'app_wheel_settings', wheelHistory: 'app_wheel_history',
-														xpHistory: 'app_xp_history', evilWheelConfig: 'app_evil_wheel_config', randomEventHistory: 'app_random_event_history',
-														dailyRandomCounts: 'app_daily_random_counts', historicalEventProgress: 'app_historical_event_progress_v1',
-														dailyEventTypeCounts: 'app_daily_event_type_counts_v1', userCity: 'app_user_city_v1',
-														curriculumProgress: 'app_curriculum_progress_v1', xpWheelConfig: 'app_xp_wheel_config',
-														settingsPassword: 'app_settings_password', testMode: 'app_test_mode', weekendSettings: 'app_weekend_settings',
-														notifiedLevels: 'app_notified_levels', exemptedDays: 'app_exempted_days_v1', silenceMutes: 'app_silence_mutes_v1',
-														homeworkExamConfig: 'app_homework_exam_config_v1', homeworkRecords: 'app_homework_records_v1',
-														examRecords: 'app_exam_records_v1', repairedCheckins: 'app_repaired_checkins_v1',
-														weeklyPayroll: 'app_weekly_payroll_v1', reportConfig: 'app_report_config_v1', stars: 'app_stars_v1',
-														starHistory: 'app_star_history_v1', petData: 'app_pet_data_v1', ownedPets: 'app_owned_pets_v1',
-														activePet: 'app_active_pet_v1', petCooldowns: 'app_pet_cooldowns_v1', petStats: 'app_pet_stats_v1',
-														petSkillCooldowns: 'app_pet_skill_cd_v1', petBuffs: 'app_pet_buffs_v1', petAdventures: 'app_pet_adventures_v1',
-														petAdventureLog: 'app_pet_adventure_log_v1', petAdventureStats: 'app_pet_adventure_stats_v1',
-														petSlots: 'app_pet_slots_v1', petMusic: 'app_pet_music_v1', petNotif: 'app_pet_notif_v1',
-														evilPenaltyLog: 'app_evil_penalty_log_v1', evilAutoTrigger: 'app_evil_auto_trigger',
-														evilTriggerConfig: 'app_evil_trigger_config_v1',
-														pendingEvilPenalties: 'app_pending_evil_penalties_v2',
-														pendingEvilPenalty: 'app_pending_evil_penalty_v1', aiEnabled: 'app_ai_enabled',
-														deepseekApiKey: 'app_deepseek_api_key', aiPetEnabled: 'app_ai_pet_enabled',
-														aiChatEnabled: 'app_ai_chat_enabled', aiDailyLimit: 'app_ai_daily_limit',
-														aiDailyUsage: 'app_ai_daily_usage', aiChatHistory: 'app_ai_chat_history',
-														aiReminderLog: 'app_ai_reminder_log_v1', syncCode: 'app_sync_code',
-														syncLastTime: 'app_sync_last_time', authorizedParents: 'app_authorized_parents_v1',
-														parentActions: 'app_parent_actions_v1', deductionReceipts: RECEIPTS_KEY,
-														exchangeBaseCents: 'app_exchange_base_cents',
-														exchangeVolatility: 'app_exchange_volatility',
-														exchangeMinGold: 'app_exchange_min_gold',
-														exchangeMaxSingle: 'app_exchange_max_single',
-														exchangeMaxWeekly: 'app_exchange_max_weekly',
-														readingShelved: 'app_reading_shelved_v1',
-														readingHistory: 'app_reading_history_v1',
-														deletedTasks: 'app_deleted_tasks_v1',
-														deletedProfiles: 'app_deleted_profiles_v1',
-														parentQrLanHost: 'app_parent_qr_lan_host'
-													};
-													Object.entries(keyMapping).forEach(([bk, sk]) => {
-														if (data[bk] !== undefined && data[bk] !== null) {
-															storage.setItem(sk, data[bk]);
-															storage.markKeyVersion(sk);
-														}
-													});
-
-													// 恢复全量快照兜底（如各孩子累计兑换 app_exchange_total_* 及所有动态项）
-													if (data._allSyncData && typeof data._allSyncData === 'object') {
-														Object.entries(data._allSyncData).forEach(([k, v]) => {
-															if (k && k.startsWith('app_') && v !== undefined && v !== null) {
-																storage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
-																storage.markKeyVersion(k);
-															}
-														});
-													}
-
-													// 恢复直接以 app_ 存储的原始键
-													Object.keys(data).forEach(k => {
-														if (k.startsWith('app_') && data[k] !== undefined && data[k] !== null) {
-															storage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
-															storage.markKeyVersion(k);
-														}
-													});
-													showToast('success', '数据恢复成功！正在重新载入...');
-													setTimeout(() => window.location.reload(), 1000);
-												} catch (err) {
-													showToast('error', '备份解析失败：' + err.message);
-												}
-											};
-											reader.readAsText(file);
-										};
-										input.click();
+                                        selectAndRestoreBackup(showToast);
 									}} 
 									className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
 								>
@@ -10935,15 +10854,16 @@ ${context}
 
 export default App;
 
-initStorage().finally(() => {
+{
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(
         <AppErrorBoundary>
+            <StorageGate>
             <PerformanceProvider>
                 <App />
                 <ToastContainer />
             </PerformanceProvider>
+            </StorageGate>
         </AppErrorBoundary>
     );
-});
-
+}

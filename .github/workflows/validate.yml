@@ -1,0 +1,37 @@
+name: Validate application
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Configure software WebGL for Chromium tests
+        run: node --input-type=module -e "import { chromium } from '@playwright/test'; console.log('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=' + chromium.executablePath());" >> "$GITHUB_ENV"
+      - run: npm run test:e2e
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-traces
+          path: test-results/
+          retention-days: 7

@@ -1,7 +1,8 @@
 import React from 'react';
 import { XIcon, Sparkles } from '../icons.jsx';
 import { getLocalDateKey } from '../../utils/date.js';
-import { storage } from '../../utils/storage.js';
+import { storage, getPreRestoreBackup } from '../../utils/storage.js';
+import { createBackup, downloadBackup, selectAndRestoreBackup } from '../../utils/backup.js';
 
 // 数据备份/恢复 Modal（时空档案司 · 数据方舟）
 export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) => {
@@ -9,249 +10,14 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
     const showToast = propShowToast || (typeof window !== 'undefined' && window.showToast) || ((type, msg) => alert(msg));
 
     const handleExport = () => {
-        const data = {
-            version: '2.0',
-            exportDate: new Date().toISOString(),
-            tasks: storage.getItem('app_tasks_v2'),
-            checkins: storage.getItem('app_checkins_v2'),
-            wheelHistory: storage.getItem('app_wheel_history'),
-            xpHistory: storage.getItem('app_xp_history'),
-            profiles: storage.getItem('app_profiles_v1'),
-            achievements: storage.getItem('app_achievements_v1'),
-            stats: storage.getItem('app_stats_v1'),
-            inventory: storage.getItem('app_inventory_v1'),
-            activeBuffs: storage.getItem('app_active_buffs_v1'),
-            redeemedCoupons: storage.getItem('app_coupons_v1'),
-            equippedGear: storage.getItem('app_equipped_gear_v1'),
-            milestones: storage.getItem('app_milestones_v1'),
-            globalMessages: storage.getItem('app_global_messages_v2'),
-            globalDates: storage.getItem('app_global_dates'),
-            wheelConfig: storage.getItem('app_wheel_config'),
-            wheelSettings: storage.getItem('app_wheel_settings'),
-            evilWheelConfig: storage.getItem('app_evil_wheel_config'),
-            randomEventHistory: storage.getItem('app_random_event_history'),
-            dailyRandomCounts: storage.getItem('app_daily_random_counts'),
-            historicalEventProgress: storage.getItem('app_historical_event_progress_v1'),
-            dailyEventTypeCounts: storage.getItem('app_daily_event_type_counts_v1'),
-            userCity: storage.getItem('app_user_city_v1'),
-            curriculumProgress: storage.getItem('app_curriculum_progress_v1'),
-            xpWheelConfig: storage.getItem('app_xp_wheel_config'),
-            settingsPassword: storage.getItem('app_settings_password'),
-            testMode: storage.getItem('app_test_mode'),
-            weekendSettings: storage.getItem('app_weekend_settings'),
-            notifiedLevels: storage.getItem('app_notified_levels'),
-            exemptedDays: storage.getItem('app_exempted_days_v1'),
-            silenceMutes: storage.getItem('app_silence_mutes_v1'),
-            homeworkExamConfig: storage.getItem('app_homework_exam_config_v1'),
-            homeworkRecords: storage.getItem('app_homework_records_v1'),
-            examRecords: storage.getItem('app_exam_records_v1'),
-            repairedCheckins: storage.getItem('app_repaired_checkins_v1'),
-            weeklyPayroll: storage.getItem('app_weekly_payroll_v1'),
-            reportConfig: storage.getItem('app_report_config_v1'),
-            stars: storage.getItem('app_stars_v1'),
-            starHistory: storage.getItem('app_star_history_v1'),
-            petData: storage.getItem('app_pet_data_v1'),
-            ownedPets: storage.getItem('app_owned_pets_v1'),
-            activePet: storage.getItem('app_active_pet_v1'),
-            petCooldowns: storage.getItem('app_pet_cooldowns_v1'),
-            petStats: storage.getItem('app_pet_stats_v1'),
-            petSkillCooldowns: storage.getItem('app_pet_skill_cd_v1'),
-            petBuffs: storage.getItem('app_pet_buffs_v1'),
-            petAdventures: storage.getItem('app_pet_adventures_v1'),
-            petAdventureLog: storage.getItem('app_pet_adventure_log_v1'),
-            petAdventureStats: storage.getItem('app_pet_adventure_stats_v1'),
-            petSlots: storage.getItem('app_pet_slots_v1'),
-            petMusic: storage.getItem('app_pet_music_v1'),
-            petNotif: storage.getItem('app_pet_notif_v1'),
-            evilPenaltyLog: storage.getItem('app_evil_penalty_log_v1'),
-            evilAutoTrigger: storage.getItem('app_evil_auto_trigger'),
-            evilTriggerConfig: storage.getItem('app_evil_trigger_config_v1'),
-            gamificationConfig: storage.getItem('app_gamification_config_v1'),
-            escrowPenalties: storage.getItem('app_escrow_penalties_v1'),
-            firstBloodRecords: storage.getItem('app_first_blood_records_v1'),
-            pendingEvilPenalty: storage.getItem('app_pending_evil_penalty_v1'),
-            aiEnabled: storage.getItem('app_ai_enabled'),
-            deepseekApiKey: storage.getItem('app_deepseek_api_key'),
-            aiPetEnabled: storage.getItem('app_ai_pet_enabled'),
-            aiChatEnabled: storage.getItem('app_ai_chat_enabled'),
-            aiDailyLimit: storage.getItem('app_ai_daily_limit'),
-            aiDailyUsage: storage.getItem('app_ai_daily_usage'),
-            aiChatHistory: storage.getItem('app_ai_chat_history'),
-            aiReminderLog: storage.getItem('app_ai_reminder_log_v1'),
-            syncCode: storage.getItem('app_sync_code'),
-            syncLastTime: storage.getItem('app_sync_last_time'),
-            authorizedParents: storage.getItem('app_authorized_parents_v1'),
-            parentActions: storage.getItem('app_parent_actions_v1'),
-            deductionReceipts: storage.getItem('app_parent_deduction_receipts_v1'),
-            // 现实基准折算汇率与外汇物价设置
-            exchangeBaseCents: storage.getItem('app_exchange_base_cents'),
-            exchangeVolatility: storage.getItem('app_exchange_volatility'),
-            exchangeMinGold: storage.getItem('app_exchange_min_gold'),
-            exchangeMaxSingle: storage.getItem('app_exchange_max_single'),
-            exchangeMaxWeekly: storage.getItem('app_exchange_max_weekly'),
-            // 天工书阁与任务删除墓碑
-            readingShelved: storage.getItem('app_reading_shelved_v1'),
-            readingHistory: storage.getItem('app_reading_history_v1'),
-            deletedTasks: storage.getItem('app_deleted_tasks_v1'),
-            deletedProfiles: storage.getItem('app_deleted_profiles_v1'),
-            parentQrLanHost: storage.getItem('app_parent_qr_lan_host'),
-            // 全量快照兜底（包含各孩子累计兑换 app_exchange_total_* 及所有动态项）
-            _allSyncData: storage.getAllSyncData()
-        };
-
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `时空市集备份_${getLocalDateKey(0)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        storage.setItem('app_last_backup_date', new Date().toISOString());
-        showToast('success', '备份成功！全量数据已下载至本地文件，请妥善保存。');
+        try {
+            downloadBackup(createBackup(), `时空市集备份_${getLocalDateKey(0)}.json`);
+            storage.setItem('app_last_backup_date', new Date().toISOString());
+            showToast('success', '备份文件已生成，请妥善保存。');
+        } catch (error) { showToast('error', `备份未完成：${error.message}`); }
     };
-
-    const handleImport = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    const data = JSON.parse(event.target.result);
-
-                    if (!data.version) {
-                        showToast('warning', '无效的备份文件：缺少数据版本声明！');
-                        return;
-                    }
-
-                    const confirmed = confirm('⚠️ 警告：从备份恢复将覆盖当前浏览器中的所有修行数据！\n\n确认继续载入吗？');
-                    if (!confirmed) return;
-
-                    Object.keys(data).forEach(key => {
-                        if (key !== 'version' && key !== 'exportDate' && data[key]) {
-                            const storageKey =
-                                key === 'tasks' ? 'app_tasks_v2' :
-                                key === 'checkins' ? 'app_checkins_v2' :
-                                key === 'profiles' ? 'app_profiles_v1' :
-                                key === 'achievements' ? 'app_achievements_v1' :
-                                key === 'stats' ? 'app_stats_v1' :
-                                key === 'inventory' ? 'app_inventory_v1' :
-                                key === 'activeBuffs' ? 'app_active_buffs_v1' :
-                                key === 'redeemedCoupons' ? 'app_coupons_v1' :
-                                key === 'equippedGear' ? 'app_equipped_gear_v1' :
-                                key === 'milestones' ? 'app_milestones_v1' :
-                                key === 'globalMessages' ? 'app_global_messages_v2' :
-                                key === 'globalDates' ? 'app_global_dates' :
-                                key === 'wheelConfig' ? 'app_wheel_config' :
-                                key === 'wheelSettings' ? 'app_wheel_settings' :
-                                key === 'wheelHistory' ? 'app_wheel_history' :
-                                key === 'xpHistory' ? 'app_xp_history' :
-                                key === 'evilWheelConfig' ? 'app_evil_wheel_config' :
-                                key === 'randomEventHistory' ? 'app_random_event_history' :
-                                key === 'dailyRandomCounts' ? 'app_daily_random_counts' :
-                                key === 'historicalEventProgress' ? 'app_historical_event_progress_v1' :
-                                key === 'dailyEventTypeCounts' ? 'app_daily_event_type_counts_v1' :
-                                key === 'userCity' ? 'app_user_city_v1' :
-                                key === 'curriculumProgress' ? 'app_curriculum_progress_v1' :
-                                key === 'xpWheelConfig' ? 'app_xp_wheel_config' :
-                                key === 'settingsPassword' ? 'app_settings_password' :
-                                key === 'testMode' ? 'app_test_mode' :
-                                key === 'weekendSettings' ? 'app_weekend_settings' :
-                                key === 'notifiedLevels' ? 'app_notified_levels' :
-                                key === 'exemptedDays' ? 'app_exempted_days_v1' :
-                                key === 'silenceMutes' ? 'app_silence_mutes_v1' :
-                                key === 'homeworkExamConfig' ? 'app_homework_exam_config_v1' :
-                                key === 'homeworkRecords' ? 'app_homework_records_v1' :
-                                key === 'examRecords' ? 'app_exam_records_v1' :
-                                key === 'repairedCheckins' ? 'app_repaired_checkins_v1' :
-                                key === 'weeklyPayroll' ? 'app_weekly_payroll_v1' :
-                                key === 'reportConfig' ? 'app_report_config_v1' :
-                                key === 'stars' ? 'app_stars_v1' :
-                                key === 'starHistory' ? 'app_star_history_v1' :
-                                key === 'petData' ? 'app_pet_data_v1' :
-                                key === 'ownedPets' ? 'app_owned_pets_v1' :
-                                key === 'activePet' ? 'app_active_pet_v1' :
-                                key === 'petCooldowns' ? 'app_pet_cooldowns_v1' :
-                                key === 'petStats' ? 'app_pet_stats_v1' :
-                                key === 'petSkillCooldowns' ? 'app_pet_skill_cd_v1' :
-                                key === 'petBuffs' ? 'app_pet_buffs_v1' :
-                                key === 'petAdventures' ? 'app_pet_adventures_v1' :
-                                key === 'petAdventureLog' ? 'app_pet_adventure_log_v1' :
-                                key === 'petAdventureStats' ? 'app_pet_adventure_stats_v1' :
-                                key === 'petSlots' ? 'app_pet_slots_v1' :
-                                key === 'petMusic' ? 'app_pet_music_v1' :
-                                key === 'petNotif' ? 'app_pet_notif_v1' :
-                                key === 'evilPenaltyLog' ? 'app_evil_penalty_log_v1' :
-                                key === 'evilAutoTrigger' ? 'app_evil_auto_trigger' :
-                                key === 'evilTriggerConfig' ? 'app_evil_trigger_config_v1' :
-                                key === 'gamificationConfig' ? 'app_gamification_config_v1' :
-                                key === 'escrowPenalties' ? 'app_escrow_penalties_v1' :
-                                key === 'firstBloodRecords' ? 'app_first_blood_records_v1' :
-                                key === 'pendingEvilPenalty' ? 'app_pending_evil_penalty_v1' :
-                                key === 'aiEnabled' ? 'app_ai_enabled' :
-                                key === 'deepseekApiKey' ? 'app_deepseek_api_key' :
-                                key === 'aiPetEnabled' ? 'app_ai_pet_enabled' :
-                                key === 'aiChatEnabled' ? 'app_ai_chat_enabled' :
-                                key === 'aiDailyLimit' ? 'app_ai_daily_limit' :
-                                key === 'aiDailyUsage' ? 'app_ai_daily_usage' :
-                                key === 'aiChatHistory' ? 'app_ai_chat_history' :
-                                key === 'aiReminderLog' ? 'app_ai_reminder_log_v1' :
-                                key === 'syncCode' ? 'app_sync_code' :
-                                key === 'syncLastTime' ? 'app_sync_last_time' :
-                                key === 'authorizedParents' ? 'app_authorized_parents_v1' :
-                                key === 'parentActions' ? 'app_parent_actions_v1' :
-                                key === 'deductionReceipts' ? 'app_parent_deduction_receipts_v1' :
-                                key === 'exchangeBaseCents' ? 'app_exchange_base_cents' :
-                                key === 'exchangeVolatility' ? 'app_exchange_volatility' :
-                                key === 'exchangeMinGold' ? 'app_exchange_min_gold' :
-                                key === 'exchangeMaxSingle' ? 'app_exchange_max_single' :
-                                key === 'exchangeMaxWeekly' ? 'app_exchange_max_weekly' :
-                                key === 'readingShelved' ? 'app_reading_shelved_v1' :
-                                key === 'readingHistory' ? 'app_reading_history_v1' :
-                                key === 'deletedTasks' ? 'app_deleted_tasks_v1' :
-                                key === 'deletedProfiles' ? 'app_deleted_profiles_v1' :
-                                key === 'parentQrLanHost' ? 'app_parent_qr_lan_host' : null;
-
-                            if (storageKey) {
-                                storage.setItem(storageKey, data[key]);
-                                storage.markKeyVersion(storageKey);
-                            }
-                        }
-                    });
-
-                    // 恢复全量快照兜底（如各孩子累计兑换 app_exchange_total_* 及所有动态键）
-                    if (data._allSyncData && typeof data._allSyncData === 'object') {
-                        Object.entries(data._allSyncData).forEach(([k, v]) => {
-                            if (k && k.startsWith('app_') && v !== undefined && v !== null) {
-                                storage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
-                                storage.markKeyVersion(k);
-                            }
-                        });
-                    }
-
-                    // 恢复直接以 app_ 存储的原始键
-                    Object.keys(data).forEach(k => {
-                        if (k.startsWith('app_') && data[k] !== undefined && data[k] !== null) {
-                            storage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
-                            storage.markKeyVersion(k);
-                        }
-                    });
-
-                    showToast('success', '数据恢复成功！正在重新载入时空...');
-                    setTimeout(() => window.location.reload(), 1200);
-                } catch (err) {
-                    showToast('error', '文件解析失败！' + err.message, { duration: 5000 });
-                }
-            };
-            reader.readAsText(file);
-        };
-        input.click();
-    };
+    const handleImport = () => selectAndRestoreBackup(showToast);
+    const previousBackup = getPreRestoreBackup();
 
     const totalRecords = Object.keys(storage.getAllSyncData()).length;
     const lastBackup = storage.getItem('app_last_backup_date');
@@ -380,6 +146,10 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
                             </span>
                         </button>
                     </div>
+
+                    {previousBackup && <button className="w-full rounded-xl border border-amber-400/50 p-3 text-amber-200 text-sm" onClick={() => downloadBackup(previousBackup, `恢复前快照_${getLocalDateKey(0)}.json`)}>
+                        下载上次恢复前的数据快照
+                    </button>}
 
                     {/* 使用说明与守则 */}
                     <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 text-xs text-slate-400 space-y-1.5">
