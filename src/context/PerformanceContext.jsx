@@ -1,4 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { GRAPHICS_KEY, GRAPHICS_MODES, readGraphicsMode, resolveGraphicsMode, isMobileGraphicsDevice } from '../utils/graphicsQuality.js';
+import EnergyPreviewPanel from '../components/status/EnergyPreviewPanel.jsx';
 
 export const PerformanceContext = createContext({ 
     isLowPerf: false, 
@@ -6,30 +8,32 @@ export const PerformanceContext = createContext({
     perfMode: 'auto',
     setPerfMode: () => {},
     autoDetected: false,
+    isBalanced: false,
+    graphicsQuality: 'original',
+    previewBackground: 'current',
     signals: 0
 });
 
 // 性能模式 Provider — 读取自动检测结果并提供给整个组件树
 export const PerformanceProvider = ({ children }) => {
-    const [perfMode, setPerfModeState] = useState(() => {
-        try {
-            const saved = localStorage.getItem('low_perf_manual');
-            if (saved === 'true') return 'enabled';
-            if (saved === 'false') return 'disabled';
-            return 'auto';
-        } catch {
-            return 'auto';
-        }
-    });
+    const [preview] = useState(() => new URLSearchParams(window.location.search).get('energyPreview') === '1');
+    const [mobile] = useState(() => isMobileGraphicsDevice(navigator, q => window.matchMedia(q)));
+    const [previewBackground, setPreviewBackground] = useState('current');
+    const [perfMode, setPerfModeState] = useState(() => { try { return readGraphicsMode(localStorage); } catch { return 'auto'; } });
 
     const [autoDetected, setAutoDetected] = useState(() => (typeof window !== 'undefined' ? window.__lowPerfAuto : false) || false);
     const [signals, setSignals] = useState(() => (typeof window !== 'undefined' ? window.__lowPerfSignals : 0) || 0);
 
-    const isLowPerf = perfMode === 'enabled' ? true : (perfMode === 'disabled' ? false : autoDetected);
+    const graphicsQuality = resolveGraphicsMode(perfMode, mobile, autoDetected);
+    const isLowPerf = graphicsQuality === 'lightweight';
+    const isBalanced = graphicsQuality === 'balanced';
 
     const setPerfMode = (mode) => {
+        if (!GRAPHICS_MODES.includes(mode)) return;
         setPerfModeState(mode);
+        if (preview) return;
         try {
+            localStorage.setItem(GRAPHICS_KEY, mode);
             if (mode === 'enabled') localStorage.setItem('low_perf_manual', 'true');
             else if (mode === 'disabled') localStorage.setItem('low_perf_manual', 'false');
             else localStorage.removeItem('low_perf_manual');
@@ -51,8 +55,9 @@ export const PerformanceProvider = ({ children }) => {
                 }
             }
         };
-        const timer = setTimeout(check, 2500);
-        return () => clearTimeout(timer);
+        window.addEventListener('performance-detected', check);
+        check();
+        return () => window.removeEventListener('performance-detected', check);
     }, [autoDetected, signals]);
 
     // 同步 CSS class 与全局状态
@@ -61,13 +66,16 @@ export const PerformanceProvider = ({ children }) => {
             document.body.classList.toggle('low-perf-mode', isLowPerf);
         }
         if (typeof window !== 'undefined') {
+            window.__graphicsManaged = true;
             window.__lowPerf = isLowPerf;
         }
     }, [isLowPerf]);
 
     return (
-        <PerformanceContext.Provider value={{ isLowPerf, setIsLowPerf, perfMode, setPerfMode, autoDetected, signals }}>
+        <PerformanceContext.Provider value={{ isLowPerf, isBalanced, graphicsQuality, previewBackground, setIsLowPerf, perfMode, setPerfMode, autoDetected, signals }}>
             {children}
+            {preview && <EnergyPreviewPanel mode={perfMode} onMode={setPerfMode} quality={graphicsQuality}
+                mobile={mobile} background={previewBackground} onBackground={setPreviewBackground} />}
         </PerformanceContext.Provider>
     );
 };

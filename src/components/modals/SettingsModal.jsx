@@ -19,10 +19,11 @@ const CURRICULUM_CONFIG = ((typeof window !== 'undefined' && window.AchievementS
 
 // 低性能模式与视觉保真配置组件
 export const LowPerfToggle = () => {
-    const { isLowPerf, perfMode, setPerfMode, autoDetected } = useContext(PerformanceContext);
+    const { isLowPerf, perfMode, setPerfMode, autoDetected, graphicsQuality } = useContext(PerformanceContext);
 
     const MODES = [
-        { id: 'auto', label: '智能自适应', sub: autoDetected ? '推荐 · 已检测硬件并启用轻量优化' : '推荐 · 当前硬件流畅无需减负' },
+        { id: 'auto', label: '智能自适应', sub: autoDetected ? '检测到兼容性限制，使用轻量档' : '手机/平板优先均衡，桌面保持原画质' },
+        { id: 'balanced', label: '均衡画质', sub: '保留动态背景，降低背景渲染负担' },
         { id: 'enabled', label: '始终开启', sub: '老旧平板 / 省电首选 · 降低渲染开销' },
         { id: 'disabled', label: '满血特效', sub: '强制启用全部 WebGL 与完整粒子' }
     ];
@@ -30,7 +31,7 @@ export const LowPerfToggle = () => {
     return (
         <div className="space-y-3">
             {/* 模式分段选择器 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-amber-100/40 p-1.5 rounded-2xl border border-amber-200/60">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-amber-100/40 p-1.5 rounded-2xl border border-amber-200/60">
                 {MODES.map(m => {
                     const active = perfMode === m.id;
                     return (
@@ -68,7 +69,7 @@ export const LowPerfToggle = () => {
                                 ? 'bg-amber-100 text-amber-800 border border-amber-300' 
                                 : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                         }`}>
-                            {isLowPerf ? '⚡ 轻量保真模式生效中' : '✨ 满血完整特效渲染中'}
+                            {isLowPerf ? '⚡ 轻量保真模式生效中' : graphicsQuality === 'balanced' ? '🌿 均衡画质生效中' : '✨ 原画质生效中'}
                         </span>
                     </span>
                     {perfMode === 'auto' && (

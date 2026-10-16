@@ -1,9 +1,11 @@
 import { requestVisibleFrame as requestAnimationFrame, cancelVisibleFrame as cancelAnimationFrame, visibleAnimationNow } from '../../utils/visibleFrames.js';
+import { backgroundDpr, createFrameGate } from '../../utils/graphicsQuality.js';
 import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { PerformanceContext } from '../../context/PerformanceContext';
 
 // --- 新增：银河星空 Canvas 特效 ---
         const GalaxyEffect = ({ isActive = true, isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
             const animationRef = useRef(null);
 
@@ -30,7 +32,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
                 const initStars = () => {
                     stars = [];
-                    const divisor = isLowPerf ? 5500 : 1000;
+                    const divisor = isLowPerf ? 5500 : isBalanced ? 1500 : 1000;
                     const starCount = Math.max(30, Math.floor((width * height) / divisor));
                     for (let i = 0; i < starCount; i++) {
                         stars.push({
@@ -85,7 +87,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     window.removeEventListener('resize', handleResize);
                     cancelAnimationFrame(animationFrameId);
                 };
-            }, [isActive, isLowPerf]);
+            }, [isActive, isLowPerf, isBalanced]);
 
             return (
                 <div className="absolute inset-0 bg-galaxy-gradient transition-opacity duration-1000">
@@ -98,8 +100,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
 		// --- 新增：流星雨 CSS 特效组件 ---
         const MeteorShower = ({ isActive = true, isLowPerf = false }) => {
-            const starCount = isLowPerf ? 22 : 40;
-            const meteorCount = isLowPerf ? 3 : 6;
+            const { isBalanced = false } = useContext(PerformanceContext);
+            const starCount = isLowPerf ? 22 : isBalanced ? 28 : 40;
+            const meteorCount = isLowPerf ? 3 : isBalanced ? 4 : 6;
 
             // 生成静态的星星数据 (只生成一次)
             const stars = useMemo(() => Array.from({ length: starCount }).map((_, i) => ({
@@ -223,6 +226,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 			`;
 
         const AuroraWebGL = (props) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const { colorStops = ['#5227FF', '#7cff67', '#5227FF'], amplitude = 1.0, blend = 0.5, speed = 1.0, isLowPerf = false } = props;
             const propsRef = useRef({ colorStops, amplitude, blend, speed, isLowPerf });
             
@@ -298,7 +302,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     const width = ctn.offsetWidth || window.innerWidth;
                     const height = ctn.offsetHeight || window.innerHeight;
                     // 低性能模式下以 0.35 DPR 渲染，极光本身具有柔和漫射特性，降采样不损失美感却直接消减 85% GPU 填充率
-                    const dpr = isLowPerf ? 0.35 : Math.min(window.devicePixelRatio || 1, 2);
+                    const dpr = backgroundDpr(window.devicePixelRatio, isLowPerf, isBalanced, 0.35);
                     canvas.width = Math.max(1, Math.round(width * dpr));
                     canvas.height = Math.max(1, Math.round(height * dpr));
                     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -314,7 +318,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 };
 
                 let cachedColorsKey, cachedColors;
+                const admitFrame = createFrameGate(isBalanced ? 30 : 0);
                 const render = (t) => {
+                    if (!admitFrame(t)) { animateId = requestAnimationFrame(render); return; }
                     animateId = requestAnimationFrame(render);
                     if (isLowPerf && t - lastRenderTime < 33) {
                         return; // 低性能模式限制 30 FPS 渲染
@@ -354,7 +360,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     if (ctn.contains(canvas)) ctn.removeChild(canvas);
                     gl.getExtension('WEBGL_lose_context')?.loseContext();
                 };
-            }, [isLowPerf]);
+            }, [isLowPerf, isBalanced]);
 
             return <div ref={ctnDom} className="absolute inset-0 z-0 pointer-events-none" />;
         };
@@ -381,8 +387,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
 		// --- 新增：上元灯火·祈愿 CSS 特效组件 ---
         const LanternFestival = ({ isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             // 生成孔明灯数据（低性能模式下轻量化为 12 盏，确保老旧设备流畅运行）
-            const count = isLowPerf ? 12 : 35;
+            const count = isLowPerf ? 12 : isBalanced ? 24 : 35;
             const lanterns = useMemo(() => Array.from({ length: count }).map((_, i) => ({
                 id: i,
                 left: Math.random() * 100 + '%',
@@ -432,8 +439,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		
 		// --- 终极复刻版：萤火之森 (原生效果) ---
         const FireflyForest = ({ isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             // 生成萤火虫数据（低性能模式下精简为 16 只，保证灵动微光的同时节省 CPU）
-            const count = isLowPerf ? 16 : 50;
+            const count = isLowPerf ? 16 : isBalanced ? 34 : 50;
             const fireflies = useMemo(() => Array.from({ length: count }).map((_, i) => ({
                 id: i,
                 // 随机延迟，打散运动和闪烁节奏
@@ -488,8 +496,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		// --- 夫子庙前·银杏雨 CSS 特效组件 ---
         // --- 优化版：夫子庙前·银杏雨 CSS 特效组件 ---
         const GinkgoRain = ({ isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             // 生成银杏叶数据（低性能模式下精简为 16 片，保证飘落诗意的同时降低渲染负载）
-            const count = isLowPerf ? 16 : 50;
+            const count = isLowPerf ? 16 : isBalanced ? 34 : 50;
             const leaves = useMemo(() => Array.from({ length: count }).map((_, i) => ({
                 id: i,
                 left: Math.random() * 100 + '%',
@@ -549,6 +558,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		// --- 新增：传说·万象字阵 (The Matrix of Civilization) ---
         // --- 终极完美版：传说·万象字阵 (同步置换循环) ---
         const MatrixCivilization = ({ isActive = true, isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
             const animationRef = useRef(null);
 
@@ -572,7 +582,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 // --- 配置参数 ---
                 const CONFIG = {
                     font: isLowPerf ? '34px "OracleBone", sans-serif' : '30px "OracleBone", sans-serif',
-                    spacing: isLowPerf ? 72 : 45,        // 低性能模式扩大网格间距，减少 60% 字符渲染，兼顾壮丽感与效能
+                    spacing: isLowPerf ? 72 : isBalanced ? 56 : 45,        // 低性能模式扩大网格间距，减少 60% 字符渲染，兼顾壮丽感与效能
                     color: '#FFD700',   // 金色
                     pauseTime: 60,      // 静止时长 (帧数, 约1秒)
                     moveTime: 90,       // 运动时长 (帧数, 约1.5秒)
@@ -756,7 +766,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     window.removeEventListener('resize', handleResize);
                     cancelAnimationFrame(animationId);
                 };
-            }, [isActive, isLowPerf]);
+            }, [isActive, isLowPerf, isBalanced]);
 
             return (
                 <div className="absolute inset-0 bg-matrix-civilization animate-in fade-in duration-1000">
@@ -769,6 +779,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		
 		// --- 新增：终极视觉版：【秘境·甲骨流沙】 (Oracle Sands)(点金成石特效) ---
         const MatrixOracleSands = ({ isActive = true, isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
             const animationRef = useRef(null);
 
@@ -793,7 +804,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 const CONFIG = {
                     font: isLowPerf ? '34px "OracleBone", sans-serif' : '30px "OracleBone", sans-serif',
                     scale: 1,
-                    spacing: isLowPerf ? 68 : 40, // 低性能模式以更舒缓的间距排布字符，节约 65% 计算负载，1:1 保留点金成石互动
+                    spacing: isLowPerf ? 68 : isBalanced ? 50 : 40, // 低性能模式以更舒缓的间距排布字符，节约 65% 计算负载，1:1 保留点金成石互动
                     // 颜色配置
                     baseColor: '#8c7853',   // 初始颜色：生锈的青铜 (暗淡但可见)
                     activeColor: '#ffdd00', // 激活颜色：耀眼的赤金 (高亮)
@@ -949,7 +960,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     window.removeEventListener('touchmove', handleTouchMove);
                     if (animationId) cancelAnimationFrame(animationId);
                 };
-            }, [isActive, isLowPerf]);
+            }, [isActive, isLowPerf, isBalanced]);
 
             return (
                 <div className="absolute inset-0 bg-matrix-civilization animate-in fade-in duration-1000">
@@ -961,6 +972,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		
 		// --- 终极特效版：新春限定·火树银花 (直飞+螺旋尾+金粉特效) ---
         const LunarFireworks = ({ isActive = true, isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
             const animationRef = useRef(null);
 
@@ -1155,7 +1167,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
                         if (type === 0) {
                             // 形态 1：经典球形（密集、速度不均、带金粉拖尾）
-                            const count = isLowPerf ? 38 : 120; // 低性能模式适度减少爆炸粒子数，保持 1:1 绚丽造型
+                            const count = isLowPerf ? 38 : isBalanced ? 80 : 120; // 低性能模式适度减少爆炸粒子数，保持 1:1 绚丽造型
                             for (let i = 0; i < count; i++) {
                                 const angle = MyMath.random(0, 2 * Math.PI);
                                 const speed = Math.pow(Math.random(), 0.5) * 8.5; 
@@ -1166,7 +1178,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                             }
                         } else if (type === 1) {
                             // 形态 2：金色垂柳（重力大、寿命长、像瀑布一样坠落）
-                            const count = isLowPerf ? 28 : 90;
+                            const count = isLowPerf ? 28 : isBalanced ? 60 : 90;
                             for (let i = 0; i < count; i++) {
                                 const angle = MyMath.random(0, 2 * Math.PI);
                                 const speed = Math.pow(Math.random(), 0.5) * 5; // 初速度慢
@@ -1178,7 +1190,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                             }
                         } else if (type === 2) {
                             // 形态 3：双层带蕊牡丹（真实感极强的双色叠加，带有自然扰动）
-                            const outerCount = isLowPerf ? 28 : 90;
+                            const outerCount = isLowPerf ? 28 : isBalanced ? 60 : 90;
                             // 1. 外层花瓣（速度设定随机区间，打破绝对圆形的规整感）
                             for (let i = 0; i < outerCount; i++) {
                                 const angle = MyMath.random(0, 2 * Math.PI);
@@ -1191,7 +1203,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                             }
                             
                             // 2. 内层花蕊（致密、速度慢。如果外层是金色/白色，内蕊就用红色反衬，否则用金色）
-                            const innerCount = isLowPerf ? 14 : 40;
+                            const innerCount = isLowPerf ? 14 : isBalanced ? 28 : 40;
                             const innerColor = (color === COLOR.Gold || color === COLOR.White) ? COLOR.Red : COLOR.Gold;
                             for (let i = 0; i < innerCount; i++) {
                                 const angle = MyMath.random(0, 2 * Math.PI);
@@ -1228,7 +1240,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 }));
 
 				// 生成背景繁星
-                const bgStars = Array.from({ length: isLowPerf ? 45 : 150 }, () => ({
+                const bgStars = Array.from({ length: isLowPerf ? 45 : isBalanced ? 100 : 150 }, () => ({
                     xRatio: Math.random(), // 存储 0~1 的宽度比例
                     yRatio: Math.random() * 0.85, // 存储 0~0.85 的高度比例
                     size: Math.random() * 1.2 + 0.2,
@@ -1344,7 +1356,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     window.removeEventListener('resize', handleResize);
                     window.removeEventListener('pointerdown', handleInteraction);
                 };
-            }, [isActive, isLowPerf]);
+            }, [isActive, isLowPerf, isBalanced]);
 
             return (
                 <div 
@@ -1523,6 +1535,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 			`;
 
         const PrismaticBurstWebGL = (props) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const { 
                 intensity = 2, 
                 speed = 0.5, 
@@ -1645,7 +1658,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     const width = ctn.offsetWidth || window.innerWidth;
                     const height = ctn.offsetHeight || window.innerHeight;
                     // 低性能模式下以 0.35 DPR 渲染，消减 85% 填充率，依靠 GPU 双线性插值保持梦幻流光光感
-                    const dpr = isLowPerf ? 0.35 : Math.min(window.devicePixelRatio || 1, 2);
+                    const dpr = backgroundDpr(window.devicePixelRatio, isLowPerf, isBalanced, 0.35);
                     canvas.width = Math.max(1, Math.round(width * dpr));
                     canvas.height = Math.max(1, Math.round(height * dpr));
                     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1662,7 +1675,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 };
                 window.addEventListener('pointermove', onPointerMove);
 
+                const admitFrame = createFrameGate(isBalanced ? 30 : 0);
                 const render = (now) => {
+                    if (!admitFrame(now)) { animateId = requestAnimationFrame(render); return; }
                     if (isLowPerf && now - lastTime < 33) {
                         animateId = requestAnimationFrame(render);
                         return; // 低性能模式限制 30 FPS 刷新率
@@ -1718,7 +1733,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     if (ctn.contains(canvas)) ctn.removeChild(canvas);
                     gl.getExtension('WEBGL_lose_context')?.loseContext();
                 };
-            }, [isLowPerf]);
+            }, [isLowPerf, isBalanced]);
 
             return <div ref={ctnDom} className="absolute inset-0 z-0 pointer-events-none" />;
         };
@@ -1825,6 +1840,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 			`;
 
         const TimeWarpWebGL = ({ linesColor = '#392e4e', scanColor = '#00ffff', isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const ctnDom = useRef(null);
             const propsRef = useRef({ linesColor, scanColor });
 
@@ -1899,7 +1915,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     const width = ctn.offsetWidth || window.innerWidth;
                     const height = ctn.offsetHeight || window.innerHeight;
                     // 低性能模式下以 0.45 DPR 渲染，降低 80% 像素片元负荷，保持 1:1 时空网格跃迁质感
-                    const dpr = isLowPerf ? 0.45 : Math.min(window.devicePixelRatio || 1, 2);
+                    const dpr = backgroundDpr(window.devicePixelRatio, isLowPerf, isBalanced, 0.45);
                     canvas.width = Math.max(1, Math.round(width * dpr));
                     canvas.height = Math.max(1, Math.round(height * dpr));
                     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1916,7 +1932,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 window.addEventListener('pointermove', onPointerMove);
 
                 let cachedLinesColor, cachedScanColor, linesRgb, scanRgb;
+                const admitFrame = createFrameGate(isBalanced ? 30 : 0);
                 const render = (now) => {
+                    if (!admitFrame(now)) { animateId = requestAnimationFrame(render); return; }
                     if (isLowPerf && now - lastTime < 33) {
                         animateId = requestAnimationFrame(render);
                         return; // 低性能模式限制 30 FPS 刷新率
@@ -1954,7 +1972,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     if (ctn.contains(canvas)) ctn.removeChild(canvas);
                     gl.getExtension('WEBGL_lose_context')?.loseContext();
                 };
-            }, [isLowPerf]);
+            }, [isLowPerf, isBalanced]);
 
             return <div ref={ctnDom} className="absolute inset-0 z-0 pointer-events-none" />;
         };
@@ -2056,6 +2074,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 			`;
 
         const HyperspeedWebGL = ({ isLowPerf = false }) => {
+            const { isBalanced = false } = useContext(PerformanceContext);
             const ctnDom = useRef(null);
 
             useEffect(() => {
@@ -2113,7 +2132,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     const width = ctn.offsetWidth || window.innerWidth;
                     const height = ctn.offsetHeight || window.innerHeight;
                     // 低性能模式下以 0.45 DPR 渲染，降低 80% 像素片元负荷，1:1 保留极速空间跃迁光束
-                    const dpr = isLowPerf ? 0.45 : Math.min(window.devicePixelRatio || 1, 2);
+                    const dpr = backgroundDpr(window.devicePixelRatio, isLowPerf, isBalanced, 0.45);
                     canvas.width = Math.max(1, Math.round(width * dpr));
                     canvas.height = Math.max(1, Math.round(height * dpr));
                     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -2121,7 +2140,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 window.addEventListener('resize', resize);
                 resize();
 
+                const admitFrame = createFrameGate(isBalanced ? 30 : 0);
                 const render = (now) => {
+                    if (!admitFrame(now)) { animateId = requestAnimationFrame(render); return; }
                     if (isLowPerf && now - lastTime < 33) {
                         animateId = requestAnimationFrame(render);
                         return; // 低性能模式限制 30 FPS 刷新率
@@ -2147,7 +2168,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     if (ctn.contains(canvas)) ctn.removeChild(canvas);
                     gl.getExtension('WEBGL_lose_context')?.loseContext();
                 };
-            }, [isLowPerf]);
+            }, [isLowPerf, isBalanced]);
 
             return <div ref={ctnDom} className="absolute inset-0 z-0 pointer-events-none" />;
         };
@@ -2850,7 +2871,8 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         // 后续新增商品只需在这里添加 case 即可
         // 仅挂载选中的背景；页面隐藏时暂停装饰动画，保留画布与粒子状态。
         const AtmosphereLayer = ({ type }) => {
-            const { isLowPerf } = useContext(PerformanceContext);
+            const { isLowPerf, graphicsQuality = 'original', previewBackground = 'current' } = useContext(PerformanceContext);
+            type = previewBackground === 'current' ? type : previewBackground === 'none' ? null : previewBackground;
             const [hidden, setHidden] = useState(() => document.visibilityState === 'hidden');
             useEffect(() => {
                 const refresh = () => setHidden(document.visibilityState === 'hidden');
@@ -2859,7 +2881,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
             }, []);
             if (!type) return null;
             return (
-                <div className="atmosphere-layer" data-paused={hidden ? 'true' : undefined}>
+                <div className="atmosphere-layer" data-quality={graphicsQuality} data-background={type} data-paused={hidden ? 'true' : undefined}>
                     <style>{`.atmosphere-layer[data-paused="true"], .atmosphere-layer[data-paused="true"] *, .atmosphere-layer[data-paused="true"] *::before, .atmosphere-layer[data-paused="true"] *::after { animation-play-state: paused !important; }`}</style>
                     {type === 'bg_galaxy' && <div className="absolute inset-0"><GalaxyEffect isActive={true} isLowPerf={isLowPerf} /></div>}
                     {type === 'bg_meteor' && <div className="absolute inset-0"><MeteorShower isActive={true} isLowPerf={isLowPerf} /></div>}
