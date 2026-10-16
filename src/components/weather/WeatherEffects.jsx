@@ -77,9 +77,7 @@ export const getWeatherInfo = (dateObj) => {
 
 // --- [新增] 天气特效图层组件 ---
 export const WeatherEffects = ({ type }) => {
-    const { isLowPerf, optimizeDrawing = false } = useContext(PerformanceContext);
-    const particles = React.useMemo(() => Array.from({ length: 30 }, () => ({ x: Math.random(), y: Math.random(), speed: Math.random(), delay: Math.random() })), [type, isLowPerf]);
-    const random = (i, field) => optimizeDrawing ? particles[i][field] : Math.random();
+    const { isLowPerf } = useContext(PerformanceContext);
     if (type === 'sunny-effect') {
         return (
             <div className="weather-decoration absolute inset-0 overflow-hidden pointer-events-none">
@@ -98,10 +96,10 @@ export const WeatherEffects = ({ type }) => {
                 {[...Array(count)].map((_, i) => (
                     <div key={i} className="absolute bg-white/40 w-0.5 h-6 rounded-full animate-[rain_1s_linear_infinite]" 
                         style={{
-                            left: `${random(i, 'x') * 100}%`,
+                            left: `${Math.random() * 100}%`,
                             top: `-20px`,
-                            animationDuration: `${0.5 + random(i, 'speed') * 0.5}s`,
-                            animationDelay: `${random(i, 'delay')}s`
+                            animationDuration: `${0.5 + Math.random() * 0.5}s`,
+                            animationDelay: `${Math.random()}s`
                         }}>
                     </div>
                 ))}
@@ -115,10 +113,10 @@ export const WeatherEffects = ({ type }) => {
                 {[...Array(count)].map((_, i) => (
                     <div key={i} className="absolute bg-white/80 w-1.5 h-1.5 rounded-full animate-[snow_3s_linear_infinite]" 
                         style={{
-                            left: `${random(i, 'x') * 100}%`,
+                            left: `${Math.random() * 100}%`,
                             top: `-10px`,
-                            animationDuration: `${2 + random(i, 'speed') * 3}s`,
-                            animationDelay: `${random(i, 'delay') * 2}s`
+                            animationDuration: `${2 + Math.random() * 3}s`,
+                            animationDelay: `${Math.random() * 2}s`
                         }}>
                     </div>
                 ))}
@@ -139,9 +137,9 @@ export const WeatherEffects = ({ type }) => {
                  {[...Array(30)].map((_, i) => (
                     <div key={i} className="absolute bg-white w-0.5 h-0.5 rounded-full animate-pulse" 
                         style={{
-                            left: `${random(i, 'x') * 100}%`,
-                            top: `${random(i, 'y') * 100}%`,
-                            animationDelay: `${random(i, 'delay') * 2}s`
+                            left: `${Math.random() * 100}%`,
+                            top: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 2}s`
                         }}>
                     </div>
                 ))}

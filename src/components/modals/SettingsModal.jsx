@@ -17,85 +17,39 @@ import { HABIT_ICON_PRESETS } from '../habits/index';
 // 确保 AchievementSystem 兼容访问
 const CURRICULUM_CONFIG = ((typeof window !== 'undefined' && window.AchievementSystem) ? window.AchievementSystem.CURRICULUM_CONFIG : ((typeof AchievementSystem !== 'undefined') ? AchievementSystem.CURRICULUM_CONFIG : {})) || {};
 
-// 低性能模式与视觉保真配置组件
+// Existing performance settings entry now exposes the three energy tiers.
 export const LowPerfToggle = () => {
-    const { isLowPerf, perfMode, setPerfMode, autoDetected, graphicsQuality } = useContext(PerformanceContext);
-
-    const MODES = [
-        { id: 'auto', label: '智能自适应', sub: autoDetected ? '检测到兼容性限制，使用轻量档' : '手机/平板优先均衡，桌面保持原画质' },
-        { id: 'balanced', label: '均衡画质', sub: '保留动态背景，降低背景渲染负担' },
-        { id: 'enabled', label: '始终开启', sub: '老旧设备兼容档 · 实际耗电依设备而异' },
-        { id: 'disabled', label: '满血特效', sub: '强制启用全部 WebGL 与完整粒子' }
+    const { perfMode, setPerfMode, idleEnergy, setIdleEnergy } = useContext(PerformanceContext);
+    const modes = [
+        ['economy', '舒适省电', '静态主题背景与装饰，保留打卡和领奖反馈'],
+        ['balanced', '推荐均衡', '保留动态背景，优化万象字阵，兼顾视觉与能耗'],
+        ['full', '完整视觉', '完整特效，持续动态运行可能增加发热与耗电']
     ];
-
-    return (
-        <div className="space-y-3">
-            {/* 模式分段选择器 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-amber-100/40 p-1.5 rounded-2xl border border-amber-200/60">
-                {MODES.map(m => {
-                    const active = perfMode === m.id;
-                    return (
-                        <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setPerfMode(m.id)}
-                            className={`p-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                                active 
-                                    ? 'bg-white shadow-xs border border-amber-300 ring-2 ring-amber-400/30' 
-                                    : 'hover:bg-white/50 text-slate-600'
-                            }`}
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className={`text-xs font-bold ${active ? 'text-amber-950' : 'text-slate-700'}`}>
-                                    {m.label}
-                                </span>
-                                {active && <span className="w-2 h-2 rounded-full bg-amber-500" />}
-                            </div>
-                            <p className="text-[10px] text-slate-500 mt-1 leading-snug">
-                                {m.sub}
-                            </p>
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* 当前运行状态徽标与保真提示 */}
-            <div className="bg-white/80 rounded-xl p-3 border border-amber-200/80 text-xs text-slate-700 space-y-2">
-                <div className="flex items-center justify-between flex-wrap gap-1">
-                    <span className="font-bold flex items-center gap-1.5">
-                        <span>当前渲染状态：</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                            isLowPerf 
-                                ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                        }`}>
-                            {isLowPerf ? '⚡ 轻量保真模式生效中' : graphicsQuality === 'balanced' ? '🌿 均衡画质生效中' : '✨ 原画质生效中'}
-                        </span>
-                    </span>
-                    {perfMode === 'auto' && (
-                        <span className="text-[10px] text-amber-700 font-medium">
-                            (系统根据硬件智能决策)
-                        </span>
-                    )}
-                </div>
-
-                <div className="text-[11px] text-slate-500 space-y-1.5 pt-1.5 border-t border-slate-100 leading-relaxed">
-                    <p className="flex items-start gap-1">
-                        <span className="text-amber-500 shrink-0">🎨</span>
-                        <span><strong>色彩保真杜绝黑白：</strong>低性能模式已接入标准兼容色彩引擎，老旧平板不再丢失按钮色彩或变黑白。</span>
-                    </p>
-                    <p className="flex items-start gap-1">
-                        <span className="text-amber-500 shrink-0">🛡️</span>
-                        <span><strong>装备背景高对比防穿透：</strong>首页在装备银河、极光、万象字阵等深邃特效背景时，任务卡片自动强化高对比底色，保证文字、目标与按钮 100% 清晰可见。</span>
-                    </p>
-                    <p className="flex items-start gap-1">
-                        <span className="text-amber-500 shrink-0">🏮</span>
-                        <span><strong>诗意氛围自适应：</strong>孔明灯、萤火虫、银杏雨等氛围特效自动调优为轻量粒子，兼顾老旧设备丝滑帧率与视觉美感。</span>
-                    </p>
-                </div>
-            </div>
+    return <section aria-label="画面与能耗" className="space-y-3">
+        <h4 className="font-bold text-slate-800">画面与能耗</h4>
+        <div className="grid grid-cols-1 gap-2">
+            {modes.map(([id, label, description]) => <button type="button" key={id}
+                aria-pressed={perfMode === id} onClick={() => setPerfMode(id)}
+                className={`rounded-xl border p-3 text-left ${perfMode === id ? 'bg-amber-100 border-amber-400' : 'bg-white border-slate-200'}`}>
+                <span className="font-bold text-slate-800">{label}</span>
+                <p className="text-xs text-slate-600 mt-1">{description}</p>
+            </button>)}
         </div>
-    );
+        <label className="flex items-center gap-2 text-sm text-slate-800">
+            <input type="checkbox" checked={idleEnergy} disabled={perfMode === 'economy'}
+                onChange={e => setIdleEnergy(e.target.checked)} /> 空闲节能
+        </label>
+        <p className="text-xs text-slate-600">{perfMode === 'economy'
+            ? '本档装饰已保持静态。空闲节能偏好会保留，切回动态档后继续使用。'
+            : '20 秒无操作后暂停背景、天气及部分悬浮装饰，触摸或滚动即恢复。倒计时、同步和奖励反馈正常运行。'}</p>
+        <details className="rounded-xl border border-slate-200 p-3" open={perfMode === 'compatibility' ? true : undefined}>
+            <summary className="cursor-pointer text-sm text-slate-700">高级选项{perfMode === 'compatibility' ? ' · 旧设备兼容生效中' : ''}</summary>
+            <button type="button" aria-pressed={perfMode === 'compatibility'} onClick={() => setPerfMode('compatibility')}
+                className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm text-slate-800">旧设备兼容</button>
+            <p className="text-xs text-slate-600 mt-2">沿用旧轻量模式，适合存在显示或性能兼容问题的设备；不保证比其他档位更省电。选择后替代上面的档位。</p>
+        </details>
+        <p className="text-xs text-slate-500">仅保存在当前设备，不修改背景装备，不影响其他家庭设备。毛玻璃与文字清晰度保留。</p>
+    </section>;
 };
 
 // 统一标准风格开关组件 (iOS 质感双态胶囊开关)
@@ -2007,9 +1961,9 @@ const CopyIcon = (props) => (
                             {/* 低性能模式开关 */}
                             <section className="bg-amber-50/60 rounded-2xl border border-amber-200/80 p-5 space-y-3">
                                 <h4 className="font-bold text-amber-900 text-sm flex items-center gap-2">
-                                    <span>⚡</span> 极致流畅模式与视觉保真适配
+                                    <span>⚡</span> 画面效果与能耗设置
                                 </h4>
-                                <p className="text-xs text-amber-700/80">专为老旧平板、低配轻薄本及长续航场景优化。既保障老旧硬件不卡顿，又完整保留中国古典美学视觉效果与文字清晰度。</p>
+                                <p className="text-xs text-amber-700/80">按使用偏好选择动态效果，当前设备独立保存。实际发热与耗电会因背景和使用方式而异。</p>
                                 <div className="pt-1">
                                     <LowPerfToggle />
                                 </div>

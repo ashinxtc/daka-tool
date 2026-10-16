@@ -1328,97 +1328,21 @@
     <script src="/pets.js"></script>
     <script src="/pet-adventures.js"></script>
 
-    <!-- 低性能设备自动检测（在 React 渲染前执行） -->
-    <script>
+    <!-- Match the saved tier before React mounts; no GPU probing or FPS benchmark. -->
+    <script id="graphics-bootstrap">
         (function() {
-            // 自动检测信号
-            var signals = 0;
-            var cores = navigator.hardwareConcurrency || 4;
-            if (cores <= 2) {
-                signals += 2; // 双核或单核（老旧电脑/入门平板）直接判为低配
-            } else if (cores <= 4) {
-                signals += 1; // 4核（老旧双核超线程或低端4核）计1个信号
-            }
-
-            var mem = navigator.deviceMemory;
-            if (mem && mem <= 4) signals++;
-
+            var compatible = false;
             try {
-                var canvas = document.createElement('canvas');
-                var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                if (gl) {
-                    var renderer = '';
-                    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (dbg) {
-                        renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '';
-                    }
-                    if (!renderer) {
-                        renderer = gl.getParameter(gl.RENDERER) || '';
-                    }
-                    // 检测弱显卡/集成显卡/老旧架构：包括 Intel HD/UHD/Iris/GMA 系列、老旧 AMD/Radeon、Adreno 3xx/4xx/5xx/61x、Mali-400/Txxx/G5x、PowerVR、软解等
-                    var weakGPU = /Intel.*(HD|UHD|Iris|GMA)|Radeon\s*(HD|R[579]|5[234]0|Vega\s*[368])|Adreno\s*(3|4|5|61)|Mali-(4|T|G[35][012])|PowerVR|llvmpipe|Software/i.test(renderer);
-                    if (weakGPU) signals++;
-                    var ext = gl.getExtension('WEBGL_lose_context');
-                    if (ext) ext.loseContext();
-                }
-            } catch(e) {}
-
-            var manualOverride = null;
-            try {
-                manualOverride = localStorage.getItem('low_perf_manual');
-                var graphicsMode = localStorage.getItem('device_graphics_quality_v1');
-                if (graphicsMode === 'enabled') manualOverride = 'true';
-                else if (graphicsMode === 'disabled' || graphicsMode === 'balanced') manualOverride = 'false';
-                else if (graphicsMode === 'auto') manualOverride = null;
+                var mode = localStorage.getItem('device_graphics_quality_v1');
+                var known = ['auto', 'balanced', 'disabled', 'enabled', 'economy', 'full', 'compatibility'];
+                compatible = known.indexOf(mode) >= 0
+                    ? mode === 'enabled' || mode === 'compatibility'
+                    : localStorage.getItem('low_perf_manual') === 'true';
             } catch (e) {}
-            var fpsDone = false;
-            var fpsLow = false;
-            var frameCount = 0;
-            var startTime = performance.now();
-
-            function applyResult() {
-                if (fpsLow) signals++;
-                var autoPerf = signals >= 2;
-                window.__lowPerfAuto = autoPerf;
-                window.__lowPerfSignals = signals;
-                var effective = manualOverride === 'true' ? true : (manualOverride === 'false' ? false : autoPerf);
-                // React owns the effective tier after mounting; detection only reports hardware.
-                if (!window.__graphicsManaged) {
-                    window.__lowPerf = effective;
-                    document.body.classList.toggle('low-perf-mode', effective);
-                }
-                window.dispatchEvent(new Event('performance-detected'));
-            }
-
-            // 立即基于核心硬件做首屏快速判定，消除 2~3 秒感知延迟
-            var initialAuto = signals >= 2;
-            window.__lowPerfAuto = initialAuto;
-            window.__lowPerfSignals = signals;
-            var initialEffective = manualOverride === 'true' ? true : (manualOverride === 'false' ? false : initialAuto);
-            window.__lowPerf = initialEffective;
-            document.body.classList.toggle('low-perf-mode', initialEffective);
-
-            function countFrame() {
-                if (fpsDone) return;
-                frameCount++;
-                var elapsed = performance.now() - startTime;
-                if (elapsed < 2000) {
-                    requestAnimationFrame(countFrame);
-                } else {
-                    var fps = frameCount / (elapsed / 1000);
-                    fpsLow = fps < 28;
-                    fpsDone = true;
-                    applyResult();
-                }
-            }
-            requestAnimationFrame(countFrame);
-
-            setTimeout(function() {
-                if (!fpsDone) {
-                    fpsDone = true;
-                    applyResult();
-                }
-            }, 3000);
+            window.__lowPerfAuto = false;
+            window.__lowPerfSignals = 0;
+            window.__lowPerf = compatible;
+            document.body.classList.toggle('low-perf-mode', compatible);
         })();
     </script>
 

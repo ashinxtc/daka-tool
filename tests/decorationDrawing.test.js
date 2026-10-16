@@ -1,14 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createFixedStepper, matrixPhase, createGlyphCache } from '../src/utils/decorationDrawing.js';
-test('30Hz drawing preserves 60Hz simulation steps and bounds long stalls', () => {
-    for (const hz of [30, 60, 120]) {
-        const step = createFixedStepper(); let count = 0;
-        for (let i = 0; i < hz * 2; i++) count += step(1000 / hz);
-        assert.equal(count, 120);
-        assert.ok(step(100000) <= 6);
-    }
-});
+import { matrixPhase, createGlyphCache } from '../src/utils/decorationDrawing.js';
 test('matrix pause and movement retain their 1s/1.5s wall-time phases', () => {
     assert.deepEqual(matrixPhase(0), { cycle: 0, moving: false, progress: 0, wait: 1000 });
     assert.equal(matrixPhase(999).moving, false);

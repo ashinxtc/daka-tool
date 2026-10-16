@@ -1,13 +1,4 @@
-// Visual simulation only. Never use this timeline for rewards, timers or sync.
-export function createFixedStepper(hz = 60) {
-    let remainder = 0;
-    return elapsed => {
-        remainder += Math.min(100, Math.max(0, elapsed));
-        const steps = Math.floor((remainder + 0.001) / (1000 / hz));
-        remainder -= steps * (1000 / hz);
-        return steps;
-    };
-}
+// Decoration only: never use this timeline for business deadlines.
 export function matrixPhase(elapsed, pause = 1000, move = 1500) {
     const cycle = Math.floor(elapsed / (pause + move));
     const local = elapsed % (pause + move);
