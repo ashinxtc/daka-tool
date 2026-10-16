@@ -1363,7 +1363,14 @@
                 }
             } catch(e) {}
 
-            var manualOverride = localStorage.getItem('low_perf_manual');
+            var manualOverride = null;
+            try {
+                manualOverride = localStorage.getItem('low_perf_manual');
+                var graphicsMode = localStorage.getItem('device_graphics_quality_v1');
+                if (graphicsMode === 'enabled') manualOverride = 'true';
+                else if (graphicsMode === 'disabled' || graphicsMode === 'balanced') manualOverride = 'false';
+                else if (graphicsMode === 'auto') manualOverride = null;
+            } catch (e) {}
             var fpsDone = false;
             var fpsLow = false;
             var frameCount = 0;
@@ -1375,8 +1382,12 @@
                 window.__lowPerfAuto = autoPerf;
                 window.__lowPerfSignals = signals;
                 var effective = manualOverride === 'true' ? true : (manualOverride === 'false' ? false : autoPerf);
-                window.__lowPerf = effective;
-                document.body.classList.toggle('low-perf-mode', effective);
+                // React owns the effective tier after mounting; detection only reports hardware.
+                if (!window.__graphicsManaged) {
+                    window.__lowPerf = effective;
+                    document.body.classList.toggle('low-perf-mode', effective);
+                }
+                window.dispatchEvent(new Event('performance-detected'));
             }
 
             // 立即基于核心硬件做首屏快速判定，消除 2~3 秒感知延迟
@@ -1388,6 +1399,7 @@
             document.body.classList.toggle('low-perf-mode', initialEffective);
 
             function countFrame() {
+                if (fpsDone) return;
                 frameCount++;
                 var elapsed = performance.now() - startTime;
                 if (elapsed < 2000) {
