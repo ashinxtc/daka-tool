@@ -1,3 +1,4 @@
+import { applyParentDeduction, mergeDeductionReceipts, nextDeductionNotice } from './utils/parentDeductions.js';
 import { SHOP_ITEMS, checkItemRestriction } from './data/shopItems';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -4727,6 +4728,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_owned_pets_v1': (l, c) => mergeChildArrays(l, c),
                 // 甲骨传书：顶层数组，按 id 并集，时间倒序
                 'app_global_messages_v2': (l, c) => mergeTopLevelArray(l, c, (a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
+                'app_parent_deduction_receipts_v1': (l, c) => {
+                    const merged = mergeDeductionReceipts(l, c);
+                    return { merged, localChanged: JSON.stringify(merged) !== JSON.stringify(l), cloudChanged: JSON.stringify(merged) !== JSON.stringify(c) };
+                },
                 // 家长指令队列：顶层数组，按 id 并集，claimed 优先
                 'app_parent_actions_v1': (l, c) => {
                     if (!Array.isArray(l) || !Array.isArray(c)) return null;
@@ -8204,7 +8209,17 @@ ${context}
 
             // --- 监听并执行来自家长手机端派发的互动指令 (发红包、扣款、额外转盘、邪恶转盘) ---
             const [showParentGiftModal, setShowParentGiftModal] = useState(false);
-            const [parentDeductionNotice, setParentDeductionNotice] = useState(null);
+            const [deductionReceipts, setDeductionReceipts] = useStickyState({}, 'app_parent_deduction_receipts_v1');
+            const parentDeductionNotice = nextDeductionNotice(deductionReceipts, activeChild);
+            const acknowledgeDeduction = () => {
+                if (!parentDeductionNotice) return;
+                const next = { ...deductionReceipts, [parentDeductionNotice.id]: { ...parentDeductionNotice, acknowledged: true } };
+                storage.setItem('app_parent_deduction_receipts_v1', JSON.stringify(next));
+                markKeyVersion('app_parent_deduction_receipts_v1');
+                if (window._pendingWrites) window._pendingWrites.app_parent_deduction_receipts_v1 = next;
+                setDeductionReceipts(next);
+                triggerSyncUpload();
+            };
             const processedParentActionsRef = React.useRef(new Set());
             const notifiedParentActionIdsRef = React.useRef(new Set());
 
@@ -8237,9 +8252,11 @@ ${context}
                 const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
                 const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
                 let hasUpdates = false;
+                let deductionHistory = { ...wheelHistory };
+                let nextReceipts = { ...deductionReceipts };
 
-                const updatedActions = parentActions.map(action => {
-                    if (action.status !== 'pending' || (action.targetChild && action.targetChild !== activeChild)) {
+                const updatedActions = [...parentActions].sort((a, b) => (a?.timestamp || 0) - (b?.timestamp || 0)).map(action => {
+                    if (!action || action.status !== 'pending' || (action.targetChild && action.targetChild !== activeChild)) {
                         return action;
                     }
 
@@ -8278,34 +8295,24 @@ ${context}
 
                     // 2. 家长扣款指令：立即扣减金元宝，记入历史明细，并弹出通知单告知孩子
                     if (action.type === 'deduction' || action.type === 'parent_deduct') {
-                        if (processedParentActionsRef.current.has(action.id)) return action;
-                        processedParentActionsRef.current.add(action.id);
+                        const result = applyParentDeduction({ action, child: activeChild,
+                            history: deductionHistory, receipts: nextReceipts,
+                            balance: calculateTotalGold(checkins, deductionHistory, activeChild, activeBuffs, tasks) });
+                        if (!result) return action;
+                        deductionHistory = result.history;
+                        nextReceipts = result.receipts;
                         hasUpdates = true;
-                        const operator = action.operatorRole || '家长';
-                        const amount = Math.abs(parseInt(action.amount, 10)) || 0;
-                        const reason = action.reason || '家庭账目支出扣除';
-                        const target = action.targetChild || activeChild;
-
-                        if (amount > 0) {
-                            const reasonPart = reason ? `__${encodeURIComponent(reason)}` : '';
-                            const historyKey = `${target}-PARENT_DEDUCT-${operator}_${action.id || 'act'}${reasonPart}-${action.timestamp || Date.now()}`;
-                            setWheelHistory(prev => ({
-                                ...prev,
-                                [historyKey]: -amount
-                            }));
-                            updateStats(target, 'gold_spend', amount, { source: 'parent_deduct', dateKey: getLocalDateKey(0) });
+                        if (result.newlyApplied) {
+                            // Persist the counter alongside the ledger rather than waiting for the sticky-state debounce.
+                            const currentStats = window._pendingWrites?.app_stats_v1 || JSON.parse(storage.getItem('app_stats_v1') || '{}');
+                            const childStats = currentStats[activeChild] || {};
+                            const nextStats = { ...currentStats, [activeChild]: { ...childStats,
+                                total_spent: (childStats.total_spent || 0) + result.receipt.amount } };
+                            storage.setItem('app_stats_v1', JSON.stringify(nextStats));
+                            markKeyVersion('app_stats_v1');
+                            if (window._pendingWrites) window._pendingWrites.app_stats_v1 = nextStats;
+                            setStats(nextStats);
                         }
-
-                        // 设置扣款通知弹窗展示给孩子
-                        setParentDeductionNotice({
-                            id: action.id,
-                            operatorRole: operator,
-                            amount: amount,
-                            reason: reason,
-                            timestamp: action.timestamp || Date.now()
-                        });
-
-                        showToast('warning', `📉【${operator}】下达了扣款通知：扣除 ${amount} 金元宝（${reason}）`, { duration: 6000 });
 
                         return { ...action, status: 'claimed', processedAt: Date.now() };
                     }
@@ -8324,6 +8331,17 @@ ${context}
                 });
 
                 if (hasUpdates) {
+                    // Persist the replay guard and ledger before claiming commands or uploading.
+                    storage.setItem('app_parent_deduction_receipts_v1', JSON.stringify(nextReceipts));
+                    storage.setItem('app_wheel_history', JSON.stringify(deductionHistory));
+                    markKeyVersion('app_parent_deduction_receipts_v1');
+                    markKeyVersion('app_wheel_history');
+                    if (window._pendingWrites) {
+                        window._pendingWrites.app_parent_deduction_receipts_v1 = nextReceipts;
+                        window._pendingWrites.app_wheel_history = deductionHistory;
+                    }
+                    setDeductionReceipts(nextReceipts);
+                    setWheelHistory(deductionHistory);
                     setParentActions(updatedActions);
                     if (typeof window.triggerSyncUpload === 'function') {
                         window.triggerSyncUpload();
@@ -10398,9 +10416,9 @@ ${context}
 
 				  <ParentDeductionModal
 					  show={!!parentDeductionNotice}
-					  onClose={() => setParentDeductionNotice(null)}
+					  onClose={acknowledgeDeduction}
 					  notice={parentDeductionNotice}
-					  currentGold={totalGold}
+					  currentGold={parentDeductionNotice?.balanceAfter ?? totalGold}
 				  />
 
                   {editingEntry && <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} />}

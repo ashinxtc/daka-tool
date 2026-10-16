@@ -74,7 +74,7 @@ export const ParentDeductionModal = ({
 
                         {/* 结余提示 */}
                         <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800/60">
-                            <span>扣除后当前结余：</span>
+                            <span>本笔扣款后结余：</span>
                             <span className="font-bold text-amber-400">{currentGold} 💰</span>
                         </div>
                     </div>
