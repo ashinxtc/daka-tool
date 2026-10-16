@@ -1,3 +1,4 @@
+import { SilenceBanner } from './components/status/SilenceBanner.jsx';
 import { RECEIPTS_KEY, ESCROWS_KEY, applyDeductions, pendingNotices, mergeReceipts, mergeEscrows, escrowRecords, escrowSummary, freezeEscrow, settleEscrows, projectAccounting, reconcileDeductionStats, semanticResult } from './utils/accounting.js';
 import { SHOP_ITEMS, checkItemRestriction } from './data/shopItems';
 import React from 'react';
@@ -1218,26 +1219,6 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [homeworkRecords, setHomeworkRecords] = useStickyState({}, 'app_homework_records_v1');
             const [examRecords, setExamRecords] = useStickyState({}, 'app_exam_records_v1');
             const [repairedCheckins, setRepairedCheckins] = useStickyState({}, 'app_repaired_checkins_v1');
-            const [silenceNow, setSilenceNow] = useState(() => Date.now());
-
-            useEffect(() => {
-                const t = setInterval(() => {
-                    const now = Date.now();
-                    setSilenceNow(now);
-                    setActiveSilenceMutes(prev => {
-                        if (!prev || Object.keys(prev).length === 0) return prev; // 无数据时跳过
-                        const next = {};
-                        let changed = false;
-                        Object.entries(prev).forEach(([name, end]) => {
-                            if (end > now) { next[name] = end; } else { changed = true; }
-                        });
-                        // 只在有条目过期时才 setState，避免每秒无意义重渲染
-                        return changed ? (Object.keys(next).length ? next : {}) : prev;
-                    });
-                }, 2000); // 2 秒间隔：精度足够，减少一半重渲染
-                return () => clearInterval(t);
-            }, []);
-
             // --- Effect: 每日首次使用时静默回传使用数据（仅当启用且已配置 Formspree 地址时）---
             useEffect(() => {
                 if (!reportConfig.enabled || !(reportConfig.formspreeUrl || '').trim()) return;
@@ -10619,29 +10600,7 @@ ${context}
                       }}
                   />
                   {/* 禁言中长条：固定在 header 下方、不随滚动、不阻挡操作 */}
-                  {(() => {
-                      const entries = Object.entries(activeSilenceMutes || {}).filter(([, end]) => end > silenceNow);
-                      if (entries.length === 0) return null;
-                      const endTime = Math.max(...entries.map(([, e]) => e));
-                      const remain = Math.max(0, Math.ceil((endTime - silenceNow) / 1000));
-                      const min = Math.floor(remain / 60);
-                      const sec = remain % 60;
-                      const names = entries.map(([n]) => n).join('、');
-                      return (
-                          <div className="fixed left-0 right-0 top-[11rem] z-[75] pointer-events-none px-4 flex justify-center" aria-live="polite">
-                              <div className="w-full max-w-2xl rounded-2xl shadow-2xl border border-white/20 overflow-hidden bg-gradient-to-r from-slate-800 via-violet-900/95 to-slate-800 backdrop-blur-md">
-                                  <div className="px-6 py-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-center">
-                                      <span className="text-white/90 text-sm font-medium uppercase tracking-widest">禁言中🤫</span>
-                                      <span className="text-white font-bold text-lg">{names}</span>
-                                      <span className="text-white/70 text-sm">剩余</span>
-                                      <span className="text-white font-mono font-black text-2xl tabular-nums tracking-tight">
-                                          {String(min).padStart(2, '0')}:{String(sec).padStart(2, '0')}
-                                      </span>
-                                  </div>
-                              </div>
-                          </div>
-                      );
-                  })()}
+                  <SilenceBanner mutes={activeSilenceMutes} setMutes={setActiveSilenceMutes} />
 				  {/* 作业与考试成绩登记弹窗（独立） */}
                   <HomeworkExamRecordModal show={showHomeworkExamModal} onClose={() => setShowHomeworkExamModal(false)} theme={theme} activeChild={activeChild} homeworkExamConfig={homeworkExamConfig} homeworkRecords={homeworkRecords} examRecords={examRecords} setHomeworkRecords={setHomeworkRecords} setExamRecords={setExamRecords} setWheelHistory={setWheelHistory} pushWecomGrade={pushWecomGrade} updateStats={updateStats} triggerSyncUpload={triggerSyncUpload} />
 				  {/* 学习数据中心弹窗 */}

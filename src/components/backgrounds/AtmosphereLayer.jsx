@@ -1,3 +1,4 @@
+import { requestVisibleFrame as requestAnimationFrame, cancelVisibleFrame as cancelAnimationFrame, visibleAnimationNow } from '../../utils/visibleFrames.js';
 import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { PerformanceContext } from '../../context/PerformanceContext';
 
@@ -312,6 +313,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     return [(num >> 16 & 255) / 255, (num >> 8 & 255) / 255, (num & 255) / 255];
                 };
 
+                let cachedColorsKey, cachedColors;
                 const render = (t) => {
                     animateId = requestAnimationFrame(render);
                     if (isLowPerf && t - lastRenderTime < 33) {
@@ -334,8 +336,12 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     gl.uniform2f(uResolutionLoc, canvas.width, canvas.height);
 
                     // 将颜色转为 9个浮点数的一维数组并强制传入，避开 OGL 源码内部解析 Bug
-                    const flatColors = colorStops.map(hexToRgb).reduce((acc, val) => acc.concat(val), []);
-                    gl.uniform3fv(uColorStopsLoc, new Float32Array(flatColors));
+                    const colorsKey = colorStops.join('|');
+                    if (colorsKey !== cachedColorsKey) {
+                        cachedColorsKey = colorsKey;
+                        cachedColors = new Float32Array(colorStops.flatMap(hexToRgb));
+                    }
+                    gl.uniform3fv(uColorStopsLoc, cachedColors);
 
                     gl.drawArrays(gl.TRIANGLES, 0, 3);
                 };
@@ -1630,7 +1636,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 };
 
                 let animateId;
-                let lastTime = performance.now();
+                let lastTime = visibleAnimationNow();
                 let accumTime = 0;
                 const mouseSmooth = [0.5, 0.5];
                 const mouseTarget = [0.5, 0.5];
@@ -1884,7 +1890,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 };
 
                 let animateId;
-                let lastTime = performance.now();
+                let lastTime = visibleAnimationNow();
                 let accumTime = 0;
                 const mouseSmooth = [0.5, 0.5];
                 const mouseTarget = [0.5, 0.5];
@@ -1909,6 +1915,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 };
                 window.addEventListener('pointermove', onPointerMove);
 
+                let cachedLinesColor, cachedScanColor, linesRgb, scanRgb;
                 const render = (now) => {
                     if (isLowPerf && now - lastTime < 33) {
                         animateId = requestAnimationFrame(render);
@@ -1929,8 +1936,11 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     gl.uniform1f(locs.iTime, accumTime);
                     gl.uniform2f(locs.uMouse, mouseSmooth[0], mouseSmooth[1]);
                     
-                    gl.uniform3fv(locs.uLinesColor, hexToRgb01(propsRef.current.linesColor));
-                    gl.uniform3fv(locs.uScanColor, hexToRgb01(propsRef.current.scanColor));
+                    const { linesColor, scanColor } = propsRef.current;
+                    if (cachedLinesColor !== linesColor) { cachedLinesColor = linesColor; linesRgb = hexToRgb01(linesColor); }
+                    if (cachedScanColor !== scanColor) { cachedScanColor = scanColor; scanRgb = hexToRgb01(scanColor); }
+                    gl.uniform3fv(locs.uLinesColor, linesRgb);
+                    gl.uniform3fv(locs.uScanColor, scanRgb);
 
                     gl.drawArrays(gl.TRIANGLES, 0, 3);
                     animateId = requestAnimationFrame(render);
@@ -2096,7 +2106,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 gl.vertexAttribPointer(locs.position, 2, gl.FLOAT, false, 0, 0);
 
                 let animateId;
-                let lastTime = performance.now();
+                let lastTime = visibleAnimationNow();
                 let accumTime = 0;
 
                 const resize = () => {
@@ -2838,12 +2848,19 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
         // --- 新增：通用气氛背景层管理器 ---
         // 后续新增商品只需在这里添加 case 即可
-        // 优化：所有特效组件始终挂载，通过CSS控制显示/隐藏，避免切换用户时重新创建canvas导致的卡顿
+        // 仅挂载选中的背景；页面隐藏时暂停装饰动画，保留画布与粒子状态。
         const AtmosphereLayer = ({ type }) => {
             const { isLowPerf } = useContext(PerformanceContext);
+            const [hidden, setHidden] = useState(() => document.visibilityState === 'hidden');
+            useEffect(() => {
+                const refresh = () => setHidden(document.visibilityState === 'hidden');
+                document.addEventListener('visibilitychange', refresh);
+                return () => document.removeEventListener('visibilitychange', refresh);
+            }, []);
             if (!type) return null;
             return (
-                <div className="atmosphere-layer">
+                <div className="atmosphere-layer" data-paused={hidden ? 'true' : undefined}>
+                    <style>{`.atmosphere-layer[data-paused="true"], .atmosphere-layer[data-paused="true"] *, .atmosphere-layer[data-paused="true"] *::before, .atmosphere-layer[data-paused="true"] *::after { animation-play-state: paused !important; }`}</style>
                     {type === 'bg_galaxy' && <div className="absolute inset-0"><GalaxyEffect isActive={true} isLowPerf={isLowPerf} /></div>}
                     {type === 'bg_meteor' && <div className="absolute inset-0"><MeteorShower isActive={true} isLowPerf={isLowPerf} /></div>}
                     {type === 'bg_aurora' && <div className="absolute inset-0"><AuroraBorealis isActive={true} isLowPerf={isLowPerf} /></div>}
