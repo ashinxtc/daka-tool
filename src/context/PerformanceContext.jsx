@@ -1,81 +1,41 @@
 import React, { createContext, useState, useEffect } from 'react';
-import { GRAPHICS_KEY, GRAPHICS_MODES, readGraphicsMode, resolveGraphicsMode, isMobileGraphicsDevice } from '../utils/graphicsQuality.js';
-import EnergyPreviewPanel from '../components/status/EnergyPreviewPanel.jsx';
+import { GRAPHICS_KEY, IDLE_KEY, normalizeGraphicsMode, readGraphicsMode, readIdleEnergy, resolveGraphicsMode } from '../utils/graphicsQuality.js';
+import DecorationEnergy from '../components/status/DecorationEnergy.jsx';
 
-export const PerformanceContext = createContext({ 
-    isLowPerf: false, 
-    setIsLowPerf: () => {},
-    perfMode: 'auto',
-    setPerfMode: () => {},
-    autoDetected: false,
-    isBalanced: false,
-    graphicsQuality: 'original',
-    previewBackground: 'current',
-    signals: 0
+export const PerformanceContext = createContext({
+    isLowPerf: false, isBalanced: true, graphicsQuality: 'balanced',
+    perfMode: 'balanced', setPerfMode: () => {}, setIsLowPerf: () => {},
+    staticDecorations: false, optimizeDrawing: false,
+    idleEnergy: true, setIdleEnergy: () => {}, autoDetected: false, signals: 0
 });
-
-// 性能模式 Provider — 读取自动检测结果并提供给整个组件树
 export const PerformanceProvider = ({ children }) => {
-    const [preview] = useState(() => new URLSearchParams(window.location.search).get('energyPreview') === '1');
-    const [mobile] = useState(() => isMobileGraphicsDevice(navigator, q => window.matchMedia(q)));
-    const [previewBackground, setPreviewBackground] = useState('current');
-    const [perfMode, setPerfModeState] = useState(() => { try { return readGraphicsMode(localStorage); } catch { return 'auto'; } });
-
-    const [autoDetected, setAutoDetected] = useState(() => (typeof window !== 'undefined' ? window.__lowPerfAuto : false) || false);
-    const [signals, setSignals] = useState(() => (typeof window !== 'undefined' ? window.__lowPerfSignals : 0) || 0);
-
-    const graphicsQuality = resolveGraphicsMode(perfMode, mobile, autoDetected);
+    const [perfMode, setMode] = useState(() => { try { return readGraphicsMode(localStorage); } catch { return 'balanced'; } });
+    const [idleEnergy, setIdle] = useState(() => { try { return readIdleEnergy(localStorage); } catch { return true; } });
+    const graphicsQuality = resolveGraphicsMode(perfMode);
     const isLowPerf = graphicsQuality === 'lightweight';
-    const isBalanced = graphicsQuality === 'balanced';
-
-    const setPerfMode = (mode) => {
-        if (!GRAPHICS_MODES.includes(mode)) return;
-        setPerfModeState(mode);
-        if (preview) return;
+    const staticDecorations = perfMode === 'economy';
+    const setPerfMode = value => {
+        const mode = normalizeGraphicsMode(value);
+        if (mode) setMode(mode);
+    };
+    // Device-only keys: never use the app_ prefix that participates in family sync.
+    useEffect(() => {
         try {
-            localStorage.setItem(GRAPHICS_KEY, mode);
-            if (mode === 'enabled') localStorage.setItem('low_perf_manual', 'true');
-            else if (mode === 'disabled') localStorage.setItem('low_perf_manual', 'false');
-            else localStorage.removeItem('low_perf_manual');
-        } catch (e) {}
-    };
-
-    const setIsLowPerf = (bool) => {
-        setPerfMode(bool ? 'enabled' : 'disabled');
-    };
-
-    useEffect(() => {
-        const check = () => {
-            if (typeof window !== 'undefined') {
-                if (window.__lowPerfAuto !== undefined && window.__lowPerfAuto !== autoDetected) {
-                    setAutoDetected(window.__lowPerfAuto);
-                }
-                if (window.__lowPerfSignals !== undefined && window.__lowPerfSignals !== signals) {
-                    setSignals(window.__lowPerfSignals);
-                }
-            }
-        };
-        window.addEventListener('performance-detected', check);
-        check();
-        return () => window.removeEventListener('performance-detected', check);
-    }, [autoDetected, signals]);
-
-    // 同步 CSS class 与全局状态
-    useEffect(() => {
-        if (typeof document !== 'undefined') {
-            document.body.classList.toggle('low-perf-mode', isLowPerf);
-        }
-        if (typeof window !== 'undefined') {
-            window.__graphicsManaged = true;
-            window.__lowPerf = isLowPerf;
-        }
-    }, [isLowPerf]);
-
-    return (
-        <PerformanceContext.Provider value={{ isLowPerf, isBalanced, graphicsQuality, previewBackground, setIsLowPerf, perfMode, setPerfMode, autoDetected, signals }}>
-            {children}
-            {preview && <EnergyPreviewPanel mode={perfMode} onMode={setPerfMode} quality={graphicsQuality}
-                mobile={mobile} background={previewBackground} onBackground={setPreviewBackground} />}
-        </PerformanceContext.Provider>
-    );
+            localStorage.setItem(GRAPHICS_KEY, perfMode);
+            localStorage.setItem('low_perf_manual', String(isLowPerf));
+        } catch {}
+        document.body.classList.toggle('low-perf-mode', isLowPerf);
+        window.__graphicsManaged = true;
+        window.__lowPerf = isLowPerf;
+    }, [perfMode, isLowPerf]);
+    useEffect(() => { try { localStorage.setItem(IDLE_KEY, String(idleEnergy)); } catch {} }, [idleEnergy]);
+    return <PerformanceContext.Provider value={{
+        isLowPerf, isBalanced: graphicsQuality === 'balanced', graphicsQuality,
+        perfMode, setPerfMode, setIsLowPerf: value => setPerfMode(value ? 'compatibility' : 'full'),
+        staticDecorations, optimizeDrawing: perfMode === 'balanced',
+        idleEnergy, setIdleEnergy: value => setIdle(!!value), autoDetected: false, signals: 0
+    }}>
+        {children}
+        <DecorationEnergy idleEnabled={idleEnergy} staticDecorations={staticDecorations} mode={perfMode} />
+    </PerformanceContext.Provider>;
 };

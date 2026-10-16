@@ -1,4 +1,5 @@
 import { requestVisibleFrame as requestAnimationFrame, cancelVisibleFrame as cancelAnimationFrame, visibleAnimationNow } from '../../utils/visibleFrames.js';
+import { matrixPhase, createGlyphCache } from '../../utils/decorationDrawing.js';
 import { backgroundDpr, createFrameGate } from '../../utils/graphicsQuality.js';
 import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { PerformanceContext } from '../../context/PerformanceContext';
@@ -558,7 +559,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 		// --- 新增：传说·万象字阵 (The Matrix of Civilization) ---
         // --- 终极完美版：传说·万象字阵 (同步置换循环) ---
         const MatrixCivilization = ({ isActive = true, isLowPerf = false }) => {
-            const { isBalanced = false } = useContext(PerformanceContext);
+            const { isBalanced = false, optimizeDrawing = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
             const animationRef = useRef(null);
 
@@ -596,6 +597,9 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 let height = window.innerHeight;
                 
                 // 动画状态控制
+                const glyphs = createGlyphCache(document);
+                let phaseStart = visibleAnimationNow(), lastCycle = -1, movingCycle = -1, lastPaint = phaseStart;
+                const admit = createFrameGate(30);
                 let frameCount = 0; 
                 const totalCycle = CONFIG.pauseTime + CONFIG.moveTime;
 
@@ -658,7 +662,8 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                         context.font = this.font;
                         context.textAlign = 'center';
                         context.textBaseline = 'middle';
-                        context.fillText(this.char, this.x, this.y);
+                        if (optimizeDrawing) glyphs.draw(context, this.char, this.font, CONFIG.color, this.x, this.y);
+                        else context.fillText(this.char, this.x, this.y);
                     }
                 }
 
@@ -713,6 +718,28 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 // --- 动画循环 ---
                 let lastAnimateTime = 0;
                 const animate = (timestamp) => {
+                    if (optimizeDrawing) {
+                        const phase = matrixPhase(timestamp - phaseStart);
+                        if (phase.cycle !== lastCycle) {
+                            if (lastCycle >= 0) shapes.forEach(shape => shape.update(1));
+                            lastCycle = phase.cycle;
+                            ctx.fillStyle = '#0d0d0d'; ctx.fillRect(0, 0, width, height);
+                            shapes.forEach(shape => shape.draw(ctx));
+                        }
+                        if (!phase.moving) {
+                            animationId = requestAnimationFrame(animate, phase.wait);
+                            return;
+                        }
+                        if (movingCycle !== phase.cycle) { shuffleGrid(); movingCycle = phase.cycle; }
+                        if (admit(timestamp)) {
+                            const elapsed = Math.min(100, timestamp - lastPaint); lastPaint = timestamp;
+                            ctx.fillStyle = `rgba(13,13,13,${1 - Math.pow(1 - CONFIG.trailAlpha, elapsed / (1000 / 60))})`;
+                            ctx.fillRect(0, 0, width, height);
+                            shapes.forEach(shape => { shape.update(phase.progress); shape.draw(ctx); });
+                        }
+                        animationId = requestAnimationFrame(animate, 20);
+                        return;
+                    }
                     animationId = requestAnimationFrame(animate);
                     if (isLowPerf && timestamp && timestamp - lastAnimateTime < 33) {
                         return; // 低性能模式限制 30 FPS 刷新率，稳定控制算力消耗
@@ -755,7 +782,11 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 const handleResize = () => {
                     init();
                     frameCount = 0; // 重置动画周期
+                    phaseStart = visibleAnimationNow(); lastCycle = movingCycle = -1;
+                    if (optimizeDrawing) { cancelAnimationFrame(animationId); animationId = requestAnimationFrame(animate); }
                 };
+                const fontReady = () => { glyphs.clear(); if (optimizeDrawing) handleResize(); };
+                document.fonts?.addEventListener('loadingdone', fontReady);
                 window.addEventListener('resize', handleResize);
 
                 // 启动
@@ -764,9 +795,11 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
                 return () => {
                     window.removeEventListener('resize', handleResize);
+                    document.fonts?.removeEventListener('loadingdone', fontReady);
+                    glyphs.clear();
                     cancelAnimationFrame(animationId);
                 };
-            }, [isActive, isLowPerf, isBalanced]);
+            }, [isActive, isLowPerf, isBalanced, optimizeDrawing]);
 
             return (
                 <div className="absolute inset-0 bg-matrix-civilization animate-in fade-in duration-1000">
@@ -2870,8 +2903,22 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         // --- 新增：通用气氛背景层管理器 ---
         // 后续新增商品只需在这里添加 case 即可
         // 仅挂载选中的背景；页面隐藏时暂停装饰动画，保留画布与粒子状态。
+        const STATIC_BACKGROUNDS = {
+            bg_galaxy: 'radial-gradient(ellipse at 30% 20%, #35275b, #080c20 75%)',
+            bg_meteor: 'radial-gradient(ellipse at top, #233457, #090d20 80%)',
+            bg_aurora: 'linear-gradient(135deg, #101a30, #164642 48%, #322052)',
+            bg_lantern: 'radial-gradient(ellipse at 50% 80%, #613320, #1b1020 75%)',
+            bg_firefly: 'radial-gradient(ellipse at bottom, #203b29, #071b19 75%)',
+            bg_ginkgo: 'linear-gradient(145deg, #382b19, #171e20)',
+            bg_matrix: 'radial-gradient(ellipse at top, #302b18, #0d0d0d 80%)',
+            bg_oraclesands: 'radial-gradient(ellipse at bottom, #3b2d1c, #0d0d0d 80%)',
+            bg_firework: 'radial-gradient(ellipse at bottom, #3c1833, #0b1023 80%)',
+            bg_prismatic: 'linear-gradient(135deg, #231b3b, #153f49, #3d2043)',
+            bg_timewarp: 'radial-gradient(ellipse at center, #19383b, #121524 80%)',
+            bg_hyperspeed: 'radial-gradient(ellipse at center, #402132, #0b1023 75%)'
+        };
         const AtmosphereLayer = ({ type }) => {
-            const { isLowPerf, graphicsQuality = 'original', previewBackground = 'current' } = useContext(PerformanceContext);
+            const { isLowPerf, graphicsQuality = 'original', staticDecorations = false, previewBackground = 'current' } = useContext(PerformanceContext);
             type = previewBackground === 'current' ? type : previewBackground === 'none' ? null : previewBackground;
             const [hidden, setHidden] = useState(() => document.visibilityState === 'hidden');
             useEffect(() => {
@@ -2879,7 +2926,12 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 document.addEventListener('visibilitychange', refresh);
                 return () => document.removeEventListener('visibilitychange', refresh);
             }, []);
+            useEffect(() => { window.dispatchEvent(new Event('decoration-change')); }, [type]);
             if (!type) return null;
+            // Static artwork never mounts a Canvas, WebGL context or animation loop.
+            if (staticDecorations) return <div className="atmosphere-layer absolute inset-0 pointer-events-none"
+                data-quality={graphicsQuality} data-background={type} data-static="true"
+                style={{ background: STATIC_BACKGROUNDS[type] || STATIC_BACKGROUNDS.bg_matrix }} />;
             return (
                 <div className="atmosphere-layer" data-quality={graphicsQuality} data-background={type} data-paused={hidden ? 'true' : undefined}>
                     <style>{`.atmosphere-layer[data-paused="true"], .atmosphere-layer[data-paused="true"] *, .atmosphere-layer[data-paused="true"] *::before, .atmosphere-layer[data-paused="true"] *::after { animation-play-state: paused !important; }`}</style>

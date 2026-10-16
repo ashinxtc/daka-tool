@@ -363,16 +363,10 @@
 
 
 
-/* Preview controls use only local state and never run a measurement animation. */
-.energy-preview-panel {
-  position: fixed; z-index: 100; right: max(12px, var(--app-safe-right));
-  bottom: max(12px, var(--app-safe-bottom)); width: min(360px, calc(100vw - 24px - var(--app-safe-left) - var(--app-safe-right)));
-  max-height: calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 24px);
-  overflow-y: auto; border: 1px solid #94a3b8; border-radius: 16px;
-  background: #f8fafc; color: #0f172a; padding: 12px; font-size: 13px;
-  box-shadow: 0 4px 16px #0003;
+/* Pause only ongoing decoration; business and reward animations remain active. */
+body[data-decoration-paused="true"] .atmosphere-layer *::before,
+body[data-decoration-paused="true"] .atmosphere-layer *::after,
+body[data-decoration-paused="true"] :is(.atmosphere-layer, .atmosphere-layer *,
+.weather-decoration, .weather-decoration *, .npc-float, .animate-pet-bounce-gentle, .animate-pet-sleep-bob, .animate-flame-flicker) {
+  animation-play-state: paused !important;
 }
-.energy-preview-panel button, .energy-preview-panel select { padding: 8px; border: 1px solid #94a3b8; border-radius: 8px; background: white; color: #0f172a; }
-.energy-preview-panel button[aria-pressed="true"] { background: #1d4ed8; color: white; }
-.energy-preview-content { display: grid; gap: 10px; padding-top: 10px; }
-.energy-preview-options { display: flex; flex-wrap: wrap; gap: 6px; }

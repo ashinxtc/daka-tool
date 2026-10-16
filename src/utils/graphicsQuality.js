@@ -1,22 +1,26 @@
 export const GRAPHICS_KEY = 'device_graphics_quality_v1';
-export const GRAPHICS_MODES = ['auto', 'disabled', 'balanced', 'enabled'];
-export function isMobileGraphicsDevice(nav = {}, match = () => ({ matches: false })) {
-    return /iPhone|iPad|iPod|Android/i.test(nav.userAgent || '') ||
-        (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1) ||
-        (nav.maxTouchPoints > 0 && match('(pointer: coarse)').matches && !match('(hover: hover)').matches);
+export const IDLE_KEY = 'device_idle_energy_v1';
+export const GRAPHICS_MODES = ['economy', 'balanced', 'full', 'compatibility'];
+export const MODE_LABELS = { economy: '舒适省电', balanced: '推荐均衡', full: '完整视觉', compatibility: '旧设备兼容' };
+export function normalizeGraphicsMode(mode) {
+    return ({ auto: 'balanced', disabled: 'full', enabled: 'compatibility' })[mode] || (GRAPHICS_MODES.includes(mode) ? mode : null);
 }
 export function readGraphicsMode(storage) {
     try {
-        const saved = storage.getItem(GRAPHICS_KEY);
-        if (GRAPHICS_MODES.includes(saved)) return saved;
+        const saved = normalizeGraphicsMode(storage.getItem(GRAPHICS_KEY));
+        if (saved) return saved;
         const legacy = storage.getItem('low_perf_manual');
-        return legacy === 'true' ? 'enabled' : legacy === 'false' ? 'disabled' : 'auto';
-    } catch { return 'auto'; }
+        return legacy === 'true' ? 'compatibility' : legacy === 'false' ? 'full' : 'balanced';
+    } catch { return 'balanced'; }
 }
-export function resolveGraphicsMode(mode, mobile, lowHardware) {
-    if (mode === 'enabled' || (mode === 'auto' && lowHardware)) return 'lightweight';
-    if (mode === 'balanced' || (mode === 'auto' && mobile)) return 'balanced';
-    return 'original';
+export function readIdleEnergy(storage) {
+    try { return storage.getItem(IDLE_KEY) !== 'false'; } catch { return true; }
+}
+// Defaults are deliberately identical on desktop/tablet/mobile. Hardware detection
+// must never silently override a saved choice or downgrade after a single slow frame.
+export function resolveGraphicsMode(mode) {
+    const value = normalizeGraphicsMode(mode);
+    return value === 'compatibility' ? 'lightweight' : value === 'full' ? 'original' : 'balanced';
 }
 export function backgroundDpr(deviceDpr, low, balanced, lowDpr) {
     return low ? lowDpr : Math.min(deviceDpr || 1, balanced ? 1 : 2);
