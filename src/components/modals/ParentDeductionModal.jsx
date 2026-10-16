@@ -10,6 +10,7 @@ export const ParentDeductionModal = ({
     show,
     onClose,
     notice,
+    remaining = 1,
     currentGold = 0
 }) => {
     if (!show || !notice) return null;
@@ -74,7 +75,7 @@ export const ParentDeductionModal = ({
 
                         {/* 结余提示 */}
                         <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800/60">
-                            <span>扣除后当前结余：</span>
+                            <span>{notice.balanceAfter == null ? '当前结余（历史扣款）' : '本笔扣款后结余：'}</span>
                             <span className="font-bold text-amber-400">{currentGold} 💰</span>
                         </div>
                     </div>
@@ -90,7 +91,7 @@ export const ParentDeductionModal = ({
                         onClick={onClose}
                         className="mt-5 w-full py-3 bg-gradient-to-r from-rose-600 via-rose-500 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-black text-sm rounded-xl shadow-lg shadow-rose-900/30 cursor-pointer transition-all active:scale-98"
                     >
-                        我知道了（确认知悉）
+                        {remaining > 1 ? `我知道了 · 下一条（剩余 ${remaining - 1} 条）` : '我知道了（确认知悉）'}
                     </button>
                 </div>
             </div>

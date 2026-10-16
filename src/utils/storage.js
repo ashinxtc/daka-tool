@@ -115,7 +115,12 @@ const idbGetAll = async () => {
 };
 
 // 批量提交脏数据到 IndexedDB，返回 Promise 确保落盘完毕
-const flushPendingDbWrites = async () => {
+let flushChain = Promise.resolve(true);
+const flushPendingDbWrites = () => {
+    flushChain = flushChain.then(flushDbBatch, flushDbBatch);
+    return flushChain;
+};
+const flushDbBatch = async () => {
     if (pendingDbWrites.size === 0 && pendingDbDeletes.size === 0) return true;
     const writes = new Map(pendingDbWrites);
     const deletes = new Set(pendingDbDeletes);
@@ -123,9 +128,22 @@ const flushPendingDbWrites = async () => {
     pendingDbDeletes.clear();
 
     const db = await openDB();
-    if (!db) return false;
+    if (!db) {
+        try {
+            writes.forEach((value, key) => window.localStorage.setItem(key, value));
+            deletes.forEach(key => window.localStorage.removeItem(key));
+            return true;
+        } catch { return false; }
+    }
 
     return new Promise((resolve) => {
+        const finish = ok => {
+            if (!ok) {
+                writes.forEach((value, key) => { if (!pendingDbWrites.has(key) && !pendingDbDeletes.has(key)) pendingDbWrites.set(key, value); });
+                deletes.forEach(key => { if (!pendingDbWrites.has(key) && !pendingDbDeletes.has(key)) pendingDbDeletes.add(key); });
+            }
+            resolve(ok);
+        };
         try {
             const tx = db.transaction(STORE_NAME, 'readwrite');
             const store = tx.objectStore(STORE_NAME);
@@ -135,15 +153,15 @@ const flushPendingDbWrites = async () => {
             deletes.forEach(key => {
                 store.delete(key);
             });
-            tx.oncomplete = () => resolve(true);
+            tx.oncomplete = () => finish(true);
             tx.onerror = (err) => {
                 console.warn('[Storage] Flush tx error:', err);
-                resolve(false);
+                finish(false);
             };
-            tx.onabort = () => resolve(false);
+            tx.onabort = () => finish(false);
         } catch (e) {
             console.warn('[Storage] Flush to IndexedDB error:', e);
-            resolve(false);
+            finish(false);
         }
     });
 };
@@ -168,6 +186,28 @@ export const isJunkKey = (k) => {
     if (k === '_sync_last_hash' || k === '_sync_local_ts') return true;
     return false;
 };
+
+// A single localStorage write commits the complete accounting transaction before publication.
+// Keep the journal until all IndexedDB writes finish; startup replays interrupted transactions.
+const ACCOUNTING_JOURNAL = '_accounting_journal_v1';
+let journalSequence = 0;
+export function commitDurable(entries) {
+    const previous = JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
+    const journal = { id: `${Date.now()}-${++journalSequence}-${Math.random().toString(36).slice(2)}`, entries: { ...(previous.entries || {}), ...entries } };
+    // Quota/security errors deliberately propagate: never claim a command without a durable record.
+    window.localStorage.setItem(ACCOUNTING_JOURNAL, JSON.stringify(journal));
+    for (const [key, value] of Object.entries(journal.entries)) {
+        storage.setItem(key, value);
+        storage.markKeyVersion(key);
+        if (window._pendingWrites) delete window._pendingWrites[key];
+    }
+    window.dispatchEvent(new CustomEvent('_durableDataCommitted', { detail: Object.keys(entries) }));
+    flushPendingDbWrites().then(ok => {
+        if (ok && JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}').id === journal.id) {
+            window.localStorage.removeItem(ACCOUNTING_JOURNAL);
+        }
+    }).catch(error => console.error('[Storage] Durable flush failed; recovery journal retained', error));
+}
 
 // --- 2. 核心 Storage 接口 ---
 export const storage = {
@@ -284,6 +324,11 @@ export const initStorage = async () => {
 
     if (!isIdbSupported) {
         console.warn('[Storage] IndexedDB not supported, running on localStorage fallback');
+        const journal = JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
+        if (journal.entries) {
+            for (const [key, value] of Object.entries(journal.entries)) storage.setItem(key, value);
+            if (await flushPendingDbWrites()) window.localStorage.removeItem(ACCOUNTING_JOURNAL);
+        }
         return true;
     }
 
@@ -308,7 +353,7 @@ export const initStorage = async () => {
                 const keysToMigrate = [];
                 for (let i = 0; i < window.localStorage.length; i++) {
                     const k = window.localStorage.key(i);
-                    if (k && (k.startsWith('app_') || k.startsWith('_')) && k !== '_storage_migrated_v1') {
+                    if (k && (k.startsWith('app_') || k.startsWith('_')) && k !== '_storage_migrated_v1' && k !== ACCOUNTING_JOURNAL) {
                         keysToMigrate.push(k);
                     }
                 }
@@ -360,7 +405,13 @@ export const initStorage = async () => {
         }
     })();
 
-    await Promise.race([initPromise, timeoutPromise]);
+    // Accounting recovery must not race a late IDB load overwriting recovered values.
+    const journal = JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
+    await (journal.entries ? initPromise : Promise.race([initPromise, timeoutPromise]));
+    if (journal.entries) {
+        for (const [key, value] of Object.entries(journal.entries)) storage.setItem(key, value);
+        if (await flushPendingDbWrites()) window.localStorage.removeItem(ACCOUNTING_JOURNAL);
+    }
     return true;
 };
 
