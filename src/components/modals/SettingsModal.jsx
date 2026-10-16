@@ -302,8 +302,8 @@ const CopyIcon = (props) => (
             ];
 			if (!showSettings) return null;
             return (
-                <div className="fixed inset-0 bg-slate-950/80 z-[85] flex items-center justify-center p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-300">
-                  <div className={`bg-white rounded-3xl w-full max-w-4xl h-[90vh] shadow-[0_25px_60px_-15px_rgba(99,102,241,0.3)] flex flex-col overflow-hidden border-2 ${theme?.border || 'border-indigo-400/40'} relative animate-in zoom-in-95 duration-300`}>
+                <div className="app-safe-dialog fixed inset-0 bg-slate-950/80 z-[85] flex items-center justify-center p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-300">
+                  <div className={`app-safe-panel bg-white rounded-3xl w-full max-w-4xl h-[90vh] shadow-[0_25px_60px_-15px_rgba(99,102,241,0.3)] flex flex-col overflow-hidden border-2 ${theme?.border || 'border-indigo-400/40'} relative animate-in zoom-in-95 duration-300`}>
                     {/* 头部 */}
                     <div 
                       className={`p-5 sm:p-6 shrink-0 border-b flex justify-between items-center ${theme?.solidBg || 'bg-indigo-600'} bg-gradient-to-r ${theme?.gradient} text-white shadow-md relative modal-header-theme`}
