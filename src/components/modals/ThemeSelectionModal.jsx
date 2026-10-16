@@ -46,13 +46,13 @@ export const ThemeSelectionModal = ({
 
     return (
         <div 
-            className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+            className="app-safe-dialog fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
             onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
         >
-            <div className="bg-white/95 rounded-3xl w-full max-w-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/60 overflow-hidden flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200">
+            <div className="app-safe-panel app-theme-panel bg-white/95 rounded-3xl w-full max-w-xl shadow-[0_20px_50px_rgba(0,0,0,0.25)] border border-white/60 overflow-hidden flex flex-col max-h-[88vh] animate-in zoom-in-95 duration-200">
                 {/* 弹窗顶部标头 */}
                 <div 
-                    className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50"
+                    className="shrink-0 px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50"
                     style={{ backgroundColor: '#f9fafb' }}
                 >
                     <div className="flex items-center gap-2.5">

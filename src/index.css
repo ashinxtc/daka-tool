@@ -1,5 +1,34 @@
 @import "tailwindcss";
 
+/* Keep controls inside the safe viewport while the header background stays full bleed. */
+:root {
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-right: env(safe-area-inset-right, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-safe-left: env(safe-area-inset-left, 0px);
+}
+.app-header { padding-top: var(--app-safe-top); }
+.app-header-content, .app-main {
+  padding-left: max(1rem, var(--app-safe-left));
+  padding-right: max(1rem, var(--app-safe-right));
+}
+.app-safe-dialog {
+  --dialog-gutter: 0.75rem;
+  --dialog-top: max(var(--dialog-gutter), var(--app-safe-top));
+  --dialog-bottom: max(var(--dialog-gutter), var(--app-safe-bottom));
+  padding: var(--dialog-top) max(var(--dialog-gutter), var(--app-safe-right))
+    var(--dialog-bottom) max(var(--dialog-gutter), var(--app-safe-left));
+}
+.app-safe-panel {
+  max-height: min(var(--dialog-limit, 90vh), calc(100vh - var(--dialog-top) - var(--dialog-bottom)));
+  max-height: min(var(--dialog-limit, 90vh), calc(100dvh - var(--dialog-top) - var(--dialog-bottom)));
+}
+.app-theme-panel { --dialog-limit: 88vh; }
+@media (min-width: 640px) {
+  .app-safe-dialog { --dialog-gutter: 1rem; }
+}
+
+
 @keyframes flame-flicker {
   0%, 100% {
     transform: scale(1) rotate(0deg);

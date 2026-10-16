@@ -9405,7 +9405,7 @@ ${context}
                       }
                       return (
                         // 1. 背景色：完全使用 headerTheme.gradient (原来的每日/节日变色)，不使用天气的 bg
-                        <header className={`sticky top-0 z-30 transition-colors transition-transform duration-1000 ease-in-out bg-gradient-to-r ${headerTheme.gradient} shadow-lg overflow-hidden`}>
+                        <header className={`app-header sticky top-0 z-30 transition-colors transition-transform duration-1000 ease-in-out bg-gradient-to-r ${headerTheme.gradient} shadow-lg overflow-hidden`}>
 
 							{/* 夜幕遮罩层 — 使用 isNight 状态（每 5 分钟更新一次，非每秒） */}
 							{isNight && (
@@ -9421,7 +9421,7 @@ ${context}
                             <div className="absolute bottom-0 left-0 w-full h-px bg-black/10"></div>
                             
                             {/* 容器 */}
-                            <div className="relative z-10 max-w-[1600px] mx-auto px-4 py-2">
+                            <div className="app-header-content relative z-10 max-w-[1600px] mx-auto px-4 py-2">
                               {/* ===== Mobile: 两行紧凑布局 ===== */}
                               <div className="flex flex-col lg:hidden w-full gap-1.5 py-1">
                                 {/* Row 1: 天气 + 时间 + 设置 */}
@@ -9617,7 +9617,7 @@ ${context}
                       );
                   })()}
 
-                  <main className="relative z-10 max-w-5xl mx-auto px-4 py-8" style={{ opacity: isAccountSwitchingUI ? 0.55 : 1, transition: 'opacity 0.18s ease' }}>
+                  <main className="app-main relative z-10 max-w-5xl mx-auto px-4 py-8" style={{ opacity: isAccountSwitchingUI ? 0.55 : 1, transition: 'opacity 0.18s ease' }}>
 				    {/* 新增：周末仪表盘 */}
 					<WeekendDashboard 
 						tasks={tasks} 
