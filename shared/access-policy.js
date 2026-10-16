@@ -9,6 +9,8 @@ export const stripSecrets = data => {
 export const canonical = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.keys(item).sort().map(key => [key,item[key]])) : item);
 export const sameStoredValue = (a,b) => {
-    const parse = value => {try{return JSON.parse(value);}catch{return value;}};
+    // Invalid legacy strings must not compare equal to valid JSON strings: the
+    // application can interpret these differently (fallback vs. stored value).
+    const parse = value => {try{return {valid:true,value:JSON.parse(value)};}catch{return {valid:false,value};}};
     return canonical(parse(a)) === canonical(parse(b));
 };

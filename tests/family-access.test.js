@@ -128,12 +128,12 @@ test('current and backup snapshots redact old secrets and use the server-owned d
 });
 
 test('parent can append their own valid commands, but cannot edit balances, tasks, metadata or existing commands',async()=>{
-    const f=await family();await ok(await write(f,payload({app_stars_v1:'{"孩子":100}',_keyVersions:{app_stars_v1:1}}),0));
+    const f=await family();await ok(await write(f,payload({app_stars_v1:'{"孩子":100}',app_theme:'light',_keyVersions:{app_stars_v1:1}}),0));
     const data=await ok(await read(f)),command=action(f.parent);
     const accepted={...data,app_parent_actions_v1:JSON.stringify([command])};
     await ok(await write(f,accepted,1,f.parent));
     const current=await ok(await read(f));
-    const attacks=[{app_stars_v1:'{"孩子":999}'},{app_tasks_v2:'{}'},{_keyVersions:{app_stars_v1:999}},
+    const attacks=[{app_stars_v1:'{"孩子":999}'},{app_tasks_v2:'{}'},{app_theme:'"light"'},{_keyVersions:{app_stars_v1:999}},
         {app_parent_actions_v1:JSON.stringify([{...command,amount:999}])},{app_parent_actions_v1:'[]'},
         {app_parent_actions_v1:JSON.stringify([command,{...action(f.parent),operatorDeviceId:f.main.id}])},
         {app_parent_actions_v1:JSON.stringify([command,{...action(f.parent),targetChild:'其他孩子'}])},
