@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useVisibleClock } from '../../hooks/useVisibleClock.js';
+import React, { useState, useMemo } from 'react';
 
 /**
  * PetFloatingButton: 智能伴宠与历练探险悬浮按钮
@@ -26,7 +27,6 @@ export const PetFloatingButton = ({
   handleDismissAllAdventures,
   showToast
 }) => {
-  const [now, setNow] = useState(Date.now());
   const [isHovered, setIsHovered] = useState(false);
 
   // 1. 获取当前孩子的所有探险历练记录
@@ -41,14 +41,10 @@ export const PetFloatingButton = ({
 
   const hasActiveAdventures = activeAdvsRaw.length > 0;
 
-  // 3. 有探险进行时，每秒定时轮询驱动倒计时与环形进度条动画
-  useEffect(() => {
-    if (!hasActiveAdventures) return;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [hasActiveAdventures]);
+  // Completed/unclaimed adventures still display, but no longer run a clock.
+  const deadlines = useMemo(() => activeAdvsRaw.filter(a => a.status === 'active')
+    .map(a => a.expectedEndTime), [activeAdvsRaw]);
+  const now = useVisibleClock(deadlines);
 
   // 4. 解析 activeAdventures 的展示数据
   const activeAdventures = useMemo(() => {
