@@ -949,6 +949,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const syncDownloadingRef = React.useRef(false);
             const [syncConflict, setSyncConflict] = React.useState(null);
             const syncConflictRef = React.useRef(null);
+            const syncCheckpointCacheRef = React.useRef({raw:null,value:null});
             const currentSyncCodeRef = React.useRef(syncCode);
             currentSyncCodeRef.current = syncCode;
             React.useEffect(() => { syncConflictRef.current = null; setSyncConflict(null); }, [syncCode]);
@@ -5117,7 +5118,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             }, []);
 
             const loadSyncCheckpoint = () => {
-                try { return JSON.parse(storage.getItem(SYNC_CHECKPOINT_KEY) || 'null'); } catch { return null; }
+                const raw = storage.getItem(SYNC_CHECKPOINT_KEY);
+                if (syncCheckpointCacheRef.current.raw === raw) return syncCheckpointCacheRef.current.value;
+                let value = null;
+                try { value = JSON.parse(raw || 'null'); } catch {}
+                syncCheckpointCacheRef.current = {raw,value};
+                return value;
             };
             const makeSyncCoordinator = (epoch = getStorageState().epoch) => {
                 const mergeAccountingKey = (key, local, remote) => {
