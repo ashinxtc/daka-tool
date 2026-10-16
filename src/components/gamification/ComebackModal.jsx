@@ -17,7 +17,7 @@ export const ComebackBanner = ({
         <div 
             data-testid="comeback-banner"
             onClick={onOpenModal}
-            className="cursor-pointer group relative overflow-hidden rounded-2xl p-3 sm:p-3.5 bg-gradient-to-r from-rose-950/80 via-purple-950/70 to-slate-900 border border-rose-500/40 hover:border-rose-400 transition-all shadow-lg hover:shadow-rose-950/50 flex items-center justify-between gap-3 text-white"
+            className="cursor-pointer group relative overflow-hidden rounded-2xl p-3 sm:p-3.5 bg-gradient-to-r from-rose-950/80 via-purple-950/70 to-slate-900 border border-rose-500/40 hover:border-rose-400 transition-all shadow-lg hover:shadow-rose-950/50 flex items-center justify-between gap-3 text-white mb-4 sm:mb-5"
         >
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-600/30 border border-rose-500/50 flex items-center justify-center text-rose-300 shadow-inner group-hover:scale-105 transition-transform">
