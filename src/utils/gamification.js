@@ -98,7 +98,7 @@ export const calculateDailyStars = (childTasks = [], childCheckins = {}, dateKey
             totalCount,
             rate: 0,
             nextStarRemaining: effectiveConfig.star1ThresholdType === 'count' ? (effectiveConfig.star1Value || 1) : 1,
-            note: '尚未起步，完成 1 项即可点亮安全护盾'
+            note: '尚未起步，完成 1 项必做即可达成 1 星起航'
         };
     }
 
@@ -118,7 +118,7 @@ export const calculateDailyStars = (childTasks = [], childCheckins = {}, dateKey
             totalCount,
             rate,
             nextStarRemaining: Math.max(1, (effectiveConfig.star1Value || 1) - completedCount),
-            note: '加油！还差一步即可点亮安全护盾'
+            note: '加油！还差一步即可达成 1 星起航'
         };
     }
 
@@ -128,26 +128,26 @@ export const calculateDailyStars = (childTasks = [], childCheckins = {}, dateKey
 
     let star = 1;
     let nextStarRemaining = 0;
-    let note = '已获 1 星安全保底（今日免罚）';
+    let note = '⭐ 1 星起航保底达成！';
 
     if (rate >= star3Threshold) {
         star = 3;
-        note = '⭐⭐⭐ 完美通关！荣耀时刻！';
+        note = '⭐⭐⭐ 完美全通关！荣耀时刻！';
     } else if (rate >= star2Threshold) {
         star = 2;
         const tasksForStar3 = Math.ceil((star3Threshold / 100) * totalCount);
         nextStarRemaining = Math.max(1, tasksForStar3 - completedCount);
-        note = `⭐⭐ 良好达标！再完成 ${nextStarRemaining} 项达成 3 星完美通关`;
+        note = `⭐⭐ 良好达标！再完成 ${nextStarRemaining} 项达成 3 星大满贯`;
     } else {
         star = 1;
         const tasksForStar2 = Math.ceil((star2Threshold / 100) * totalCount);
         nextStarRemaining = Math.max(1, tasksForStar2 - completedCount);
-        note = `⭐ 1 星保底已达成（免受惩罚）！再完成 ${nextStarRemaining} 项升级 2 星`;
+        note = `⭐ 1 星起航达标！再完成 ${nextStarRemaining} 项升级 2 星`;
     }
 
     return {
         star,
-        isSafe: true, // 只要 >= 1 星，即享有免受自动恶魔转盘/惩罚的豁免权！
+        isSafe: star >= 1,
         completedCount,
         totalCount,
         rate,

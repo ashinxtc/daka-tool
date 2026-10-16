@@ -9,7 +9,8 @@ export const StarRatingBadge = ({
     dailyStars,
     theme,
     onOpenStarDetails,
-    hasActiveBg = false
+    hasActiveBg = false,
+    escrow = null
 }) => {
     const { isLowPerf } = useContext(PerformanceContext);
     const star = dailyStars?.star || 0;
@@ -55,19 +56,39 @@ export const StarRatingBadge = ({
                             </span>
                         </span>
                         
-                        {isSafe ? (
-                            <span data-testid="safe-shield-active" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                                <Shield className="w-3 h-3" /> 今日免罚护盾已激活
-                            </span>
+                        {escrow?.status === 'pending' ? (
+                            star >= 1 ? (
+                                <span data-testid="safe-shield-active" className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                    <Shield className="w-3 h-3" /> 1星保底达成 · 翻盘成功赎回
+                                </span>
+                            ) : (
+                                <span data-testid="safe-shield-waiting" className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse">
+                                    <Flame className="w-3 h-3" /> 逆风翻盘中 · 达成 1 星即可赎回
+                                </span>
+                            )
                         ) : (
-                            <span data-testid="safe-shield-waiting" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
-                                <Flame className="w-3 h-3" /> 完成 1 项即可激活免罚
-                            </span>
+                            star === 3 ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                    <Trophy className="w-3 h-3" /> 3 星大满贯
+                                </span>
+                            ) : star === 2 ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                    <Sparkles className="w-3 h-3" /> 2 星进阶达标
+                                </span>
+                            ) : star === 1 ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                    <Shield className="w-3 h-3" /> 1 星起航达标
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-700/50 text-slate-400 border border-slate-600/30">
+                                    今日尚未起步
+                                </span>
+                            )
                         )}
                     </div>
                     
                     <p className="text-xs text-slate-400 sm:text-slate-500 truncate mt-0.5">
-                        {dailyStars?.note || '完成每日必做，赢取星级荣耀与免罚护盾'}
+                        {dailyStars?.note || '完成每日必做打卡，达成星级通关荣耀'}
                     </p>
                 </div>
             </div>

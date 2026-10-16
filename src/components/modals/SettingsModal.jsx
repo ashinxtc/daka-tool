@@ -4250,13 +4250,13 @@ const CopyIcon = (props) => (
                                        <div className="space-y-1">
                                            <div className="flex items-center gap-2">
                                                <span className="text-lg">⭐</span>
-                                               <h4 className="text-sm font-black text-amber-300">星级通关制 (1星保底免罚)</h4>
+                                               <h4 className="text-sm font-black text-amber-300">星级通关与成长阶梯 (阶梯式达标激励)</h4>
                                                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
                                                    强烈推荐
                                                </span>
                                            </div>
                                            <p className="text-xs text-slate-300 leading-relaxed">
-                                               告别“全做完 vs 算失败”的极端对立。做完 1 项必做即获 ⭐1 星并激活今日免罚护盾；做完全部获 ⭐⭐⭐3 星荣耀与额外大转盘。
+                                               将打卡划分为 1星起步、2星良好、3星大满贯 3 个梯度。降低心理防线，鼓励孩子每天迈出第一步；当触发惩罚签署【逆风翻盘】时，达成 1 星即可全额赎回被扣元宝免于处罚！
                                            </p>
                                        </div>
                                        <ToggleSwitch 
@@ -4274,7 +4274,7 @@ const CopyIcon = (props) => (
                                            {/* 1星保底阈值 */}
                                            <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
                                                <div className="flex items-center justify-between text-xs font-bold text-slate-200">
-                                                   <span className="text-emerald-400">🛡️ 1星及格门槛（达成即享今日免罚安全）</span>
+                                                   <span className="text-emerald-400">🌱 1星起步基础门槛（日常起步 & 翻盘赎回基准线）</span>
                                                    <span className="text-slate-400 font-normal">
                                                        {gamificationConfig?.star1ThresholdType === 'percent' 
                                                            ? `完成率 ≥ ${gamificationConfig?.star1Value || 30}%`

@@ -8030,16 +8030,6 @@ ${context}
                     return;
                 }
 
-                // --- 破局激励机制：星级通关保底优先核验 ---
-                // 若开启了星级通关制，只要昨日达成了 1 星保底（即完成 1 项必做），即享有免罚护盾！
-                if (gamificationConfig?.starRatingEnabled !== false) {
-                    const yesterdayStars = calculateDailyStars(childTasks, checkins[activeChild] || {}, yesterday, gamificationConfig);
-                    if (yesterdayStars.star >= 1) {
-                        evilCheckDoneRef.current.add(penaltyKey);
-                        return;
-                    }
-                }
-
                 const cfg = {
                     ...DEFAULT_EVIL_TRIGGER_CONFIG,
                     ...(typeof evilTriggerConfig === 'object' && evilTriggerConfig !== null ? evilTriggerConfig : {})
@@ -9671,6 +9661,7 @@ ${context}
                             theme={theme} 
                             hasActiveBg={hasActiveBg} 
                             onOpenStarDetails={() => handleOpenSettings('gamification')} 
+                            escrow={escrowPenalties[activeChild]}
                         />
                     )}
 
