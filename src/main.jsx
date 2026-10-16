@@ -876,7 +876,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
             // 当日达成 1 星保底时，若存在处于 pending 的翻盘契约，自动触发逆风翻盘解冻赎回！
             React.useEffect(() => {
-                if (!gamificationConfig?.redemptionEnabled) return;
+                if (gamificationConfig?.redemptionEnabled === false) return;
                 const currentEscrow = escrowPenalties[activeChild];
                 if (currentEscrow && currentEscrow.status === 'pending' && todayStars?.star >= 1) {
                     const returnRate = Math.max(50, Math.min(100, parseInt(gamificationConfig.redemptionReturnRate, 10) || 100)) / 100;
@@ -7965,7 +7965,7 @@ ${context}
                     if (savedReason) setEvilPenaltyReason(savedReason);
                     setShowEvilWheel(true);
                     setEvilWheelResult(null);
-                } else if (!isEvilDemo) {
+                } else if (!isEvilDemo && !evilWheelResult && !evilWheelSpinning) {
                     // 当前成员没有待受惩罚，或惩罚已在其他设备完成：立即解除遮挡关闭转盘
                     if (currentPending && isAlreadyLogged) {
                         setPendingEvilPenalties(prev => {
@@ -7980,7 +7980,7 @@ ${context}
                     setEvilPenaltySource(null);
                     setEvilPenaltyReason('');
                 }
-            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo, checkins, tasks, stats, exemptedDays, evilTriggerConfig]);
+            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo, checkins, tasks, stats, exemptedDays, evilTriggerConfig, evilWheelResult, evilWheelSpinning]);
 
             // 清理 wheelHistory 中被错误写入的 EVIL_PENALTY 对象（一次性修复）
             React.useEffect(() => {
@@ -8107,31 +8107,12 @@ ${context}
                 if (triggeredReasons.length > 0) {
                     const combinedReason = triggeredReasons.join('；');
 
-                    // --- 破局激励机制：逆风翻盘 / 戴罪立功拦截 ---
-                    // 不直接启动恶魔转盘扣除，而是将元宝放入冻结池，给予今日翻盘机会！
+                    // --- 破局激励机制：逆风翻盘状态检查 ---
+                    // 若已处于逆风翻盘宽限期中，保持契约进行中不重复弹出转盘；若已逾期未翻盘，则重新启动审判！
                     if (gamificationConfig?.redemptionEnabled !== false) {
                         const currentEscrow = escrowPenalties[activeChild];
                         const todayStr = getLocalDateKey(0);
-                        if (!currentEscrow || currentEscrow.status !== 'pending') {
-                            const frozenAmount = Math.max(5, parseInt(gamificationConfig?.defaultFrozenGold, 10) || 20);
-                            const escrowKey = `${activeChild}-ESCROW_FROZEN-${yesterday}_${Date.now()}`;
-                            setWheelHistory(prev => ({ ...prev, [escrowKey]: -frozenAmount }));
-                            setEscrowPenalties(prev => ({
-                                ...(typeof prev === 'object' && prev !== null ? prev : {}),
-                                [activeChild]: {
-                                    status: 'pending',
-                                    frozenGold: frozenAmount,
-                                    penaltyKey,
-                                    createdDate: todayStr,
-                                    deadlineDate: dateKeyAddDays(todayStr, parseInt(gamificationConfig?.redemptionGraceDays, 10) || 1),
-                                    reason: combinedReason,
-                                    timestamp: Date.now()
-                                }
-                            }));
-                            evilCheckDoneRef.current.add(penaltyKey);
-                            setShowComebackModal(true);
-                            return;
-                        } else if (currentEscrow.status === 'pending') {
+                        if (currentEscrow && currentEscrow.status === 'pending') {
                             // 检查翻盘契约是否已超过宽限期
                             if (currentEscrow.deadlineDate && todayStr > currentEscrow.deadlineDate) {
                                 setEscrowPenalties(prev => ({
@@ -8142,11 +8123,10 @@ ${context}
                                         forfeitedAt: Date.now()
                                     }
                                 }));
-                                // 逾期未翻盘，继续向下执行转盘
+                                // 逾期未翻盘，继续向下执行命运转盘审判
                             } else {
-                                // 仍在翻盘宽限期内：不重复触发转盘
+                                // 仍在翻盘宽限期内：不重复触发转盘，保持契约进行中
                                 evilCheckDoneRef.current.add(penaltyKey);
-                                setShowComebackModal(true);
                                 return;
                             }
                         }
@@ -8409,6 +8389,8 @@ ${context}
                     const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
                     const isAutoPenalty = (evilPenaltySource === 'auto') || (currentPending?.source === 'auto');
 
+                    let shouldDeduct = false;
+
                     if (!isEvilDemo && hasShield && selectedItem.value < 0) {
                         if (!shieldTriggeredToday) {
                             // 判断是否为自动惩罚机制触发：若是，则大概率（90%几率）青铜守护盾被天罚击穿失效
@@ -8425,29 +8407,70 @@ ${context}
                             setEvilPenaltyLog(prev => ({ ...prev, [shieldKey]: Date.now() }));
 
                             if (isPierced) {
-                                // 💥 护盾被天罚击穿失效：正常扣除金元宝
-                                const key = `${activeChild}-EVIL-${Date.now()}`;
-                                setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
+                                // 💥 护盾被天罚击穿失效
                                 resultItem.shieldPierced = true;
                                 resultItem.usedShield = false;
+                                shouldDeduct = true;
                                 const reasonNote = evilPenaltyReason ? `因「${evilPenaltyReason}」，` : '';
-                                showToast('error', `💥 青铜守护盾被天罚击穿失效！${reasonNote}本次惩罚正常扣除。`, { duration: 6000 });
+                                showToast('error', `💥 青铜守护盾被天罚击穿失效！${reasonNote}本次惩罚生效。`, { duration: 6000 });
                             } else {
-                                // 奇迹防守（20%几率）：惩罚归零豁免
+                                // 奇迹防守（10%几率）：惩罚归零豁免
                                 resultItem.usedShield = true;
                                 resultItem.value = 0; // 惩罚归零
                                 showToast('success', '🛡️ 青铜守护盾生效，成功抵消惩罚！（今日已用 1/1 次）', { duration: 5000 });
                             }
                         } else {
-                            // 今日青铜神盾已达触发上限（1天1次），正常扣除金元宝
-                            const key = `${activeChild}-EVIL-${Date.now()}`;
-                            setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
+                            // 今日青铜神盾已达触发上限（1天1次）
                             resultItem.shieldLimitReached = true;
+                            shouldDeduct = true;
                             showToast('warning', '⚠️ 青铜守护盾今日触发已达上限，本次惩罚无法抵消。', { duration: 5000 });
                         }
-                    } else if (!isEvilDemo) {
-                         const key = `${activeChild}-EVIL-${Date.now()}`;
-                         setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
+                    } else if (!isEvilDemo && selectedItem.value < 0) {
+                        shouldDeduct = true;
+                    }
+
+                    if (shouldDeduct && !isEvilDemo) {
+                        const penaltyAmount = Math.abs(selectedItem.value);
+                        if (gamificationConfig?.redemptionEnabled !== false) {
+                            // --- 破局激励机制：逆风翻盘 / 戴罪立功 ---
+                            // 默认按转盘实际抽出的扣除数进行暂扣冻结（或按家长选定的固定模式）
+                            const isWheelMode = (gamificationConfig?.frozenGoldMode !== 'fixed');
+                            const frozenAmount = isWheelMode 
+                                ? penaltyAmount 
+                                : Math.max(1, parseInt(gamificationConfig?.defaultFrozenGold, 10) || penaltyAmount);
+
+                            const yesterday = getLocalDateKey(-1);
+                            const escrowKey = `${activeChild}-ESCROW_FROZEN-${yesterday}_${Date.now()}`;
+                            setWheelHistory(prev => ({ ...prev, [escrowKey]: -frozenAmount }));
+
+                            const todayStr = getLocalDateKey(0);
+                            const graceDays = parseInt(gamificationConfig?.redemptionGraceDays, 10) || 1;
+                            const penaltyReason = evilPenaltyReason || (isAutoPenalty ? '打卡未达标惩戒' : '命运审判惩戒');
+                            const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
+                            const penaltyKey = currentPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${yesterday}`;
+
+                            setEscrowPenalties(prev => ({
+                                ...(typeof prev === 'object' && prev !== null ? prev : {}),
+                                [activeChild]: {
+                                    status: 'pending',
+                                    frozenGold: frozenAmount,
+                                    penaltyKey,
+                                    createdDate: todayStr,
+                                    deadlineDate: dateKeyAddDays(todayStr, graceDays),
+                                    reason: penaltyReason,
+                                    wheelSliceName: selectedItem.name,
+                                    wheelValue: selectedItem.value,
+                                    timestamp: Date.now()
+                                }
+                            }));
+                            resultItem.isEscrowFrozen = true;
+                            resultItem.frozenGold = frozenAmount;
+                            showToast('info', `🔥 触发【逆风翻盘契约】！转盘判定扣除的 ${frozenAmount} 元宝已转入暂扣池，今日达成 1 星即可 100% 赎回！`, { duration: 6000 });
+                        } else {
+                            // 常规永久扣减金元宝
+                            const key = `${activeChild}-EVIL-${Date.now()}`;
+                            setWheelHistory(prev => ({ ...prev, [key]: selectedItem.value }));
+                        }
                     }
 
                     setEvilWheelResult(resultItem);
@@ -10661,9 +10684,13 @@ ${context}
                   <EvilWheelModal 
                     show={showEvilWheel} 
                     onClose={() => {
+                        const wasEscrow = evilWheelResult?.isEscrowFrozen;
                         setShowEvilWheel(false);
                         setEvilPenaltySource(null);
                         setEvilPenaltyReason('');
+                        if (wasEscrow) {
+                            setShowComebackModal(true);
+                        }
                     }} 
                     wheelConfig={evilWheelConfig} 
                     pointerRotation={evilPointerRotation} 

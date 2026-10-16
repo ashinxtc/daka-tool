@@ -4398,25 +4398,72 @@ const CopyIcon = (props) => (
                                    {gamificationConfig?.redemptionEnabled !== false && (
                                        <div className="mt-2 pt-3 border-t border-slate-800 space-y-3.5">
                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                                               {/* 默认冻结金元宝数 */}
-                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
-                                                   <label className="text-slate-300 font-bold block">触发受罚时暂扣冻结金额</label>
-                                                   <div className="flex items-center gap-2">
-                                                       {[10, 20, 30, 50].map(amt => (
-                                                           <button
-                                                               key={amt}
-                                                               type="button"
-                                                               onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), defaultFrozenGold: amt }))}
-                                                               className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
-                                                                   (gamificationConfig?.defaultFrozenGold || 20) === amt
-                                                                       ? 'bg-rose-600 text-white border-rose-500'
-                                                                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                                                               }`}
-                                                           >
-                                                               {amt}元宝
-                                                           </button>
-                                                       ))}
+                                               {/* 冻结金额决定方式 */}
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2.5 sm:col-span-2">
+                                                   <div className="flex items-center justify-between">
+                                                       <label className="text-slate-300 font-bold block">暂扣冻结金额确定规则</label>
+                                                       <span className="text-[11px] text-slate-400">
+                                                           {gamificationConfig?.frozenGoldMode === 'fixed' ? '当前模式：固定金额' : '当前模式：按转盘判定 (推荐)'}
+                                                       </span>
                                                    </div>
+                                                   
+                                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                       <button
+                                                           type="button"
+                                                           onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), frozenGoldMode: 'wheel' }))}
+                                                           className={`p-2.5 rounded-xl font-bold border text-left flex items-start gap-2.5 transition-all ${
+                                                               (gamificationConfig?.frozenGoldMode !== 'fixed')
+                                                                   ? 'bg-rose-950/70 text-rose-200 border-rose-500 shadow-md shadow-rose-950/40 ring-1 ring-rose-500/50'
+                                                                   : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200 hover:bg-slate-800'
+                                                           }`}
+                                                       >
+                                                           <span className="text-lg">🎡</span>
+                                                           <div>
+                                                               <div className="text-xs font-black text-rose-300">按恶魔转盘裁决结果 (推荐)</div>
+                                                               <div className="text-[11px] font-normal text-slate-400 mt-0.5 leading-snug">
+                                                                   转盘转出多少（如 -10 / -20 / -30 / -50），就扣押多少进入翻盘冻结池，充满未知与翻盘快感！
+                                                               </div>
+                                                           </div>
+                                                       </button>
+
+                                                       <button
+                                                           type="button"
+                                                           onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), frozenGoldMode: 'fixed' }))}
+                                                           className={`p-2.5 rounded-xl font-bold border text-left flex items-start gap-2.5 transition-all ${
+                                                               gamificationConfig?.frozenGoldMode === 'fixed'
+                                                                   ? 'bg-rose-950/70 text-rose-200 border-rose-500 shadow-md shadow-rose-950/40 ring-1 ring-rose-500/50'
+                                                                   : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200 hover:bg-slate-800'
+                                                           }`}
+                                                       >
+                                                           <span className="text-lg">🔒</span>
+                                                           <div>
+                                                               <div className="text-xs font-black text-rose-300">固定金额暂扣</div>
+                                                               <div className="text-[11px] font-normal text-slate-400 mt-0.5 leading-snug">
+                                                                   无论转盘结果如何，均暂扣下方指定元宝数（适合低年级或温和模式）。
+                                                               </div>
+                                                           </div>
+                                                       </button>
+                                                   </div>
+
+                                                   {gamificationConfig?.frozenGoldMode === 'fixed' && (
+                                                       <div className="pt-2 flex items-center gap-2">
+                                                           <span className="text-xs text-slate-400 shrink-0">固定扣押：</span>
+                                                           {[10, 20, 30, 50].map(amt => (
+                                                               <button
+                                                                   key={amt}
+                                                                   type="button"
+                                                                   onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), defaultFrozenGold: amt }))}
+                                                                   className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
+                                                                       (gamificationConfig?.defaultFrozenGold || 20) === amt
+                                                                           ? 'bg-rose-600 text-white border-rose-500'
+                                                                           : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                                   }`}
+                                                               >
+                                                                   {amt}元宝
+                                                               </button>
+                                                           ))}
+                                                       </div>
+                                                   )}
                                                </div>
 
                                                {/* 宽限天数 */}

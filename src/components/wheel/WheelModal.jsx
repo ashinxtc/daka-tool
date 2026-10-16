@@ -620,11 +620,31 @@ export const EvilWheelModal = ({
                             </div>
                         )}
 
+                        {result.isEscrowFrozen && (
+                            <div className="mb-5 text-amber-200 font-bold bg-gradient-to-r from-amber-950/90 via-orange-950/80 to-slate-900/90 p-4 rounded-2xl border-2 border-amber-500/70 flex items-start gap-3 text-xs shadow-[0_0_30px_rgba(245,158,11,0.35)] text-left animate-in zoom-in-95 duration-300">
+                                <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 shrink-0 text-2xl leading-none">
+                                    🔥
+                                </div>
+                                <div className="space-y-1.5">
+                                    <div className="text-sm font-black text-amber-300 flex items-center gap-1.5">
+                                        <span>触发【逆风翻盘 · 戴罪立功】契约！</span>
+                                    </div>
+                                    <p className="text-amber-100/90 leading-relaxed font-medium">
+                                        命运转盘裁决判定的 <strong className="text-amber-300 font-black text-sm">{result.frozenGold || Math.abs(result.value)}</strong> 元宝并未直接扣光，已转入【暂扣冻结池】！今日只要达成 <strong className="text-amber-300 font-bold">⭐ 1 星保底</strong>（任意 1 项必做），即可 100% 全额赎回！
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         <button
                             onClick={onClose}
-                            className="w-full max-w-xs py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 transition-colors cursor-pointer"
+                            className={`w-full max-w-xs py-3.5 rounded-2xl font-black transition-all cursor-pointer shadow-lg ${
+                                result.isEscrowFrozen
+                                    ? 'bg-gradient-to-r from-amber-600 via-rose-600 to-amber-700 hover:from-amber-500 hover:to-rose-500 text-white border border-amber-400/50 shadow-amber-950/50 hover:scale-[1.02]'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700'
+                            }`}
                         >
-                            {isDemo ? '关闭测试' : '谨遵法旨 · 勉力自新'}
+                            {isDemo ? '关闭测试' : (result.isEscrowFrozen ? '签署翻盘契约 · 今日誓雪前耻 🔥' : '谨遵法旨 · 勉力自新')}
                         </button>
                     </div>
                 )}
