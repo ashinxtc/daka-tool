@@ -29,7 +29,10 @@ export const FAST_BOOT_KEYS = new Set([
     'app_pending_evil_penalties_v2',
     'app_evil_penalty_log_v1',
     'app_evil_auto_trigger',
-    'app_evil_trigger_config_v1'
+    'app_evil_trigger_config_v1',
+    'app_gamification_config_v1',
+    'app_escrow_penalties_v1',
+    'app_first_blood_records_v1'
 ]);
 
 // 内存中的全量缓存字典，保证业务层读操作（如 useStickyState, useMemo）绝对同步、0ms 耗时

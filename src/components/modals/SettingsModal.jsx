@@ -132,7 +132,7 @@ const CopyIcon = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
 );
 
-        const SettingsModal = ({ showSettings, setShowSettings, initialTab = 'parent', theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, evilTriggerConfig = {}, setEvilTriggerConfig = () => {}, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, authorizedParents = { pairToken: '', devices: [] }, setAuthorizedParents, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
+        const SettingsModal = ({ showSettings, setShowSettings, initialTab = 'parent', theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, evilTriggerConfig = {}, setEvilTriggerConfig = () => {}, gamificationConfig = {}, setGamificationConfig = () => {}, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, authorizedParents = { pairToken: '', devices: [] }, setAuthorizedParents, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
             const showToast = (typeof window !== "undefined" && window.showToast) || ((t, m) => alert(m));
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState(initialTab);
@@ -291,6 +291,7 @@ const CopyIcon = (props) => (
                 { id: 'wheelGold', label: '金转盘', icon: '🎁' },
                 { id: 'wheelXp', label: 'XP转盘', icon: '⚡' },
                 { id: 'evil', label: '惩罚', icon: '⚠️' },
+                { id: 'gamification', label: '破局激励', icon: '⭐' },
                 { id: 'homeworkExam', label: '作业与考试', icon: '📝' },
                 { id: 'ai', label: 'AI助手', icon: '🤖' },
                 { id: 'push', label: '通知', icon: '🔔' },
@@ -4224,6 +4225,327 @@ const CopyIcon = (props) => (
                                 </div>
                             </section>
                         </div>
+                       )}
+
+                       {/* 破局激励与护航体系配置 */}
+                       {activeSettingsTab === 'gamification' && (
+                           <div className="space-y-6 max-w-3xl mx-auto py-2">
+                               {/* 顶部引导横幅 */}
+                               <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-rose-500/10 border border-amber-300/40 space-y-1.5">
+                                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
+                                       <span className="text-xl">⭐</span>
+                                       <span>教育激励与破局护航体系</span>
+                                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                           打破死循环 · 保护积极性
+                                       </span>
+                                   </div>
+                                   <p className="text-xs text-slate-600 leading-relaxed">
+                                       针对孩子因偶发困难或连续受挫导致的消极心理，通过<strong>星级通关保底、逆风翻盘赎回与首胜破冰盲盒</strong>，把冰冷的终局惩罚转化为充满希望与行动力的成长阶梯。
+                                   </p>
+                               </div>
+
+                               {/* 1. 星级通关制 */}
+                               <section className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-700/80 shadow-md space-y-4">
+                                   <div className="flex items-center justify-between gap-3">
+                                       <div className="space-y-1">
+                                           <div className="flex items-center gap-2">
+                                               <span className="text-lg">⭐</span>
+                                               <h4 className="text-sm font-black text-amber-300">星级通关制 (1星保底免罚)</h4>
+                                               <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                                                   强烈推荐
+                                               </span>
+                                           </div>
+                                           <p className="text-xs text-slate-300 leading-relaxed">
+                                               告别“全做完 vs 算失败”的极端对立。做完 1 项必做即获 ⭐1 星并激活今日免罚护盾；做完全部获 ⭐⭐⭐3 星荣耀与额外大转盘。
+                                           </p>
+                                       </div>
+                                       <ToggleSwitch 
+                                           checked={gamificationConfig?.starRatingEnabled !== false}
+                                           onChange={() => setGamificationConfig(prev => ({
+                                               ...(prev || {}),
+                                               starRatingEnabled: !(prev?.starRatingEnabled !== false)
+                                           }))}
+                                           activeColor="bg-amber-500"
+                                       />
+                                   </div>
+
+                                   {gamificationConfig?.starRatingEnabled !== false && (
+                                       <div className="mt-2 pt-3 border-t border-slate-800 space-y-3.5">
+                                           {/* 1星保底阈值 */}
+                                           <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                                               <div className="flex items-center justify-between text-xs font-bold text-slate-200">
+                                                   <span className="text-emerald-400">🛡️ 1星及格门槛（达成即享今日免罚安全）</span>
+                                                   <span className="text-slate-400 font-normal">
+                                                       {gamificationConfig?.star1ThresholdType === 'percent' 
+                                                           ? `完成率 ≥ ${gamificationConfig?.star1Value || 30}%`
+                                                           : `完成 ≥ ${gamificationConfig?.star1Value || 1} 项必做`}
+                                                   </span>
+                                               </div>
+                                               <div className="flex items-center gap-2">
+                                                   <button
+                                                       type="button"
+                                                       onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), star1ThresholdType: 'count', star1Value: 1 }))}
+                                                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors ${
+                                                           (gamificationConfig?.star1ThresholdType || 'count') === 'count' && (gamificationConfig?.star1Value || 1) === 1
+                                                               ? 'bg-emerald-600 text-white border-emerald-500'
+                                                               : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                       }`}
+                                                   >
+                                                       完成 1 项必做 (推荐·门槛最低)
+                                                   </button>
+                                                   <button
+                                                       type="button"
+                                                       onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), star1ThresholdType: 'count', star1Value: 2 }))}
+                                                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors ${
+                                                           (gamificationConfig?.star1ThresholdType || 'count') === 'count' && gamificationConfig?.star1Value === 2
+                                                               ? 'bg-emerald-600 text-white border-emerald-500'
+                                                               : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                       }`}
+                                                   >
+                                                       完成 2 项必做
+                                                   </button>
+                                                   <button
+                                                       type="button"
+                                                       onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), star1ThresholdType: 'percent', star1Value: 30 }))}
+                                                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold border transition-colors ${
+                                                           gamificationConfig?.star1ThresholdType === 'percent'
+                                                               ? 'bg-emerald-600 text-white border-emerald-500'
+                                                               : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                       }`}
+                                                   >
+                                                       按百分比 ≥30%
+                                                   </button>
+                                               </div>
+                                           </div>
+
+                                           {/* 2星与3星进阶 */}
+                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                               <div className="p-3 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-1.5">
+                                                   <div className="flex items-center justify-between text-slate-300 font-bold">
+                                                       <span>⭐⭐ 2星良好完成率</span>
+                                                       <span className="text-blue-400 font-black">{gamificationConfig?.star2Percent || 60}%</span>
+                                                   </div>
+                                                   <input
+                                                       type="range"
+                                                       min="40"
+                                                       max="80"
+                                                       step="5"
+                                                       value={gamificationConfig?.star2Percent || 60}
+                                                       onChange={e => setGamificationConfig(prev => ({ ...(prev || {}), star2Percent: parseInt(e.target.value, 10) }))}
+                                                       className="w-full accent-blue-500"
+                                                   />
+                                               </div>
+
+                                               <div className="p-3 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-1.5">
+                                                   <div className="flex items-center justify-between text-slate-300 font-bold">
+                                                       <span>⭐⭐⭐ 3星完美通关完成率</span>
+                                                       <span className="text-amber-400 font-black">{gamificationConfig?.star3Percent || 100}%</span>
+                                                   </div>
+                                                   <input
+                                                       type="range"
+                                                       min="80"
+                                                       max="100"
+                                                       step="5"
+                                                       value={gamificationConfig?.star3Percent || 100}
+                                                       onChange={e => setGamificationConfig(prev => ({ ...(prev || {}), star3Percent: parseInt(e.target.value, 10) }))}
+                                                       className="w-full accent-amber-500"
+                                                   />
+                                               </div>
+                                           </div>
+
+                                           {/* 3星额外转盘开关 */}
+                                           <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 text-xs">
+                                               <span className="text-slate-300 font-medium">达成 3 星完美通关时，额外获赠 1 次黄金大转盘抽奖</span>
+                                               <ToggleSwitch
+                                                   checked={gamificationConfig?.star3ExtraWheel !== false}
+                                                   onChange={() => setGamificationConfig(prev => ({
+                                                       ...(prev || {}),
+                                                       star3ExtraWheel: !(prev?.star3ExtraWheel !== false)
+                                                   }))}
+                                                   activeColor="bg-amber-500"
+                                                   size="sm"
+                                               />
+                                           </div>
+                                       </div>
+                                   )}
+                               </section>
+
+                               {/* 2. 逆风翻盘 / 戴罪立功 */}
+                               <section className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-700/80 shadow-md space-y-4">
+                                   <div className="flex items-center justify-between gap-3">
+                                       <div className="space-y-1">
+                                           <div className="flex items-center gap-2">
+                                               <span className="text-lg">⚔️</span>
+                                               <h4 className="text-sm font-black text-rose-300">逆风翻盘 · 戴罪立功挑战</h4>
+                                               <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
+                                                   破局核心
+                                               </span>
+                                           </div>
+                                           <p className="text-xs text-slate-300 leading-relaxed">
+                                               当未达标时，金元宝不直接扣除销毁，而是扣押进冻结池；次日只要达成 ⭐1 星保底，即可 100% 赎回全部冻结元宝并击溃恶魔！
+                                           </p>
+                                       </div>
+                                       <ToggleSwitch 
+                                           checked={gamificationConfig?.redemptionEnabled !== false}
+                                           onChange={() => setGamificationConfig(prev => ({
+                                               ...(prev || {}),
+                                               redemptionEnabled: !(prev?.redemptionEnabled !== false)
+                                           }))}
+                                           activeColor="bg-rose-600"
+                                       />
+                                   </div>
+
+                                   {gamificationConfig?.redemptionEnabled !== false && (
+                                       <div className="mt-2 pt-3 border-t border-slate-800 space-y-3.5">
+                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                               {/* 默认冻结金元宝数 */}
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                                                   <label className="text-slate-300 font-bold block">触发受罚时暂扣冻结金额</label>
+                                                   <div className="flex items-center gap-2">
+                                                       {[10, 20, 30, 50].map(amt => (
+                                                           <button
+                                                               key={amt}
+                                                               type="button"
+                                                               onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), defaultFrozenGold: amt }))}
+                                                               className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
+                                                                   (gamificationConfig?.defaultFrozenGold || 20) === amt
+                                                                       ? 'bg-rose-600 text-white border-rose-500'
+                                                                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                               }`}
+                                                           >
+                                                               {amt}元宝
+                                                           </button>
+                                                       ))}
+                                                   </div>
+                                               </div>
+
+                                               {/* 宽限天数 */}
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                                                   <label className="text-slate-300 font-bold block">翻盘契约允许宽限天数</label>
+                                                   <div className="flex items-center gap-2">
+                                                       {[1, 2].map(days => (
+                                                           <button
+                                                               key={days}
+                                                               type="button"
+                                                               onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), redemptionGraceDays: days }))}
+                                                               className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
+                                                                   (gamificationConfig?.redemptionGraceDays || 1) === days
+                                                                       ? 'bg-rose-600 text-white border-rose-500'
+                                                                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                               }`}
+                                                           >
+                                                               {days}天 (次日{days === 2 ? '或后天' : ''}达标)
+                                                           </button>
+                                                       ))}
+                                                   </div>
+                                               </div>
+                                           </div>
+
+                                           {/* 赎回返还比例 */}
+                                           <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 flex items-center justify-between text-xs">
+                                               <span className="text-slate-300 font-medium">翻盘成功时返还比例</span>
+                                               <div className="flex items-center gap-2 font-bold">
+                                                   <button
+                                                       type="button"
+                                                       onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), redemptionReturnRate: 100 }))}
+                                                       className={`px-3 py-1 rounded-lg border ${
+                                                           (gamificationConfig?.redemptionReturnRate || 100) === 100
+                                                               ? 'bg-emerald-600 text-white border-emerald-500'
+                                                               : 'bg-slate-800 text-slate-400 border-slate-700'
+                                                       }`}
+                                                   >
+                                                       100% 全额赎回
+                                                   </button>
+                                                   <button
+                                                       type="button"
+                                                       onClick={() => setGamificationConfig(prev => ({ ...(prev || {}), redemptionReturnRate: 80 }))}
+                                                       className={`px-3 py-1 rounded-lg border ${
+                                                           gamificationConfig?.redemptionReturnRate === 80
+                                                               ? 'bg-amber-600 text-white border-amber-500'
+                                                               : 'bg-slate-800 text-slate-400 border-slate-700'
+                                                       }`}
+                                                   >
+                                                       80% 赎回
+                                                   </button>
+                                               </div>
+                                           </div>
+                                       </div>
+                                   )}
+                               </section>
+
+                               {/* 3. 首胜破冰盲盒 */}
+                               <section className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-700/80 shadow-md space-y-4">
+                                   <div className="flex items-center justify-between gap-3">
+                                       <div className="space-y-1">
+                                           <div className="flex items-center gap-2">
+                                               <span className="text-lg">🎁</span>
+                                               <h4 className="text-sm font-black text-amber-300">首胜破冰盲盒 (启动阻力粉碎机)</h4>
+                                           </div>
+                                           <p className="text-xs text-slate-300 leading-relaxed">
+                                               消除起步拖延。每天只要完成全天任意第 1 个任务，立刻弹出惊喜开箱动画并随机掉落金元宝，用即时多巴胺打通惯性！
+                                           </p>
+                                       </div>
+                                       <ToggleSwitch 
+                                           checked={gamificationConfig?.firstBloodEnabled !== false}
+                                           onChange={() => setGamificationConfig(prev => ({
+                                               ...(prev || {}),
+                                               firstBloodEnabled: !(prev?.firstBloodEnabled !== false)
+                                           }))}
+                                           activeColor="bg-amber-500"
+                                       />
+                                   </div>
+
+                                   {gamificationConfig?.firstBloodEnabled !== false && (
+                                       <div className="mt-2 pt-3 border-t border-slate-800 space-y-3.5 text-xs">
+                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                                                   <label className="text-slate-300 font-bold block">盲盒掉落金元宝区间</label>
+                                                   <div className="flex items-center gap-2">
+                                                       {[
+                                                           { min: 1, max: 3, label: '1~3 元宝' },
+                                                           { min: 2, max: 5, label: '2~5 元宝 (推荐)' },
+                                                           { min: 5, max: 10, label: '5~10 元宝' }
+                                                       ].map(opt => (
+                                                           <button
+                                                               key={opt.label}
+                                                               type="button"
+                                                               onClick={() => setGamificationConfig(prev => ({
+                                                                   ...(prev || {}),
+                                                                   firstBloodGoldMin: opt.min,
+                                                                   firstBloodGoldMax: opt.max
+                                                               }))}
+                                                               className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
+                                                                   (gamificationConfig?.firstBloodGoldMin || 2) === opt.min && (gamificationConfig?.firstBloodGoldMax || 5) === opt.max
+                                                                       ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                               }`}
+                                                           >
+                                                               {opt.label}
+                                                           </button>
+                                                       ))}
+                                                   </div>
+                                               </div>
+
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 flex items-center justify-between">
+                                                   <div>
+                                                       <span className="text-slate-200 font-bold block">早起鸟特别加成</span>
+                                                       <span className="text-[11px] text-slate-400 mt-0.5 block">上午 11:00 前完成首胜，额外赠送 +2 元宝</span>
+                                                   </div>
+                                                   <ToggleSwitch
+                                                       checked={gamificationConfig?.earlyBirdBonus !== false}
+                                                       onChange={() => setGamificationConfig(prev => ({
+                                                           ...(prev || {}),
+                                                           earlyBirdBonus: !(prev?.earlyBirdBonus !== false)
+                                                       }))}
+                                                       activeColor="bg-amber-500"
+                                                       size="sm"
+                                                   />
+                                               </div>
+                                           </div>
+                                       </div>
+                                   )}
+                               </section>
+                           </div>
                        )}
                     </div>
                     <div className="p-4 border-t bg-white/80 backdrop-blur border-gray-100 text-right shrink-0"><button onClick={() => { clearNewTaskFlags(); setShowSettings(false); triggerSyncUpload(); }} className={`px-8 py-2.5 ${theme.primaryBg} ${theme.primaryBgHover} text-white rounded-full font-medium shadow-lg transition transform active:scale-95`}>保存并退出</button></div>

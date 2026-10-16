@@ -22,6 +22,10 @@ import { TimeEntryModal } from './components/checkin/TimeEntryModal';
 import { TaskCard } from './components/checkin/TaskCard';
 import { TaskDashboardTrack } from './components/checkin/TaskDashboardTrack';
 import { HomeworkExamRecordModal, GRADE_OPTIONS } from './components/homework/HomeworkExamRecordModal';
+import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays } from './utils/gamification';
+import { StarRatingBadge } from './components/gamification/StarRatingBadge';
+import { ComebackModal, ComebackBanner } from './components/gamification/ComebackModal';
+import { FirstBloodModal } from './components/gamification/FirstBloodModal';
 import { WheelChoiceModal, WheelModal, EvilWheelModal } from './components/wheel/WheelModal';
 import { FamilyMessagePanel, ChatDrawer } from './components/chat/ChatDrawer';
 import { SilenceModal } from './components/modals/SilenceModal';
@@ -856,6 +860,55 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [pendingEvilPenalties, setPendingEvilPenalties] = useStickyState({}, 'app_pending_evil_penalties_v2');
             const [evilPenaltySource, setEvilPenaltySource] = useState(null);
             const [evilPenaltyReason, setEvilPenaltyReason] = useState('');
+
+            // 破局激励与护航体系核心状态：星级、逆风翻盘契约、首胜破冰盲盒
+            const [gamificationConfig, setGamificationConfig] = useStickyState(DEFAULT_GAMIFICATION_CONFIG, 'app_gamification_config_v1');
+            const [escrowPenalties, setEscrowPenalties] = useStickyState({}, 'app_escrow_penalties_v1');
+            const [firstBloodRecords, setFirstBloodRecords] = useStickyState({}, 'app_first_blood_records_v1');
+            const [showComebackModal, setShowComebackModal] = useState(false);
+            const [showFirstBloodModal, setShowFirstBloodModal] = useState(false);
+            const [firstBloodCurrentReward, setFirstBloodCurrentReward] = useState(null);
+
+            // 当日星级与安全免罚护盾计算 (响应式)
+            const todayStars = useMemo(() => {
+                return calculateDailyStars(tasks[activeChild] || [], checkins[activeChild] || {}, getLocalDateKey(0), gamificationConfig);
+            }, [tasks, checkins, activeChild, gamificationConfig]);
+
+            // 当日达成 1 星保底时，若存在处于 pending 的翻盘契约，自动触发逆风翻盘解冻赎回！
+            React.useEffect(() => {
+                if (!gamificationConfig?.redemptionEnabled) return;
+                const currentEscrow = escrowPenalties[activeChild];
+                if (currentEscrow && currentEscrow.status === 'pending' && todayStars?.star >= 1) {
+                    const returnRate = Math.max(50, Math.min(100, parseInt(gamificationConfig.redemptionReturnRate, 10) || 100)) / 100;
+                    const returnGold = Math.round((currentEscrow.frozenGold || 20) * returnRate);
+                    const redeemKey = `${activeChild}-ESCROW_REDEEM-${Date.now()}`;
+                    setWheelHistory(prev => ({ ...prev, [redeemKey]: returnGold }));
+                    setEscrowPenalties(prev => ({
+                        ...prev,
+                        [activeChild]: {
+                            ...currentEscrow,
+                            status: 'redeemed',
+                            redeemedAt: Date.now()
+                        }
+                    }));
+                    // 彻底清除待惩罚标记
+                    setPendingEvilPenalties(prev => {
+                        const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
+                        delete next[activeChild];
+                        return next;
+                    });
+                    if (currentEscrow.penaltyKey) {
+                        setEvilPenaltyLog(prev => ({
+                            ...prev,
+                            [currentEscrow.penaltyKey]: { timestamp: Date.now(), reason: '逆风翻盘成功，全额赎回' }
+                        }));
+                    }
+                    setShowEvilWheel(false);
+                    try { fireRoyalSalute(); } catch (e) {}
+                    setShowComebackModal(true);
+                    showToast('success', `🎉 逆风翻盘大获全胜！今日达成 1 星保底，${returnGold} 金元宝已全额赎回！`, { duration: 6000 });
+                }
+            }, [todayStars?.star, activeChild, escrowPenalties, gamificationConfig]);
 
             // 旧版单一 pendingEvilPenalty 状态平滑迁移
             React.useEffect(() => {
@@ -7977,6 +8030,16 @@ ${context}
                     return;
                 }
 
+                // --- 破局激励机制：星级通关保底优先核验 ---
+                // 若开启了星级通关制，只要昨日达成了 1 星保底（即完成 1 项必做），即享有免罚护盾！
+                if (gamificationConfig?.starRatingEnabled !== false) {
+                    const yesterdayStars = calculateDailyStars(childTasks, checkins[activeChild] || {}, yesterday, gamificationConfig);
+                    if (yesterdayStars.star >= 1) {
+                        evilCheckDoneRef.current.add(penaltyKey);
+                        return;
+                    }
+                }
+
                 const cfg = {
                     ...DEFAULT_EVIL_TRIGGER_CONFIG,
                     ...(typeof evilTriggerConfig === 'object' && evilTriggerConfig !== null ? evilTriggerConfig : {})
@@ -8043,6 +8106,52 @@ ${context}
 
                 if (triggeredReasons.length > 0) {
                     const combinedReason = triggeredReasons.join('；');
+
+                    // --- 破局激励机制：逆风翻盘 / 戴罪立功拦截 ---
+                    // 不直接启动恶魔转盘扣除，而是将元宝放入冻结池，给予今日翻盘机会！
+                    if (gamificationConfig?.redemptionEnabled !== false) {
+                        const currentEscrow = escrowPenalties[activeChild];
+                        const todayStr = getLocalDateKey(0);
+                        if (!currentEscrow || currentEscrow.status !== 'pending') {
+                            const frozenAmount = Math.max(5, parseInt(gamificationConfig?.defaultFrozenGold, 10) || 20);
+                            const escrowKey = `${activeChild}-ESCROW_FROZEN-${yesterday}_${Date.now()}`;
+                            setWheelHistory(prev => ({ ...prev, [escrowKey]: -frozenAmount }));
+                            setEscrowPenalties(prev => ({
+                                ...(typeof prev === 'object' && prev !== null ? prev : {}),
+                                [activeChild]: {
+                                    status: 'pending',
+                                    frozenGold: frozenAmount,
+                                    penaltyKey,
+                                    createdDate: todayStr,
+                                    deadlineDate: dateKeyAddDays(todayStr, parseInt(gamificationConfig?.redemptionGraceDays, 10) || 1),
+                                    reason: combinedReason,
+                                    timestamp: Date.now()
+                                }
+                            }));
+                            evilCheckDoneRef.current.add(penaltyKey);
+                            setShowComebackModal(true);
+                            return;
+                        } else if (currentEscrow.status === 'pending') {
+                            // 检查翻盘契约是否已超过宽限期
+                            if (currentEscrow.deadlineDate && todayStr > currentEscrow.deadlineDate) {
+                                setEscrowPenalties(prev => ({
+                                    ...(typeof prev === 'object' && prev !== null ? prev : {}),
+                                    [activeChild]: {
+                                        ...currentEscrow,
+                                        status: 'forfeited',
+                                        forfeitedAt: Date.now()
+                                    }
+                                }));
+                                // 逾期未翻盘，继续向下执行转盘
+                            } else {
+                                // 仍在翻盘宽限期内：不重复触发转盘
+                                evilCheckDoneRef.current.add(penaltyKey);
+                                setShowComebackModal(true);
+                                return;
+                            }
+                        }
+                    }
+
                     // 严密机制：此处仅记入待执行惩罚队列 pendingEvilPenalties！
                     // 绝不能在转盘旋转结算前提前核销写入 evilPenaltyLog，确保未受罚前切换用户或刷新均绝不丢失！
                     setPendingEvilPenalties(prev => ({
@@ -8056,7 +8165,7 @@ ${context}
                 }
 
                 evilCheckDoneRef.current.add(penaltyKey);
-            }, [checkins, activeChild, evilAutoTrigger, evilTriggerConfig, tasks, stats, exemptedDays]);
+            }, [checkins, activeChild, evilAutoTrigger, evilTriggerConfig, tasks, stats, exemptedDays, gamificationConfig, escrowPenalties]);
 
             const handleLaunchEvilWheel = (source = null, reason = '') => {
                 setShowSettings(false);
@@ -8621,6 +8730,64 @@ ${context}
 					triggerSyncUpload();
 				}
 			}, [tasks, activeChild, checkins]);
+
+            // --- 首胜破冰盲盒触发与领取逻辑 ---
+            const triggerFirstBloodCheck = React.useCallback((dateStr) => {
+                const todayStr = getLocalDateKey(0);
+                if (dateStr && dateStr !== todayStr) return;
+                if (gamificationConfig?.firstBloodEnabled === false) return;
+                const childRecords = firstBloodRecords[activeChild] || {};
+                if (childRecords[todayStr]?.claimed) return;
+
+                // 统计今日已完成的任务数（包含打卡、阅读、习惯）
+                const childCheckins = checkins[activeChild] || {};
+                const childTasks = tasks[activeChild] || [];
+                let completedCount = 0;
+                for (const t of childTasks) {
+                    const val = childCheckins[t.id]?.[todayStr];
+                    if (val !== undefined && val !== null && val !== false && val !== '') {
+                        if (Array.isArray(val) ? val.length > 0 : (typeof val === 'number' ? val > 0 : true)) {
+                            completedCount++;
+                        }
+                    }
+                }
+
+                if (completedCount >= 1) {
+                    const now = new Date();
+                    const isEarlyBird = now.getHours() < 11;
+                    const reward = calculateFirstBloodReward(gamificationConfig, isEarlyBird);
+                    setFirstBloodCurrentReward(reward);
+                    setShowFirstBloodModal(true);
+                }
+            }, [activeChild, checkins, tasks, firstBloodRecords, gamificationConfig]);
+
+            const handleClaimFirstBlood = (reward) => {
+                const todayStr = getLocalDateKey(0);
+                if (!reward) return;
+                const historyKey = `${activeChild}-FIRST_BLOOD-${todayStr}_${Date.now()}`;
+                setWheelHistory(prev => ({ ...prev, [historyKey]: reward.totalGold }));
+                updateStats(activeChild, 'gold_earn', reward.totalGold, { source: 'first_blood', dateKey: todayStr });
+                setFirstBloodRecords(prev => ({
+                    ...prev,
+                    [activeChild]: {
+                        ...(prev[activeChild] || {}),
+                        [todayStr]: { claimed: true, reward, timestamp: Date.now() }
+                    }
+                }));
+                try { fireRoyalSalute(); } catch (e) {}
+                showToast('success', `🎉 首胜破冰盲盒开启成功！+${reward.totalGold} 金元宝已入账！`);
+                triggerSyncUpload();
+            };
+
+            // 监听今日打卡事件自动核验首胜
+            React.useEffect(() => {
+                const todayStr = getLocalDateKey(0);
+                if (firstBloodRecords[activeChild]?.[todayStr]?.claimed) return;
+                const timer = setTimeout(() => {
+                    triggerFirstBloodCheck(todayStr);
+                }, 500);
+                return () => clearTimeout(timer);
+            }, [checkins, activeChild, triggerFirstBloodCheck, firstBloodRecords]);
 
             const handleAddProfile = () => {
 				const name = prompt("请输入新孩子的名字：");
@@ -9465,6 +9632,25 @@ ${context}
                         hasActiveBg={hasActiveBg}
                     />
 
+                    {/* 逆风翻盘常驻提醒条 (仅在存在待翻盘契约时展示) */}
+                    {gamificationConfig?.redemptionEnabled !== false && (
+                        <ComebackBanner 
+                            escrow={escrowPenalties[activeChild]} 
+                            onOpenModal={() => setShowComebackModal(true)} 
+                            theme={theme} 
+                        />
+                    )}
+
+                    {/* 今日星级通关徽章与安全免罚护盾状态 */}
+                    {gamificationConfig?.starRatingEnabled !== false && (
+                        <StarRatingBadge 
+                            dailyStars={todayStars} 
+                            theme={theme} 
+                            hasActiveBg={hasActiveBg} 
+                            onOpenStarDetails={() => handleOpenSettings('gamification')} 
+                        />
+                    )}
+
                     {/* 智能任务看板与横向跑道：平时折叠为数据指标条，展开为横向卡片泳道 */}
                     <TaskDashboardTrack
                         tasks={sortedTasks}
@@ -10036,6 +10222,8 @@ ${context}
                     setEvilAutoTrigger={setEvilAutoTrigger}
                     evilTriggerConfig={evilTriggerConfig}
                     setEvilTriggerConfig={setEvilTriggerConfig}
+                    gamificationConfig={gamificationConfig}
+                    setGamificationConfig={setGamificationConfig}
                     onLaunchEvilWheel={handleLaunchEvilWheel}
                     onTestEvilWheel={handleTestEvilWheel}
 					onLaunchExtraWheel={(type, isDemo) => handleLaunchExtraWheel(type, isDemo)}
@@ -10496,6 +10684,21 @@ ${context}
                             });
                         }
                     }}
+                  />
+                  <ComebackModal
+                    show={showComebackModal}
+                    onClose={() => setShowComebackModal(false)}
+                    escrow={escrowPenalties[activeChild]}
+                    dailyStars={todayStars}
+                    onConfirmChallenge={() => setShowComebackModal(false)}
+                    theme={theme}
+                  />
+                  <FirstBloodModal
+                    show={showFirstBloodModal}
+                    onClose={() => setShowFirstBloodModal(false)}
+                    onClaim={handleClaimFirstBlood}
+                    reward={firstBloodCurrentReward}
+                    theme={theme}
                   />
 				  <GoldHistoryModal
                     show={showGoldHistory}

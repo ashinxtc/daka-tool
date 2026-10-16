@@ -66,6 +66,9 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
             evilPenaltyLog: storage.getItem('app_evil_penalty_log_v1'),
             evilAutoTrigger: storage.getItem('app_evil_auto_trigger'),
             evilTriggerConfig: storage.getItem('app_evil_trigger_config_v1'),
+            gamificationConfig: storage.getItem('app_gamification_config_v1'),
+            escrowPenalties: storage.getItem('app_escrow_penalties_v1'),
+            firstBloodRecords: storage.getItem('app_first_blood_records_v1'),
             pendingEvilPenalty: storage.getItem('app_pending_evil_penalty_v1'),
             aiEnabled: storage.getItem('app_ai_enabled'),
             deepseekApiKey: storage.getItem('app_deepseek_api_key'),
@@ -185,6 +188,9 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
                                 key === 'evilPenaltyLog' ? 'app_evil_penalty_log_v1' :
                                 key === 'evilAutoTrigger' ? 'app_evil_auto_trigger' :
                                 key === 'evilTriggerConfig' ? 'app_evil_trigger_config_v1' :
+                                key === 'gamificationConfig' ? 'app_gamification_config_v1' :
+                                key === 'escrowPenalties' ? 'app_escrow_penalties_v1' :
+                                key === 'firstBloodRecords' ? 'app_first_blood_records_v1' :
                                 key === 'pendingEvilPenalty' ? 'app_pending_evil_penalty_v1' :
                                 key === 'aiEnabled' ? 'app_ai_enabled' :
                                 key === 'deepseekApiKey' ? 'app_deepseek_api_key' :
