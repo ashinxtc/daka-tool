@@ -4,6 +4,10 @@
 const DB_NAME = 'daka_app_db';
 const STORE_NAME = 'app_keyval';
 const DB_VERSION = 1;
+// A missing sync baseline causes conservative reconciliation, never data loss.
+// Keep this potentially large duplicate snapshot in IndexedDB, not the small
+// synchronous recovery journal or the localStorage-only fallback.
+const RECONSTRUCTIBLE_KEYS = new Set(['_sync_checkpoint_v2']);
 
 // 开屏秒开必需的极简配置（保留在 localStorage 作为镜像）
 export const FAST_BOOT_KEYS = new Set([
@@ -159,7 +163,7 @@ const flushDbBatch = async () => {
     try { db = await openDB(); } catch { return finish(false); }
     if (!db) {
         try {
-            writes.forEach((value, key) => window.localStorage.setItem(key, value));
+            writes.forEach((value, key) => { if (!RECONSTRUCTIBLE_KEYS.has(key)) window.localStorage.setItem(key, value); });
             deletes.forEach(key => window.localStorage.removeItem(key));
             return finish(true);
         } catch { return finish(false); }
@@ -215,31 +219,37 @@ export const isJunkKey = (k) => {
 const ACCOUNTING_JOURNAL = '_accounting_journal_v1';
 let journalSequence = 0;
 const readJournal = () => JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
-const writeJournal = entries => {
+const writeJournal = (entries, deletions = []) => {
     const previous = readJournal();
     const values = { ...(previous.entries || {}) };
+    RECONSTRUCTIBLE_KEYS.forEach(key => { delete values[key]; });
     const deletedKeys = new Set(previous.deletedKeys || []);
-    const put = (key, value) => { values[key] = value; deletedKeys.delete(key); };
+    const put = (key, value) => { if (!RECONSTRUCTIBLE_KEYS.has(key)) values[key] = value; deletedKeys.delete(key); };
     const del = key => { delete values[key]; deletedKeys.add(key); };
     inFlightWrites.forEach((value, key) => put(key, value)); inFlightDeletes.forEach(del);
     pendingDbWrites.forEach((value, key) => put(key, value)); pendingDbDeletes.forEach(del);
     Object.entries(entries).forEach(([key, value]) => put(key, value));
+    deletions.forEach(del);
     const journal = { id: `${Date.now()}-${++journalSequence}-${Math.random().toString(36).slice(2)}`, entries: values, deletedKeys: [...deletedKeys] };
     window.localStorage.setItem(ACCOUNTING_JOURNAL, JSON.stringify(journal));
     return journal;
 };
-export function commitDurable(entries) {
+export function commitDurable(entries, deletions = []) {
     if (state.phase === 'restoring') throw new Error('正在恢复数据，请稍后重试。');
     // Quota/security errors deliberately propagate: never claim a command without a durable record.
     const versions = storage.getKeyVersions();
     for (const key of Object.keys(entries)) versions[key] = Date.now();
     const writes = { ...entries, _key_versions: JSON.stringify(versions) };
-    writeJournal(writes);
+    writeJournal(writes, deletions);
     for (const [key, value] of Object.entries(writes)) {
         storage.setItem(key, value);
         if (window._pendingWrites) delete window._pendingWrites[key];
     }
-    window.dispatchEvent(new CustomEvent('_durableDataCommitted', { detail: Object.keys(entries) }));
+    for (const key of deletions) {
+        storage.removeItem(key);
+        if (window._pendingWrites) delete window._pendingWrites[key];
+    }
+    window.dispatchEvent(new CustomEvent('_durableDataCommitted', { detail: [...Object.keys(entries), ...deletions] }));
     flushPendingDbWrites().catch(error => console.error('[Storage] Durable flush failed; recovery journal retained', error));
 }
 

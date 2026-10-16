@@ -16,6 +16,22 @@ async function environment(idb=true) {
     const module=await import(`../src/utils/storage.js?test=${Math.random()}`);
     return {win,...module};
 }
+test('sync baseline stays out of the recovery journal while business writes and deletions remain durable',async()=>{
+    const env=await environment();await env.initStorage();
+    env.storage.setItem('app_obsolete','"old"');await env.storage.flush();
+    env.commitDurable({app_note:'"new"',_sync_checkpoint_v2:JSON.stringify({data:{app_note:'x'.repeat(200000)}})},['app_obsolete']);
+    const journal=JSON.parse(env.win.localStorage.getItem('_accounting_journal_v1'));
+    assert.equal(journal.entries._sync_checkpoint_v2,undefined);assert.equal(journal.entries.app_note,'"new"');
+    assert.ok(journal.deletedKeys.includes('app_obsolete'));
+    await env.storage.flush();assert.equal(env.storage.getItem('app_obsolete'),null);
+    assert.ok(env.storage.getItem('_sync_checkpoint_v2').length>200000);
+});
+test('localStorage fallback does not duplicate a full sync baseline or drop business data',async()=>{
+    const env=await environment(false);await env.initStorage();
+    env.commitDurable({app_note:'"kept"',_sync_checkpoint_v2:'large-reconstructible-copy'});await env.storage.flush();
+    assert.equal(env.win.localStorage.getItem('_sync_checkpoint_v2'),null);
+    assert.equal(env.win.localStorage.getItem('app_note'),'"kept"');
+});
 test('failed migration retains the original copy and can retry after reload', async () => {
     const env = await environment();
     const original = '{"孩子":[{"id":"math","name":"数学"}]}';

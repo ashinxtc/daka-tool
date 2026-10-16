@@ -84,6 +84,21 @@ test('a redundant sync notification never suppresses a later edit back to the or
     await expect(page.getByTestId('password')).toHaveText('');
     expect(await page.evaluate(()=>window.storage.getItem('app_settings_password'))).toBe('""');
 });
+test('a synchronized deletion resets the visible setting without recreating its old value',async({page})=>{
+    await page.goto(fixture);await page.getByRole('button',{name:'修改设置和任务'}).click();
+    await expect(page.getByTestId('password')).toHaveText('1234');
+    await page.evaluate(async()=>{
+        const {commitDurable}=await import('/src/utils/storage.js');
+        commitDurable({},['app_settings_password']);
+        window.dispatchEvent(new Event('_syncDataMerged'));
+        await window.storage.flush();
+    });
+    await expect(page.getByTestId('password')).toHaveText('');
+    await page.reload();await expect(page.getByTestId('password')).toHaveText('');
+    expect(await page.evaluate(()=>window.storage.getItem('app_settings_password'))).toBe(null);
+    await page.getByRole('button',{name:'修改设置和任务'}).click();
+    await page.reload();await expect(page.getByTestId('password')).toHaveText('1234');
+});
 test('both welcome and settings importers restore validated data and retain a pre-restore snapshot',async({page})=>{
     page.on('dialog',d=>d.accept());
     await page.goto('/');

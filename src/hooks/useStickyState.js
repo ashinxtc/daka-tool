@@ -64,11 +64,11 @@ export const useStickyState = (defaultValue, key) => {
             delete window._pendingWrites[key];
             try {
                 const fresh = storage.getItem(key);
-                if (fresh !== null) {
-                    const parsed = readStoredValue(fresh, defaultValue);
-                    externallyCommitted.current = parsed;
-                    setValue(parsed);
-                }
+                // A merged deletion must also reach React; otherwise an old
+                // setting remains visible and may be written back later.
+                const parsed = readStoredValue(fresh, defaultValue);
+                externallyCommitted.current = parsed;
+                setValue(parsed);
             } catch (e) {}
         };
         window.addEventListener('_syncDataMerged', handler);

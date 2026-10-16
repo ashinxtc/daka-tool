@@ -279,7 +279,7 @@ async function handleCronTrigger(env) {
             if (lastNotified === notifyKey) continue;
 
             // 从同步 KV 读取该家庭的任务和打卡数据
-            const familyData = await env.DAKA_SYNC.get(`sync:${syncCode}`);
+            const familyData = await readFamilyForPush(env, syncCode);
             if (!familyData) continue;
 
             const parsed = JSON.parse(familyData);
@@ -485,4 +485,14 @@ function json(data, status, corsHeaders) {
         status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
+}
+
+// Transitional KV fallback applies only before the service binding is deployed.
+// A bound service error must never fall back to stale KV data.
+export async function readFamilyForPush(env, syncCode) {
+    if (!env.SYNC_SERVICE) return env.DAKA_SYNC.get(`sync:${syncCode}`);
+    const response = await env.SYNC_SERVICE.fetch(`https://sync.internal/?code=${encodeURIComponent(syncCode)}`);
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error('Authoritative family data unavailable');
+    return response.text();
 }

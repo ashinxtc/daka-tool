@@ -50,6 +50,10 @@ import { useStickyState, markKeyVersion } from './hooks/useStickyState';
 import { storage, commitDurable, canSyncStorage, getStorageState, flushPendingState } from './utils/storage';
 import StorageGate from './components/common/StorageGate';
 import { selectAndRestoreBackup } from './utils/backup';
+import { readSyncSnapshot, writeSyncSnapshot, syncMetadata, checkedSyncJson, SyncRequestError } from './utils/syncTransport';
+import { mergeSyncSnapshots, syncValues } from './utils/syncMerge';
+import { createSyncCoordinator, SYNC_CHECKPOINT_KEY } from './utils/syncCoordinator';
+import SyncConflictDialog from './components/common/SyncConflictDialog';
 import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
@@ -943,6 +947,11 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
             const syncDebounceRef = React.useRef(null);
             const syncDownloadingRef = React.useRef(false);
+            const [syncConflict, setSyncConflict] = React.useState(null);
+            const syncConflictRef = React.useRef(null);
+            const currentSyncCodeRef = React.useRef(syncCode);
+            currentSyncCodeRef.current = syncCode;
+            React.useEffect(() => { syncConflictRef.current = null; setSyncConflict(null); }, [syncCode]);
 
             // --- 企业微信亲子互动状态 ---
             const [wecomEnabled, setWecomEnabled] = useStickyState(false, 'app_wecom_enabled');
@@ -3876,6 +3885,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                 // 1. 彻底移除本地测试模式开关，绝不同步
                 delete clean['app_test_mode'];
+                delete clean['app_sync_code'];
+                delete clean['app_sync_last_time'];
 
                 // 2. 移除任何以 测试员 或 TESTER 命名的 key 及测试员兑换总额
                 Object.keys(clean).forEach(k => {
@@ -5105,8 +5116,63 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 };
             }, []);
 
+            const loadSyncCheckpoint = () => {
+                try { return JSON.parse(storage.getItem(SYNC_CHECKPOINT_KEY) || 'null'); } catch { return null; }
+            };
+            const makeSyncCoordinator = (epoch = getStorageState().epoch) => {
+                const mergeAccountingKey = (key, local, remote) => {
+                    if (key === RECEIPTS_KEY) return JSON.stringify(mergeReceipts(JSON.parse(local), JSON.parse(remote)));
+                    if (key === ESCROWS_KEY) return JSON.stringify(mergeEscrows(JSON.parse(local), JSON.parse(remote)));
+                };
+                const metadata = cp => ({ [SYNC_CHECKPOINT_KEY]: JSON.stringify(cp),
+                    _sync_local_ts: String(cp.data._syncTs || 0), _sync_last_hash: hashSyncPayload(syncValues(cp.data)), _sync_has_pulled_v1: '1' });
+                return createSyncCoordinator({ code:syncCode, readLocal:collectSyncData, loadCheckpoint:loadSyncCheckpoint,
+                    isCurrent:() => canSyncStorage() && getStorageState().epoch === epoch && currentSyncCodeRef.current === syncCode,
+                    mergeKey:mergeAccountingKey,
+                    firstMerge:(local, remote) => {
+                        if (!remote.app_profiles_v1) return { data:syncValues(local), conflicts:[] };
+                        if (storage.getItem('_sync_has_pulled_v1') !== '1' || !Number(storage.getItem('_sync_local_ts'))) {
+                            const { snapshot, versions } = buildLocalSnapshot(remote);
+                            const result = resolveSyncMerge(remote, snapshot, versions, 0);
+                            return { data:{...syncValues(local), ...result.writes}, conflicts:[] };
+                        }
+                        return mergeSyncSnapshots({}, local, remote, {mergeKey:mergeAccountingKey});
+                    },
+                    saveCheckpoint:cp => commitDurable(metadata(cp)),
+                    applyMerged:(data, cp) => {
+                        const next = {...data}, parse = key => JSON.parse(next[key] || '{}');
+                        if (next[RECEIPTS_KEY] || next[ESCROWS_KEY]) {
+                            next.app_wheel_history = JSON.stringify(projectAccounting(parse('app_wheel_history'), parse(RECEIPTS_KEY), parse(ESCROWS_KEY)));
+                            next.app_stats_v1 = JSON.stringify(reconcileDeductionStats(parse('app_stats_v1'), parse(RECEIPTS_KEY)));
+                        }
+                        const current = syncValues(collectSyncData());
+                        const writes = Object.fromEntries(Object.entries(next).filter(([key,value]) => current[key] !== value));
+                        const deleted = Object.keys(current).filter(key => !(key in next));
+                        const cloudProfiles = JSON.parse(cp.data.app_profiles_v1 || '[]');
+                        const cloudTasks = JSON.parse(cp.data.app_tasks_v2 || '{}');
+                        commitDurable({...writes, ...metadata(cp), _sync_cloud_profiles_count:String(cloudProfiles.length),
+                            _sync_cloud_tasks_count:String(Object.values(cloudTasks).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0))}, deleted);
+                        if (Object.keys(writes).length || deleted.length) window.dispatchEvent(new CustomEvent('_syncDataMerged'));
+                    },
+                    onConflict:context => {
+                        const next={...context,code:syncCode};syncConflictRef.current=next;setSyncConflict(next);
+                    }
+                });
+            };
+            const resolveSyncConflict = async side => {
+                if (!syncConflictRef.current || !acquireSyncLock()) return;
+                try {
+                    const coordinator=makeSyncCoordinator();
+                    const result=await coordinator.resolveConflict(syncConflictRef.current,side);
+                    syncConflictRef.current=null;setSyncConflict(null);
+                    if(result.needUpload)await coordinator.push();
+                    setSyncLastTime(Date.now());setSyncStatus('success');
+                } catch(e) { showToast('error',e.message);setSyncStatus('error'); }
+                finally { releaseSyncLock(); }
+            };
+
             const syncToCloud = async (force = false) => {
-                if (!syncCode || !canSyncStorage()) return;
+                if (!syncCode || !canSyncStorage() || syncConflictRef.current) return;
                 const storageEpoch = getStorageState().epoch;
                 // 优先从 storage 读取最新 profiles 镜像，防止 React 闭包陈旧
                 let currentProfiles = profiles;
@@ -5178,21 +5244,22 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 if (!acquireSyncLock()) return; // 并发保护
                 setSyncStatus('syncing');
                 try {
-                    const data = collectSyncData();
-                    // KV 同 key 限 1 写/秒：429/超限时退避重试（最多 3 次）
-                    let resp = null;
-                    for (let attempt = 0; attempt < 3; attempt++) {
-                        if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
-                        resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(data)
-                        });
-                        if (resp.status !== 429) break;
-                        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+                    let checkpoint = loadSyncCheckpoint();
+                    if (checkpoint?.code !== syncCode || checkpoint?.protocol !== 2) {
+                        const probe = await readSyncSnapshot(syncCode);
+                        if (!canSyncStorage() || getStorageState().epoch !== storageEpoch || currentSyncCodeRef.current !== syncCode) return;
+                        if (probe.protocol === 2) await makeSyncCoordinator(storageEpoch).pull(probe);
+                        checkpoint = loadSyncCheckpoint();
                     }
+                    if (checkpoint?.code === syncCode && checkpoint?.protocol === 2) {
+                        await makeSyncCoordinator(storageEpoch).push();
+                        setSyncLastTime(Date.now());setSyncStatus('success');
+                        setTimeout(() => setSyncStatus(''), 3000);
+                        return;
+                    }
+                    const data = collectSyncData();
+                    await writeSyncSnapshot(syncCode,data,{protocol:1},{isCurrent:()=>canSyncStorage() && getStorageState().epoch===storageEpoch && currentSyncCodeRef.current===syncCode});
                     if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
-                    if (!resp.ok) throw new Error(`上传失败 (${resp.status})`);
                     const newHash = hashSyncPayload(data);
                     storage.setItem('_sync_last_hash', newHash);
                     storage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
@@ -5217,29 +5284,30 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             const syncFromCloud = async () => {
-                if (!syncCode || !canSyncStorage()) return;
+                if (!syncCode || !canSyncStorage() || syncConflictRef.current) return;
                 const storageEpoch = getStorageState().epoch;
                 if (!acquireSyncLock()) return; // 并发保护
                 setSyncStatus('syncing');
                 try {
                     const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
-                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
+                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch || currentSyncCodeRef.current !== syncCode) return;
+                    const meta = syncMetadata(resp);
+                    if (meta.protocol === 2) {
+                        const data = resp.status === 404 ? {} : stripTesterDataFromPayload(await checkedSyncJson(resp));
+                        const result = await makeSyncCoordinator(storageEpoch).pull({...meta,data,exists:resp.status!==404});
+                        if (result.needUpload) await makeSyncCoordinator(storageEpoch).push();
+                        setSyncLastTime(Date.now());setSyncStatus('success');
+                        setTimeout(() => setSyncStatus(''), 3000);
+                        return;
+                    }
+                    if (loadSyncCheckpoint()?.code === syncCode) throw new SyncRequestError('服务器版本回退，已保留本机数据并暂停同步。',409,'PROTOCOL_DOWNGRADE');
                     if (resp.status === 404) {
                         // 云端无数据，直接上传（不释放锁，内联执行）
                         storage.setItem('_sync_has_pulled_v1', '1');
                         const data = collectSyncData();
-                        try {
-                            const resp2 = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(data)
-                            });
-                            if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
-                            if (resp2.ok) {
-                                storage.setItem('_sync_last_hash', hashSyncPayload(data));
-                                storage.setItem('_sync_local_ts', String(data._syncTs));
-                            }
-                        } catch (e) { console.warn('Initial upload failed:', e); }
+                        await writeSyncSnapshot(syncCode,data,{protocol:1},{isCurrent:()=>canSyncStorage() && getStorageState().epoch===storageEpoch && currentSyncCodeRef.current===syncCode});
+                        storage.setItem('_sync_last_hash', hashSyncPayload(data));
+                        storage.setItem('_sync_local_ts', String(data._syncTs));
                         setSyncStatus('success');
                         setTimeout(() => setSyncStatus(''), 3000);
                         return;
@@ -5353,14 +5421,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const delay = active ? 3500 : 8000;
                     pollTimer = setTimeout(async () => {
                         if (stopped) return;
-                        if (document.visibilityState === 'visible' && canSyncStorage() && !syncLockRef.current) {
+                        if (document.visibilityState === 'visible' && canSyncStorage() && !syncLockRef.current && !syncConflictRef.current) {
                             try {
                                 const resp = await fetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
                                 if (resp.ok) {
-                                    const { ts } = await resp.json();
+                                    const { ts, revision, protocol } = await resp.json();
                                     const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
-                                    // 云端时间戳比本地新 → 有其他设备上传过 → 完整拉取合并
-                                    if (ts && ts > localTs) await syncFromCloud();
+                                    const cp = loadSyncCheckpoint();
+                                    if (protocol === 2 ? cp?.code !== syncCode || cp?.revision !== revision : ts && ts > localTs) await syncFromCloud();
                                 }
                             } catch (e) {} // 网络异常静默跳过，下轮再试
                         }
@@ -9025,6 +9093,7 @@ ${context}
 							return;
 						}
 						const cloudData = stripTesterDataFromPayload(cloudDataRaw);
+                        const welcomeMeta = syncMetadata(resp);
 
 						storage.setItem('app_sync_code', code);
 						setSyncCode(code);
@@ -9034,6 +9103,9 @@ ${context}
 						storage.setItem('_sync_local_ts', String(cloudData._syncTs || Date.now()));
 						storage.setItem('_sync_last_hash', hashSyncPayload(cloudData));
 						storage.setItem('_sync_has_pulled_v1', '1');
+                        if (welcomeMeta.protocol === 2) commitDurable({[SYNC_CHECKPOINT_KEY]:JSON.stringify({
+                            code,protocol:2,revision:welcomeMeta.revision,data:cloudData
+                        })});
 
 						let validProfiles = [];
 						try {
@@ -9287,6 +9359,7 @@ ${context}
 			
             return (
                 <div className={`min-h-screen ${hasActiveBg ? 'bg-transparent' : theme.softBg} font-sans pb-24 transition-colors duration-500`}>
+                  {syncConflict && <SyncConflictDialog context={syncConflict} onResolve={resolveSyncConflict} />}
 				  {/* --- 方案4：沉浸式动态背景层延迟启动 --- */}
 				  {bgEffectsReady && <AtmosphereLayer type={deferredActiveBg} />}
                   
