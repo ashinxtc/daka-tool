@@ -5,6 +5,9 @@ compatibility_date = "2024-01-01"
 [vars]
 # Deploy read-only first; follow docs/sync-consistency.md before switching to active.
 SYNC_MODE = "readonly"
+# Security foundation only: keep legacy until all clients and service bindings
+# complete the migration checklist in docs/service-authorization.md.
+AUTH_MODE = "legacy"
 
 [[durable_objects.bindings]]
 name = "SYNC_FAMILIES"

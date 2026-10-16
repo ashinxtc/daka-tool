@@ -1,3 +1,4 @@
+import {FamilyAccess,AccessError} from './family-access.js';
 const MAX_BYTES = 8 * 1024 * 1024, PART_SIZE = 64 * 1024;
 const encoder = new TextEncoder(), decoder = new TextDecoder();
 export class SyncError extends Error {
@@ -80,7 +81,7 @@ async function readBody(request) {
 }
 // A persisted transaction, not an in-memory mutex or KV timestamp, is the authority.
 export class SyncFamily {
-    constructor(ctx, env) { this.ctx = ctx; this.env = env; this.initialized = false; }
+    constructor(ctx, env) { this.ctx = ctx; this.env = env; this.initialized = false; this.access=new FamilyAccess(ctx.storage,env); }
     async initialize(code) {
         if (this.initialized) return;
         await this.ctx.blockConcurrencyWhile(async () => {
@@ -104,45 +105,72 @@ export class SyncFamily {
             this.initialized = true;
         });
     }
+    async refreshAccessSnapshot(tx){
+        const head=await tx.get('head'),version=await this.access.snapshotVersion(tx);
+        if(!version||!head.exists||(head.accessGeneration===version.accessGeneration&&(!head.accessExpiresAt||head.accessExpiresAt>Date.now())))return;
+        // Device changes must advance the sync version too. Otherwise /ts polling
+        // would never deliver revocations and CAS could accept an old registry.
+        const data=await this.access.publicSnapshot(await readSnapshot(tx,head.revision),tx);
+        const revision=head.revision+1,ts=Math.max(Date.now(),head.ts+1);
+        await writeSnapshot(tx,revision,{...data,_syncTs:ts});
+        if(head.backupRevision!==undefined)await deleteSnapshot(tx,head.backupRevision);
+        await tx.put('head',{...head,...version,revision,ts,backupRevision:head.revision});
+    }
     async fetch(request) {
         try {
             const url = new URL(request.url);
+            const authResponse=await this.access.handle(request,url.searchParams.get('code'));
+            if(authResponse)return authResponse;
+            await this.access.authorize(request,['main','parent']);
+            if(!['active','paused'].includes(this.env.SYNC_MODE)){
+                if(await this.access.required())throw new SyncError(503,'AUTH_ROLLBACK_BLOCKED','已保护的家庭不能回退读取旧快照。');
+                const raw=await this.env.DAKA_SYNC.get(`sync:${url.searchParams.get('code')}${url.pathname==='/bak'?':bak':''}`);
+                const data=raw?JSON.parse(raw):null;
+                const body=url.pathname==='/ts'?{ts:data?._syncTs||0}:data||{error:'未找到数据'};
+                return new Response(JSON.stringify(body),{status:data||url.pathname==='/ts'?200:404,headers:{'Content-Type':'application/json','X-Sync-Protocol':'1'}});
+            }
             await this.initialize(url.searchParams.get('code'));
             if (request.method === 'GET') return await this.ctx.storage.transaction(async tx => {
+                await this.access.authorize(request,['main','parent'],tx);
+                await this.refreshAccessSnapshot(tx);
                 const head = await tx.get('head');
                 if (url.pathname === '/ts') return json({ ts: head.ts, revision: head.revision, protocol: 2 }, 200, head.revision);
                 if (url.pathname === '/bak') {
                     const backup = head.backupRevision === undefined ? null : await readSnapshot(tx, head.backupRevision);
-                    return backup ? json(backup, 200, head.backupRevision) : json({ error: '未找到快照备份数据' }, 404, head.revision);
+                    return backup ? json(await this.access.publicSnapshot(backup,tx), 200, head.backupRevision) : json({ error: '未找到快照备份数据' }, 404, head.revision);
                 }
                 if (!head.exists) return json({ error: '未找到数据，请先在其他设备上传' }, 404, head.revision);
-                return json(await readSnapshot(tx, head.revision), 200, head.revision);
+                return json(await this.access.publicSnapshot(await readSnapshot(tx, head.revision),tx), 200, head.revision);
             });
             const match = /^"(0|[1-9]\d*)"$/.exec(request.headers.get('If-Match') || '');
             const revision = match ? Number(match[1]) : NaN, id = request.headers.get('Idempotency-Key') || '';
             if (!Number.isSafeInteger(revision) || !/^[\w-]{16,100}$/.test(id)) throw new SyncError(428, 'UPGRADE_REQUIRED', '请刷新并升级客户端后同步；旧版上传已被保护性阻止。');
             const { data, digest } = await readBody(request);
             return await this.ctx.storage.transaction(async tx => {
+                const user=await this.access.authorize(request,['main','parent'],tx);
+                await this.refreshAccessSnapshot(tx);
                 const head = await tx.get('head'), receipt = await tx.get(`request:${id}`);
                 if (receipt) {
+                    if((receipt.identity||null)!==(user?.hash||null))throw new AccessError(403,'FORBIDDEN','不能重放其他设备的保存请求。');
                     if (receipt.digest !== digest || receipt.base !== revision) throw new SyncError(409, 'IDEMPOTENCY_MISMATCH', '重复请求的内容不一致。');
                     return json({ ok: true, ts: receipt.ts, revision: receipt.revision, replayed: true }, 200, receipt.revision);
                 }
                 if (revision !== head.revision) return json({ error: '云端已有新版本，请先合并后重试。', code: 'REVISION_CONFLICT', revision: head.revision }, 409, head.revision);
                 const previous = head.exists ? await readSnapshot(tx, head.revision) : null;
                 guardProfiles(previous, data);
+                const accepted=await this.access.validateWrite(user,data,previous,tx);
                 const nextRevision = head.revision + 1, ts = Math.max(Date.now(), head.ts + 1);
-                await writeSnapshot(tx, nextRevision, { ...data, _syncTs: ts });
+                await writeSnapshot(tx, nextRevision, { ...accepted, _syncTs: ts });
                 if (head.backupRevision !== undefined) await deleteSnapshot(tx, head.backupRevision);
                 const receipts = [...head.receipts, id];
                 while (receipts.length > 128) await tx.delete(`request:${receipts.shift()}`);
-                await tx.put(`request:${id}`, { digest, base: revision, revision: nextRevision, ts });
+                await tx.put(`request:${id}`, { digest, base: revision, revision: nextRevision, ts,identity:user?.hash||null });
                 await tx.put('head', { revision: nextRevision, ts, exists: true,
-                    ...(head.exists ? { backupRevision: head.revision } : {}), receipts });
+                    ...(head.exists ? { backupRevision: head.revision } : {}), receipts,...await this.access.snapshotVersion(tx) });
                 return json({ ok: true, ts, revision: nextRevision }, 200, nextRevision);
             });
         } catch (e) {
-            return json({ error: e instanceof SyncError ? e.message : '云端保存暂时不可用，请稍后重试。', code: e.code || 'STORAGE_UNAVAILABLE' }, e.status || 503);
+            return json({ error: e instanceof SyncError||e instanceof AccessError ? e.message : '云端保存暂时不可用，请稍后重试。', code: e.code || 'STORAGE_UNAVAILABLE' }, e.status || 503);
         }
     }
 }
