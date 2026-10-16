@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { GRAPHICS_KEY, GRAPHICS_MODES, readGraphicsMode, resolveGraphicsMode, isMobileGraphicsDevice } from '../utils/graphicsQuality.js';
+import DecorationExperiment from '../components/status/DecorationExperiment.jsx';
 import EnergyPreviewPanel from '../components/status/EnergyPreviewPanel.jsx';
 
 export const PerformanceContext = createContext({ 
@@ -11,12 +12,17 @@ export const PerformanceContext = createContext({
     isBalanced: false,
     graphicsQuality: 'original',
     previewBackground: 'current',
+    optimizeDrawing: false,
     signals: 0
 });
 
 // 性能模式 Provider — 读取自动检测结果并提供给整个组件树
 export const PerformanceProvider = ({ children }) => {
-    const [preview] = useState(() => new URLSearchParams(window.location.search).get('energyPreview') === '1');
+    const [preview] = useState(() => ['1', 'c'].includes(new URLSearchParams(window.location.search).get('energyPreview')));
+    const [previewC] = useState(() => new URLSearchParams(window.location.search).get('energyPreview') === 'c');
+    const [experiment, setExperiment] = useState('baseline');
+    const [frozen, setFrozen] = useState(false);
+    const optimizeDrawing = previewC && experiment !== 'baseline';
     const [mobile] = useState(() => isMobileGraphicsDevice(navigator, q => window.matchMedia(q)));
     const [previewBackground, setPreviewBackground] = useState('current');
     const [perfMode, setPerfModeState] = useState(() => { try { return readGraphicsMode(localStorage); } catch { return 'auto'; } });
@@ -31,6 +37,7 @@ export const PerformanceProvider = ({ children }) => {
     const setPerfMode = (mode) => {
         if (!GRAPHICS_MODES.includes(mode)) return;
         setPerfModeState(mode);
+        setFrozen(false);
         if (preview) return;
         try {
             localStorage.setItem(GRAPHICS_KEY, mode);
@@ -72,10 +79,12 @@ export const PerformanceProvider = ({ children }) => {
     }, [isLowPerf]);
 
     return (
-        <PerformanceContext.Provider value={{ isLowPerf, isBalanced, graphicsQuality, previewBackground, setIsLowPerf, perfMode, setPerfMode, autoDetected, signals }}>
+        <PerformanceContext.Provider value={{ isLowPerf, isBalanced, graphicsQuality, previewBackground, optimizeDrawing, setIsLowPerf, perfMode, setPerfMode, autoDetected, signals }}>
             {children}
+            {previewC && <DecorationExperiment experiment={experiment} frozen={frozen} />}
             {preview && <EnergyPreviewPanel mode={perfMode} onMode={setPerfMode} quality={graphicsQuality}
-                mobile={mobile} background={previewBackground} onBackground={setPreviewBackground} />}
+                mobile={mobile} background={previewBackground} onBackground={value => { setPreviewBackground(value); setFrozen(false); }}
+                previewC={previewC} experiment={experiment} onExperiment={value => { setExperiment(value); setFrozen(false); }} frozen={frozen} onFrozen={setFrozen} />}
         </PerformanceContext.Provider>
     );
 };

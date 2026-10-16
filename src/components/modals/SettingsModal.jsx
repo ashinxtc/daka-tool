@@ -24,7 +24,7 @@ export const LowPerfToggle = () => {
     const MODES = [
         { id: 'auto', label: '智能自适应', sub: autoDetected ? '检测到兼容性限制，使用轻量档' : '手机/平板优先均衡，桌面保持原画质' },
         { id: 'balanced', label: '均衡画质', sub: '保留动态背景，降低背景渲染负担' },
-        { id: 'enabled', label: '始终开启', sub: '老旧平板 / 省电首选 · 降低渲染开销' },
+        { id: 'enabled', label: '始终开启', sub: '老旧设备兼容档 · 实际耗电依设备而异' },
         { id: 'disabled', label: '满血特效', sub: '强制启用全部 WebGL 与完整粒子' }
     ];
 

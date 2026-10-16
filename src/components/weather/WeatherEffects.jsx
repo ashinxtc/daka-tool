@@ -77,10 +77,12 @@ export const getWeatherInfo = (dateObj) => {
 
 // --- [新增] 天气特效图层组件 ---
 export const WeatherEffects = ({ type }) => {
-    const { isLowPerf } = useContext(PerformanceContext);
+    const { isLowPerf, optimizeDrawing = false } = useContext(PerformanceContext);
+    const particles = React.useMemo(() => Array.from({ length: 30 }, () => ({ x: Math.random(), y: Math.random(), speed: Math.random(), delay: Math.random() })), [type, isLowPerf]);
+    const random = (i, field) => optimizeDrawing ? particles[i][field] : Math.random();
     if (type === 'sunny-effect') {
         return (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="weather-decoration absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-[-50%] left-[-20%] w-[150%] h-[150%] bg-gradient-to-br from-yellow-300/20 to-transparent rounded-full blur-3xl animate-[pulse_4s_infinite]"></div>
                 {!isLowPerf && <>
                     <div className="absolute top-0 right-0 w-full h-full bg-[linear-gradient(45deg,transparent_45%,rgba(255,255,255,0.1)_50%,transparent_55%)] bg-[length:200%_200%] animate-[shine_8s_linear_infinite]"></div>
@@ -92,14 +94,14 @@ export const WeatherEffects = ({ type }) => {
     if (type === 'rainy-effect') {
         const count = isLowPerf ? 8 : 20;
         return (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none weather-rain-container">
+            <div className="weather-decoration absolute inset-0 overflow-hidden pointer-events-none weather-rain-container">
                 {[...Array(count)].map((_, i) => (
                     <div key={i} className="absolute bg-white/40 w-0.5 h-6 rounded-full animate-[rain_1s_linear_infinite]" 
                         style={{
-                            left: `${Math.random() * 100}%`,
+                            left: `${random(i, 'x') * 100}%`,
                             top: `-20px`,
-                            animationDuration: `${0.5 + Math.random() * 0.5}s`,
-                            animationDelay: `${Math.random()}s`
+                            animationDuration: `${0.5 + random(i, 'speed') * 0.5}s`,
+                            animationDelay: `${random(i, 'delay')}s`
                         }}>
                     </div>
                 ))}
@@ -109,14 +111,14 @@ export const WeatherEffects = ({ type }) => {
     if (type === 'snowy-effect') {
         const count = isLowPerf ? 10 : 30;
         return (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="weather-decoration absolute inset-0 overflow-hidden pointer-events-none">
                 {[...Array(count)].map((_, i) => (
                     <div key={i} className="absolute bg-white/80 w-1.5 h-1.5 rounded-full animate-[snow_3s_linear_infinite]" 
                         style={{
-                            left: `${Math.random() * 100}%`,
+                            left: `${random(i, 'x') * 100}%`,
                             top: `-10px`,
-                            animationDuration: `${2 + Math.random() * 3}s`,
-                            animationDelay: `${Math.random() * 2}s`
+                            animationDuration: `${2 + random(i, 'speed') * 3}s`,
+                            animationDelay: `${random(i, 'delay') * 2}s`
                         }}>
                     </div>
                 ))}
@@ -125,7 +127,7 @@ export const WeatherEffects = ({ type }) => {
     }
     if (type === 'cloudy-effect') {
         return (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="weather-decoration absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-5 left-10 text-6xl opacity-20 animate-[float_6s_ease-in-out_infinite]">☁️</div>
                 <div className="absolute top-1/2 right-20 text-8xl opacity-10 animate-[float_8s_ease-in-out_infinite_reverse]">☁️</div>
             </div>
@@ -133,13 +135,13 @@ export const WeatherEffects = ({ type }) => {
     }
     if (type === 'starry-effect') {
         return (
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="weather-decoration absolute inset-0 overflow-hidden pointer-events-none">
                  {[...Array(30)].map((_, i) => (
                     <div key={i} className="absolute bg-white w-0.5 h-0.5 rounded-full animate-pulse" 
                         style={{
-                            left: `${Math.random() * 100}%`,
-                            top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 2}s`
+                            left: `${random(i, 'x') * 100}%`,
+                            top: `${random(i, 'y') * 100}%`,
+                            animationDelay: `${random(i, 'delay') * 2}s`
                         }}>
                     </div>
                 ))}
