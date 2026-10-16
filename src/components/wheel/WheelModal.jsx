@@ -630,7 +630,7 @@ export const EvilWheelModal = ({
                                         <span>触发【逆风翻盘 · 戴罪立功】契约！</span>
                                     </div>
                                     <p className="text-amber-100/90 leading-relaxed font-medium">
-                                        命运转盘裁决判定的 <strong className="text-amber-300 font-black text-sm">{result.frozenGold || Math.abs(result.value)}</strong> 元宝并未直接扣光，已转入【暂扣冻结池】！今日只要达成 <strong className="text-amber-300 font-bold">⭐ 1 星保底</strong>（任意 1 项必做），即可 100% 全额赎回！
+                                        命运转盘裁决判定的 <strong className="text-amber-300 font-black text-sm">{result.frozenGold || Math.abs(result.value)}</strong> 元宝并未直接扣光，已转入【暂扣冻结池】！今日只要达成 <strong className="text-amber-300 font-bold">⭐ 1 星保底</strong>（按家长设置的门槛），即可在契约有效期内按设定比例赎回！
                                     </p>
                                 </div>
                             </div>

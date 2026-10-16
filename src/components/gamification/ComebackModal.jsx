@@ -31,7 +31,7 @@ export const ComebackBanner = ({
                         </span>
                     </div>
                     <p className="text-xs text-rose-100/80 mt-0.5">
-                        今天达成 <strong className="text-amber-300">⭐ 1星保底</strong> 即可 100% 赎回元宝击退恶魔！
+                        今天达成 <strong className="text-amber-300">⭐ 1星保底</strong> 即可按契约比例赎回元宝！
                     </p>
                 </div>
             </div>
@@ -100,9 +100,11 @@ export const ComebackModal = ({
                             <p className="text-sm text-slate-300 leading-relaxed">
                                 你今天通过顽强的毅力达成了 <strong className="text-amber-300">⭐ 1星安全保底</strong>！
                                 <br />
-                                扣押的 <strong className="text-amber-300 font-bold">{frozenGold} 金元宝</strong> 已 100% 全额返还入账！
+                                扣押的 <strong className="text-amber-300 font-bold">{frozenGold} 金元宝</strong> 已按契约返还 {escrow.returnedGold ?? frozenGold} 元宝！
                             </p>
                         </div>
+                    ) : !isPending ? (
+                        <p className="text-sm text-slate-300">契约已到期，冻结款项不再赎回。</p>
                     ) : (
                         <div className="space-y-4">
                             {/* 警报态小卡 */}
@@ -111,7 +113,7 @@ export const ComebackModal = ({
                                 <div>
                                     <h4 className="font-bold text-rose-300 text-sm">小恶魔把守的地牢通告</h4>
                                     <p className="text-xs text-rose-100/80 mt-1 leading-relaxed">
-                                        “哈哈！昨天没有达成 1 星安全保底，你的 <strong className="text-amber-400 font-bold">{frozenGold} 金元宝</strong> 暂时被我关进了小黑屋！”
+                                        “{escrow.reason || '因未达成任务要求'}，你的 <strong className="text-amber-400 font-bold">{frozenGold} 金元宝</strong> 暂时被我关进了小黑屋！”
                                     </p>
                                 </div>
                             </div>
@@ -124,15 +126,15 @@ export const ComebackModal = ({
                                 <ul className="text-xs text-slate-300 space-y-2 leading-relaxed">
                                     <li className="flex items-center gap-2">
                                         <span className="text-emerald-400 font-bold">✓ 目标：</span>
-                                        今天只要完成 <strong>任意 1 项必做任务</strong>（达成 ⭐ 1 星保底）。
+                                        今天只要完成 <strong>家长设置的 1 星任务目标</strong>（达成 ⭐ 1 星保底）。
                                     </li>
                                     <li className="flex items-center gap-2">
                                         <span className="text-emerald-400 font-bold">✓ 奖励：</span>
-                                        击溃小恶魔，<strong>100% 赎回全部 {frozenGold} 金元宝</strong>！
+                                        击溃小恶魔，<strong>按契约比例赎回冻结的 {frozenGold} 金元宝</strong>！
                                     </li>
                                     <li className="flex items-center gap-2">
                                         <span className="text-rose-400 font-bold">⏳ 时限：</span>
-                                        截止至今日 24:00 前。
+                                        截止至 {escrow.deadlineDate || escrow.createdDate} 当日结束前。
                                     </li>
                                 </ul>
                             </div>
@@ -149,7 +151,7 @@ export const ComebackModal = ({
 
                     {/* 底部按钮 */}
                     <div className="pt-2">
-                        {isRedeemed ? (
+                        {!isPending ? (
                             <button
                                 data-testid="claim-redeemed-btn"
                                 onClick={onClose}

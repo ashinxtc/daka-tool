@@ -28,9 +28,11 @@ export const useStickyState = (defaultValue, key) => {
     });
     const timerRef = useRef(null);
     const isFirstRender = useRef(true);
+    const externallyCommitted = useRef(null);
 
     useEffect(() => {
         if (isFirstRender.current) { isFirstRender.current = false; return; }
+        if (externallyCommitted.current === value) { externallyCommitted.current = null; return; }
         if (typeof window !== 'undefined' && window._syncReloading) return; // 同步重载期间不写入，防止覆盖云端数据
         if (timerRef.current) clearTimeout(timerRef.current);
         if (typeof window !== 'undefined') {
@@ -57,16 +59,25 @@ export const useStickyState = (defaultValue, key) => {
 
     // 监听云端同步合并事件，从 storage 刷新 state 而无需 reload
     useEffect(() => {
-        const handler = () => {
+        const handler = (event) => {
+            if (event.type === '_durableDataCommitted' && !event.detail.includes(key)) return;
+            clearTimeout(timerRef.current);
+            delete window._pendingWrites[key];
             try {
                 const fresh = storage.getItem(key);
                 if (fresh !== null) {
-                    setValue(JSON.parse(fresh));
+                    const parsed = JSON.parse(fresh);
+                    externallyCommitted.current = parsed;
+                    setValue(parsed);
                 }
             } catch (e) {}
         };
         window.addEventListener('_syncDataMerged', handler);
-        return () => window.removeEventListener('_syncDataMerged', handler);
+        window.addEventListener('_durableDataCommitted', handler);
+        return () => {
+            window.removeEventListener('_syncDataMerged', handler);
+            window.removeEventListener('_durableDataCommitted', handler);
+        };
     }, [key]);
 
     return [value, setValue];

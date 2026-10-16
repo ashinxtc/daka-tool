@@ -40,3 +40,7 @@ test_*.cjs
 # Personal data exports
 *备份*.json
 时空市集*.json
+
+# Automated test output
+playwright-report/
+test-results/

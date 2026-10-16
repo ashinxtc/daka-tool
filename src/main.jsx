@@ -1,3 +1,4 @@
+import { RECEIPTS_KEY, ESCROWS_KEY, applyDeductions, pendingNotices, mergeReceipts, mergeEscrows, escrowRecords, escrowSummary, freezeEscrow, settleEscrows, projectAccounting, reconcileDeductionStats, semanticResult } from './utils/accounting.js';
 import { SHOP_ITEMS, checkItemRestriction } from './data/shopItems';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -45,7 +46,7 @@ import { CompletedWallModal } from './components/modals/CompletedWallModal';
 import { TesterDashboard } from './components/tester/TesterDashboard';
 import { getHolidayInfo, getHeaderTheme, isDateHolidayOrWeekend } from './utils/holidays';
 import { useStickyState, markKeyVersion } from './hooks/useStickyState';
-import { storage, initStorage } from './utils/storage';
+import { storage, initStorage, commitDurable } from './utils/storage';
 import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
@@ -869,46 +870,34 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [showFirstBloodModal, setShowFirstBloodModal] = useState(false);
             const [firstBloodCurrentReward, setFirstBloodCurrentReward] = useState(null);
 
+            const [accountingDate, setAccountingDate] = useState(() => getLocalDateKey(0));
             // 当日星级与安全免罚护盾计算 (响应式)
             const todayStars = useMemo(() => {
                 return calculateDailyStars(tasks[activeChild] || [], checkins[activeChild] || {}, getLocalDateKey(0), gamificationConfig);
-            }, [tasks, checkins, activeChild, gamificationConfig]);
+            }, [tasks, checkins, activeChild, gamificationConfig, accountingDate]);
 
-            // 当日达成 1 星保底时，若存在处于 pending 的翻盘契约，自动触发逆风翻盘解冻赎回！
-            React.useEffect(() => {
-                if (gamificationConfig?.redemptionEnabled === false) return;
-                const currentEscrow = escrowPenalties[activeChild];
-                if (currentEscrow && currentEscrow.status === 'pending' && todayStars?.star >= 1) {
-                    const returnRate = Math.max(50, Math.min(100, parseInt(gamificationConfig.redemptionReturnRate, 10) || 100)) / 100;
-                    const returnGold = Math.round((currentEscrow.frozenGold || 20) * returnRate);
-                    const redeemKey = `${activeChild}-ESCROW_REDEEM-${Date.now()}`;
-                    setWheelHistory(prev => ({ ...prev, [redeemKey]: returnGold }));
-                    setEscrowPenalties(prev => ({
-                        ...prev,
-                        [activeChild]: {
-                            ...currentEscrow,
-                            status: 'redeemed',
-                            redeemedAt: Date.now()
-                        }
-                    }));
-                    // 彻底清除待惩罚标记
-                    setPendingEvilPenalties(prev => {
-                        const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
-                        delete next[activeChild];
-                        return next;
-                    });
-                    if (currentEscrow.penaltyKey) {
-                        setEvilPenaltyLog(prev => ({
-                            ...prev,
-                            [currentEscrow.penaltyKey]: { timestamp: Date.now(), reason: '逆风翻盘成功，全额赎回' }
-                        }));
-                    }
-                    setShowEvilWheel(false);
+            // Expiry is checked independently of automatic penalties and before redemption.
+            useEffect(() => {
+                const refresh = () => setAccountingDate(getLocalDateKey(0));
+                const timer = setInterval(refresh, 60000);
+                document.addEventListener('visibilitychange', refresh);
+                return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+            }, []);
+            useEffect(() => {
+                const snapshot = accountingRef.current;
+                const result = settleEscrows({ escrows: snapshot.escrows, child: activeChild,
+                    today: getLocalDateKey(0), star: todayStars?.star || 0,
+                    enabled: gamificationConfig?.redemptionEnabled !== false, now: Date.now(),
+                    returnRate: Math.max(50, Math.min(100, Number(gamificationConfig?.redemptionReturnRate) || 100)) });
+                if (!result.changed) return;
+                const history = projectAccounting(snapshot.history, snapshot.receipts, result.escrows);
+                if (!persistAccounting({ escrows: result.escrows, history })) return;
+                if (result.returned > 0) {
                     try { fireRoyalSalute(); } catch (e) {}
                     setShowComebackModal(true);
-                    showToast('success', `🎉 逆风翻盘大获全胜！今日达成 1 星保底，${returnGold} 金元宝已全额赎回！`, { duration: 6000 });
+                    showToast('success', `🎉 翻盘成功，已返还 ${result.returned} 金元宝！`, { duration: 6000 });
                 }
-            }, [todayStars?.star, activeChild, escrowPenalties, gamificationConfig]);
+            }, [todayStars?.star, activeChild, escrowPenalties, gamificationConfig, accountingDate]);
 
             // 旧版单一 pendingEvilPenalty 状态平滑迁移
             React.useEffect(() => {
@@ -1361,6 +1350,8 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 purgeAndStore(setTasks, 'app_tasks_v2');
                 purgeAndStore(setCheckins, 'app_checkins_v2');
                 purgeAndStore(setStats, 'app_stats_v1');
+                purgeAndStore(setEscrowPenalties, ESCROWS_KEY);
+                setDeductionReceipts(prev => Object.fromEntries(Object.entries(prev).filter(([, r]) => !keysToRemove.includes(r.targetChild))));
                 purgeAndStore(setInventory, 'app_inventory_v1');
                 purgeAndStore(setAchievements, 'app_achievements_v1');
                 purgeAndStore(setPetData, 'app_pet_data_v1');
@@ -2674,7 +2665,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 Object.entries(wheelHistory).forEach(([key, value]) => {
                     if (!key.startsWith(deferredActiveChild)) return;
                     let date, name, type;
-                    if (key.includes('EVIL')) {
+                    if (key.includes('-ESCROW_FROZEN-') || key.includes('-ESCROW_REDEEM-')) {
+                        const refund = key.includes('-ESCROW_REDEEM-');
+                        const contract = Object.values(escrowRecords(escrowPenalties[deferredActiveChild])).find(r => r.freezeKey === key || r.redeemKey === key);
+                        const legacyTimestamp = extractTimestamp(key);
+                        date = (refund ? contract?.redeemedDate : contract?.createdDate) || (legacyTimestamp > 0 ? tsToLocalDateKey(legacyTimestamp) : '');
+                        name = `${refund ? '逆风翻盘赎回' : '逆风翻盘暂扣'}${contract?.reason ? `：${contract.reason}` : ''}`;
+                        type = refund ? 'income' : 'expense';
+                    } else if (key.includes('EVIL')) {
                         const ts = extractTimestamp(key);
                         date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
                         name = '邪恶大转盘';
@@ -2918,7 +2916,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 // 过滤无效日期并按日期排序
                 const validList = list.filter(t => t.date && t.date.match(/\d{4}-\d{2}-\d{2}/));
                 return validList.sort((a, b) => new Date(b.date) - new Date(a.date));
-            }, [tasks, checkins, wheelHistory, deferredActiveChild, activeBuffs, adventureRealms]);
+            }, [tasks, checkins, wheelHistory, deferredActiveChild, activeBuffs, adventureRealms, escrowPenalties]);
 
             // --- 经验值明细列表 (新) ---
             const xpTransactions = useMemo(() => {
@@ -4606,6 +4604,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         const cDict = isCObj ? cVal : {};
                         const r = mergeFlatDict(lDict, cDict);
                         merged[k] = r.merged;
+                        if (lDict.parent_deduction_spent !== undefined || cDict.parent_deduction_spent !== undefined) {
+                            const contribution = Math.max(lDict.parent_deduction_spent || 0, cDict.parent_deduction_spent || 0);
+                            merged[k].parent_deduction_spent = contribution;
+                            merged[k].total_spent = Math.max(
+                                (lDict.total_spent || 0) - (lDict.parent_deduction_spent || 0),
+                                (cDict.total_spent || 0) - (cDict.parent_deduction_spent || 0)) + contribution;
+                        }
                         if (r.localChanged) localChanged = true;
                         if (r.cloudChanged) cloudChanged = true;
                     } else {
@@ -4618,7 +4623,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 });
 
-                return { merged, localChanged, cloudChanged };
+                return semanticResult(merged, localObj, cloudObj);
             };
 
             // 星星余额合并：{ child: number }
@@ -4727,6 +4732,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_owned_pets_v1': (l, c) => mergeChildArrays(l, c),
                 // 甲骨传书：顶层数组，按 id 并集，时间倒序
                 'app_global_messages_v2': (l, c) => mergeTopLevelArray(l, c, (a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
+                [RECEIPTS_KEY]: (l, c) => semanticResult(Object.fromEntries(Object.entries(mergeReceipts(l, c)).filter(([, r]) => !isChildOrProfileDeleted(r.targetChild, getDeletedProfileTombstones()))), l, c),
+                [ESCROWS_KEY]: (l, c) => semanticResult(Object.fromEntries(Object.entries(mergeEscrows(l, c)).filter(([child]) => !isChildOrProfileDeleted(child, getDeletedProfileTombstones()))), l, c),
                 // 家长指令队列：顶层数组，按 id 并集，claimed 优先
                 'app_parent_actions_v1': (l, c) => {
                     if (!Array.isArray(l) || !Array.isArray(c)) return null;
@@ -5037,6 +5044,15 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 });
                 window._syncActiveCloudEvilLogKeys = null;
+                const mergedValue = key => JSON.parse(writes[key] ?? localSnapshot[key] ?? storage.getItem(key) ?? '{}');
+                const receipts = mergedValue(RECEIPTS_KEY), escrows = mergedValue(ESCROWS_KEY);
+                const projectedHistory = projectAccounting(mergedValue('app_wheel_history'), receipts, escrows);
+                const projectedStats = reconcileDeductionStats(mergedValue('app_stats_v1'), receipts);
+                for (const [key, value] of [['app_wheel_history', projectedHistory], ['app_stats_v1', projectedStats]]) {
+                    if (JSON.stringify(value) !== JSON.stringify(mergedValue(key))) {
+                        writes[key] = JSON.stringify(value); needUpload = true;
+                    }
+                }
                 return { writes, adoptVersions, needUpload };
             };
             window._resolveSyncMerge = resolveSyncMerge;
@@ -5044,9 +5060,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             // 把合并决策应用到 storage；返回实际写入数
             const applySyncMerge = (result) => {
                 let written = 0;
-                Object.entries(result.writes).forEach(([k, v]) => {
-                    try { storage.setItem(k, v); written++; } catch (e) {}
-                });
+                if (Object.keys(result.writes).length) {
+                    const financialKeys = new Set(['app_wheel_history', RECEIPTS_KEY, ESCROWS_KEY, 'app_stats_v1', 'app_parent_actions_v1', 'app_pending_evil_penalties_v2', 'app_evil_penalty_log_v1']);
+                    const financial = Object.fromEntries(Object.entries(result.writes).filter(([key]) => financialKeys.has(key)));
+                    if (Object.keys(financial).length) commitDurable(financial);
+                    for (const [key, value] of Object.entries(result.writes)) if (!financialKeys.has(key)) storage.setItem(key, value);
+                    written = Object.keys(result.writes).length;
+                }
                 if (Object.keys(result.adoptVersions).length > 0) {
                     try {
                         const versions = storage.getKeyVersions();
@@ -8100,22 +8120,11 @@ ${context}
                     // --- 破局激励机制：逆风翻盘状态检查 ---
                     // 若已处于逆风翻盘宽限期中，保持契约进行中不重复弹出转盘；若已逾期未翻盘，则重新启动审判！
                     if (gamificationConfig?.redemptionEnabled !== false) {
-                        const currentEscrow = escrowPenalties[activeChild];
+                        const currentEscrow = escrowSummary(escrowPenalties[activeChild]);
                         const todayStr = getLocalDateKey(0);
                         if (currentEscrow && currentEscrow.status === 'pending') {
                             // 检查翻盘契约是否已超过宽限期
-                            if (currentEscrow.deadlineDate && todayStr > currentEscrow.deadlineDate) {
-                                setEscrowPenalties(prev => ({
-                                    ...(typeof prev === 'object' && prev !== null ? prev : {}),
-                                    [activeChild]: {
-                                        ...currentEscrow,
-                                        status: 'forfeited',
-                                        forfeitedAt: Date.now()
-                                    }
-                                }));
-                                // 逾期未翻盘，继续向下执行命运转盘审判
-                            } else {
-                                // 仍在翻盘宽限期内：不重复触发转盘，保持契约进行中
+                            if (!currentEscrow.deadlineDate || todayStr <= currentEscrow.deadlineDate) {
                                 evilCheckDoneRef.current.add(penaltyKey);
                                 return;
                             }
@@ -8174,7 +8183,41 @@ ${context}
 
             // --- 监听并执行来自家长手机端派发的互动指令 (发红包、扣款、额外转盘、邪恶转盘) ---
             const [showParentGiftModal, setShowParentGiftModal] = useState(false);
-            const [parentDeductionNotice, setParentDeductionNotice] = useState(null);
+            const [deductionReceipts, setDeductionReceipts] = useStickyState({}, RECEIPTS_KEY);
+            const notices = pendingNotices(deductionReceipts, activeChild);
+            const parentDeductionNotice = notices[0] || null;
+            const accountingRef = useRef(null);
+            accountingRef.current = { history: wheelHistory, receipts: deductionReceipts,
+                escrows: escrowPenalties, stats, inventory, actions: parentActions, log: evilPenaltyLog, pending: pendingEvilPenalties };
+            function persistAccounting(patch) {
+                const keys = { history: 'app_wheel_history', receipts: RECEIPTS_KEY, escrows: ESCROWS_KEY,
+                    inventory: 'app_inventory_v1', stats: 'app_stats_v1', actions: 'app_parent_actions_v1', log: 'app_evil_penalty_log_v1', pending: 'app_pending_evil_penalties_v2' };
+                try {
+                    const entries = Object.fromEntries(Object.entries(patch).map(([name, value]) => [keys[name], JSON.stringify(value)]));
+                    commitDurable(entries);
+                    accountingRef.current = { ...accountingRef.current, ...patch };
+                    triggerSyncUpload();
+                    return true;
+                } catch (error) {
+                    console.error('[Accounting] Commit failed', error);
+                    showToast('error', '账目保存失败，操作尚未确认。请释放存储空间后重试。');
+                    return false;
+                }
+            }
+            const acknowledgeDeduction = () => {
+                if (!parentDeductionNotice) return;
+                const receipts = accountingRef.current.receipts;
+                persistAccounting({ receipts: { ...receipts,
+                    [parentDeductionNotice.id]: { ...receipts[parentDeductionNotice.id], acknowledged: true } } });
+            };
+            useEffect(() => {
+                const snapshot = accountingRef.current;
+                const result = applyDeductions({ ...snapshot, child: activeChild,
+                    devices: authorizedParents?.devices || [],
+                    balance: (history, child) => calculateTotalGold(checkins, history, child, activeBuffs, tasks) });
+                if (result.changed) persistAccounting({ history: result.history, receipts: result.receipts,
+                    actions: result.actions, stats: result.stats });
+            }, [parentActions, activeChild, authorizedParents]);
             const processedParentActionsRef = React.useRef(new Set());
             const notifiedParentActionIdsRef = React.useRef(new Set());
 
@@ -8209,7 +8252,7 @@ ${context}
                 let hasUpdates = false;
 
                 const updatedActions = parentActions.map(action => {
-                    if (action.status !== 'pending' || (action.targetChild && action.targetChild !== activeChild)) {
+                    if (!action || ['deduction', 'parent_deduct'].includes(action.type) || action.status !== 'pending' || (action.targetChild && action.targetChild !== activeChild)) {
                         return action;
                     }
 
@@ -8246,40 +8289,6 @@ ${context}
                         return { ...action, status: 'claimed', processedAt: Date.now() };
                     }
 
-                    // 2. 家长扣款指令：立即扣减金元宝，记入历史明细，并弹出通知单告知孩子
-                    if (action.type === 'deduction' || action.type === 'parent_deduct') {
-                        if (processedParentActionsRef.current.has(action.id)) return action;
-                        processedParentActionsRef.current.add(action.id);
-                        hasUpdates = true;
-                        const operator = action.operatorRole || '家长';
-                        const amount = Math.abs(parseInt(action.amount, 10)) || 0;
-                        const reason = action.reason || '家庭账目支出扣除';
-                        const target = action.targetChild || activeChild;
-
-                        if (amount > 0) {
-                            const reasonPart = reason ? `__${encodeURIComponent(reason)}` : '';
-                            const historyKey = `${target}-PARENT_DEDUCT-${operator}_${action.id || 'act'}${reasonPart}-${action.timestamp || Date.now()}`;
-                            setWheelHistory(prev => ({
-                                ...prev,
-                                [historyKey]: -amount
-                            }));
-                            updateStats(target, 'gold_spend', amount, { source: 'parent_deduct', dateKey: getLocalDateKey(0) });
-                        }
-
-                        // 设置扣款通知弹窗展示给孩子
-                        setParentDeductionNotice({
-                            id: action.id,
-                            operatorRole: operator,
-                            amount: amount,
-                            reason: reason,
-                            timestamp: action.timestamp || Date.now()
-                        });
-
-                        showToast('warning', `📉【${operator}】下达了扣款通知：扣除 ${amount} 金元宝（${reason}）`, { duration: 6000 });
-
-                        return { ...action, status: 'claimed', processedAt: Date.now() };
-                    }
-
                     // 3. 红包 / 额外转盘新到提示（温和 Toast 提醒，不自动消耗，待孩子点击悬浮按钮拆领）
                     if ((action.type === 'red_packet' || action.type === 'extra_wheel') && !notifiedParentActionIdsRef.current.has(action.id)) {
                         notifiedParentActionIdsRef.current.add(action.id);
@@ -8294,7 +8303,8 @@ ${context}
                 });
 
                 if (hasUpdates) {
-                    setParentActions(updatedActions);
+                    const updates = new Map(updatedActions.filter(a => a && !['deduction', 'parent_deduct'].includes(a.type)).map(a => [a.id, a]));
+                    setParentActions(prev => prev.map(a => a && updates.has(a.id) ? updates.get(a.id) : a));
                     if (typeof window.triggerSyncUpload === 'function') {
                         window.triggerSyncUpload();
                     }
@@ -8343,6 +8353,8 @@ ${context}
 
             const spinEvilWheel = () => {
                 if (evilWheelSpinning) return;
+                const spinPending = accountingRef.current.pending[activeChild];
+                const spinPenaltyKey = spinPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${getLocalDateKey(-1)}`;
                 // 防御：若非测试模式且该惩罚已在其他设备完成记录，直接拦截并关闭弹窗
                 if (!isEvilDemo) {
                     const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
@@ -8369,11 +8381,17 @@ ${context}
                 const finalAngle = evilPointerRotation + 1800 + (targetBaseAngle - (evilPointerRotation % 360)) + randomOffset;
                 setEvilPointerRotation(finalAngle);
                 setTimeout(() => {
+                    if (!isEvilDemo && accountingRef.current.log[spinPenaltyKey]) {
+                        setEvilWheelSpinning(false);
+                        setShowEvilWheel(false);
+                        return;
+                    }
                     const today = getLocalDateKey(0);
                     const shieldKey = `${activeChild}-SHIELD_TRIGGER-${today}`;
-                    const shieldTriggeredToday = !!evilPenaltyLog[shieldKey];
+                    const shieldTriggeredToday = !!accountingRef.current.log[shieldKey];
                     // 检查是否有青铜盾
-                    const hasShield = (inventory[activeChild]?.['item_shield'] || 0) > 0;
+                    const hasShield = (accountingRef.current.inventory[activeChild]?.['item_shield'] || 0) > 0;
+                    let consumedInventory = null;
                     let resultItem = { ...selectedItem, usedShield: false, shieldLimitReached: false, shieldPierced: false };
 
                     const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
@@ -8387,14 +8405,11 @@ ${context}
                             const isPierced = isAutoPenalty && (Math.random() < 0.90);
 
                             // 无论是否击穿，本次均消耗 1 面守护盾并记录今日触发（每日上限触发1次）
-                            setInventory(prev => {
-                                const childInv = prev[activeChild] || {};
-                                const newCount = (childInv['item_shield'] || 0) - 1;
-                                const newInv = { ...childInv, 'item_shield': newCount };
-                                if (newCount <= 0) delete newInv['item_shield'];
-                                return { ...prev, [activeChild]: newInv };
-                            });
-                            setEvilPenaltyLog(prev => ({ ...prev, [shieldKey]: Date.now() }));
+                            const latestInventory = accountingRef.current.inventory;
+                            const childInv = { ...latestInventory[activeChild] };
+                            childInv.item_shield = (childInv.item_shield || 0) - 1;
+                            if (childInv.item_shield <= 0) delete childInv.item_shield;
+                            consumedInventory = { ...latestInventory, [activeChild]: childInv };
 
                             if (isPierced) {
                                 // 💥 护盾被天罚击穿失效
@@ -8429,33 +8444,26 @@ ${context}
                                 ? penaltyAmount 
                                 : Math.max(1, parseInt(gamificationConfig?.defaultFrozenGold, 10) || penaltyAmount);
 
-                            const yesterday = getLocalDateKey(-1);
-                            const escrowKey = `${activeChild}-ESCROW_FROZEN-${yesterday}_${Date.now()}`;
-                            setWheelHistory(prev => ({ ...prev, [escrowKey]: -frozenAmount }));
-
                             const todayStr = getLocalDateKey(0);
-                            const graceDays = parseInt(gamificationConfig?.redemptionGraceDays, 10) || 1;
-                            const penaltyReason = evilPenaltyReason || (isAutoPenalty ? '打卡未达标惩戒' : '命运审判惩戒');
-                            const currentPending = (typeof pendingEvilPenalties === 'object' && pendingEvilPenalties !== null) ? pendingEvilPenalties[activeChild] : null;
-                            const penaltyKey = currentPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${yesterday}`;
-
-                            setEscrowPenalties(prev => ({
-                                ...(typeof prev === 'object' && prev !== null ? prev : {}),
-                                [activeChild]: {
-                                    status: 'pending',
-                                    frozenGold: frozenAmount,
-                                    penaltyKey,
-                                    createdDate: todayStr,
-                                    deadlineDate: dateKeyAddDays(todayStr, graceDays),
-                                    reason: penaltyReason,
-                                    wheelSliceName: selectedItem.name,
-                                    wheelValue: selectedItem.value,
-                                    timestamp: Date.now()
-                                }
-                            }));
+                            const graceDays = Math.max(1, parseInt(gamificationConfig?.redemptionGraceDays, 10) || 1);
+                            const snapshot = accountingRef.current;
+                            const penaltyKey = spinPenaltyKey;
+                            const escrows = freezeEscrow({ escrows: snapshot.escrows, child: activeChild, penaltyKey,
+                                amount: frozenAmount, today: todayStr, deadlineDate: dateKeyAddDays(todayStr, graceDays),
+                                reason: evilPenaltyReason || '命运审判惩戒', timestamp: Date.now(),
+                                returnRate: Math.max(50, Math.min(100, Number(gamificationConfig?.redemptionReturnRate) || 100)) });
+                            const nextPending = { ...snapshot.pending };
+                            if (nextPending[activeChild]?.penaltyKey === penaltyKey) delete nextPending[activeChild];
+                            if (!persistAccounting({ escrows,
+                                ...(consumedInventory ? { inventory: consumedInventory } : {}),
+                                history: projectAccounting(snapshot.history, snapshot.receipts, escrows),
+                                pending: nextPending, log: { ...snapshot.log, ...(consumedInventory ? { [shieldKey]: Date.now() } : {}), [penaltyKey]: { timestamp: Date.now(), reason: evilPenaltyReason || '已受命运裁决' } } })) {
+                                setEvilWheelSpinning(false);
+                                return;
+                            }
                             resultItem.isEscrowFrozen = true;
                             resultItem.frozenGold = frozenAmount;
-                            showToast('info', `🔥 触发【逆风翻盘契约】！转盘判定扣除的 ${frozenAmount} 元宝已转入暂扣池，今日达成 1 星即可 100% 赎回！`, { duration: 6000 });
+                            showToast('info', `🔥 触发【逆风翻盘契约】！转盘判定扣除的 ${frozenAmount} 元宝已转入暂扣池，有效期内达成 1 星可按契约比例赎回！`, { duration: 6000 });
                         } else {
                             // 常规永久扣减金元宝
                             const key = `${activeChild}-EVIL-${Date.now()}`;
@@ -8465,9 +8473,13 @@ ${context}
 
                     setEvilWheelResult(resultItem);
                     setEvilWheelSpinning(false);
-                    if (!isEvilDemo) {
+                    if (!isEvilDemo && !resultItem.isEscrowFrozen) {
+                        if (consumedInventory) {
+                            setInventory(consumedInventory);
+                            setEvilPenaltyLog(prev => ({ ...prev, [shieldKey]: Date.now() }));
+                        }
                         const yesterday = getLocalDateKey(-1);
-                        const penaltyKey = currentPending?.penaltyKey || `${activeChild}-EVIL_PENALTY-${yesterday}`;
+                        const penaltyKey = spinPenaltyKey;
                         // 转盘正式旋转停止并扣减/消耗神盾结算后，才真正核销记入已受惩罚日志
                         setEvilPenaltyLog(prev => ({
                             ...prev,
@@ -8475,7 +8487,7 @@ ${context}
                         }));
                         setPendingEvilPenalties(prev => {
                             const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
-                            delete next[activeChild];
+                            if (next[activeChild]?.penaltyKey === penaltyKey) delete next[activeChild];
                             return next;
                         });
                         // 立即触发云端同步，让其他停留在此页面的设备第一时间感知并解除！
@@ -9314,7 +9326,7 @@ ${context}
 														aiDailyUsage: 'app_ai_daily_usage', aiChatHistory: 'app_ai_chat_history',
 														aiReminderLog: 'app_ai_reminder_log_v1', syncCode: 'app_sync_code',
 														syncLastTime: 'app_sync_last_time', authorizedParents: 'app_authorized_parents_v1',
-														parentActions: 'app_parent_actions_v1',
+														parentActions: 'app_parent_actions_v1', deductionReceipts: RECEIPTS_KEY,
 														exchangeBaseCents: 'app_exchange_base_cents',
 														exchangeVolatility: 'app_exchange_volatility',
 														exchangeMinGold: 'app_exchange_min_gold',
@@ -9648,7 +9660,7 @@ ${context}
                     {/* 逆风翻盘常驻提醒条 (仅在存在待翻盘契约时展示) */}
                     {gamificationConfig?.redemptionEnabled !== false && (
                         <ComebackBanner 
-                            escrow={escrowPenalties[activeChild]} 
+                            escrow={escrowSummary(escrowPenalties[activeChild])}
                             onOpenModal={() => setShowComebackModal(true)} 
                             theme={theme} 
                         />
@@ -9660,7 +9672,7 @@ ${context}
                             dailyStars={todayStars} 
                             theme={theme} 
                             hasActiveBg={hasActiveBg} 
-                            escrow={escrowPenalties[activeChild]}
+                            escrow={escrowSummary(escrowPenalties[activeChild])}
                         />
                     )}
 
@@ -10411,9 +10423,10 @@ ${context}
 
 				  <ParentDeductionModal
 					  show={!!parentDeductionNotice}
-					  onClose={() => setParentDeductionNotice(null)}
+					  onClose={acknowledgeDeduction}
 					  notice={parentDeductionNotice}
-					  currentGold={totalGold}
+                      remaining={notices.length}
+					  currentGold={parentDeductionNotice?.balanceAfter ?? totalGold}
 				  />
 
                   {editingEntry && <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} />}
@@ -10705,7 +10718,7 @@ ${context}
                   <ComebackModal
                     show={showComebackModal}
                     onClose={() => setShowComebackModal(false)}
-                    escrow={escrowPenalties[activeChild]}
+                    escrow={escrowSummary(escrowPenalties[activeChild])}
                     dailyStars={todayStars}
                     onConfirmChallenge={() => setShowComebackModal(false)}
                     theme={theme}

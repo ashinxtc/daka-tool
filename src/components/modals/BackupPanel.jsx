@@ -82,6 +82,7 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
             syncLastTime: storage.getItem('app_sync_last_time'),
             authorizedParents: storage.getItem('app_authorized_parents_v1'),
             parentActions: storage.getItem('app_parent_actions_v1'),
+            deductionReceipts: storage.getItem('app_parent_deduction_receipts_v1'),
             // 现实基准折算汇率与外汇物价设置
             exchangeBaseCents: storage.getItem('app_exchange_base_cents'),
             exchangeVolatility: storage.getItem('app_exchange_volatility'),
@@ -204,6 +205,7 @@ export const BackupPanel = ({ show, onClose, theme, showToast: propShowToast }) 
                                 key === 'syncLastTime' ? 'app_sync_last_time' :
                                 key === 'authorizedParents' ? 'app_authorized_parents_v1' :
                                 key === 'parentActions' ? 'app_parent_actions_v1' :
+                                key === 'deductionReceipts' ? 'app_parent_deduction_receipts_v1' :
                                 key === 'exchangeBaseCents' ? 'app_exchange_base_cents' :
                                 key === 'exchangeVolatility' ? 'app_exchange_volatility' :
                                 key === 'exchangeMinGold' ? 'app_exchange_min_gold' :
