@@ -5,6 +5,7 @@ import {canonical,isSecretKey} from '../shared/access-policy.js';
 const ignored=new Set(['_syncTs','_keyVersions','app_sync_code','app_sync_last_time','app_test_mode','app_authorized_parents_v1']);
 function business(snapshot){
     if(!snapshot||Array.isArray(snapshot)||typeof snapshot!=='object')throw new Error('快照必须为原始对象。');
+    if('_app' in snapshot || 'childrenData' in snapshot)throw new Error('检测到其他应用或未确认来源的快照，必须先隔离服务并确认来源，不能作为打卡数据迁移。');
     const result={};
     for(const [key,value] of Object.entries(snapshot)){
         if(ignored.has(key)||isSecretKey(key))continue;
