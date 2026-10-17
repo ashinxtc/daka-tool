@@ -205,7 +205,7 @@ function decodePrivateKey(input) {
 }
 
 // Send Web Push notification
-async function sendWebPush(subscription, payload, vapidKeys) {
+export async function sendWebPush(subscription, payload, vapidKeys) {
     validateSubscription(subscription);
     const endpoint = subscription.endpoint;
     const p256dh = subscription.keys?.p256dh;
@@ -240,8 +240,14 @@ async function sendWebPush(subscription, payload, vapidKeys) {
         method: 'POST',
         headers: headers,
         body: body,
-        redirect: 'error'
+        // Workers supports manual/follow, not the browser's error mode.
+        // Keep credentials on the validated push endpoint; never follow Location.
+        redirect: 'manual'
     });
+
+    if (response.status >= 300 && response.status < 400) {
+        throw new Error('推送服务返回重定向，已拒绝跟随；请稍后重试');
+    }
 
     // 410 Gone = 订阅已失效；404 也可能表示订阅不存在
     const expired = response.status === 410 || response.status === 404;
