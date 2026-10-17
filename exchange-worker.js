@@ -8,6 +8,7 @@
 // 5. /api/exchange/status — 查询兑换状态
 // 6. Cron Trigger — 每天凌晨 2 点更新汇率
 
+import {readSmallJson} from './server/family-access.js';
 const FRANKFURTER_API = 'https://api.frankfurter.dev/v1/latest';
 const FRANKFURTER_HISTORY = 'https://api.frankfurter.dev/v1/';
 const FLOATRATES_API = 'https://floatrates.com/daily/cny.json';
@@ -402,7 +403,7 @@ export default {
                 headers: {
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 }
             });
         }
@@ -411,6 +412,36 @@ export default {
         const path = url.pathname;
 
         try {
+            // Protected families must never fall through to the legacy KV API.
+            if(path.startsWith('/api/exchange/')||path==='/api/limits'){
+                if(!env.SYNC_SERVICE)return json({error:'兑换权限服务尚未配置。'},503);
+                let body={};if(request.method==='POST'){
+                    if(Number(request.headers.get('Content-Length'))>16384)return json({error:'请求过大'},413);
+                    body=await readSmallJson(request.clone());
+                }
+                let family=url.searchParams.get('code')||body.syncCode;
+                if(family&&body.syncCode&&family!==body.syncCode)return json({error:'家庭信息不一致'},400);
+                // Old printed tickets carry only an ID. Consult its family solely to
+                // authorize the route, never expose the record before that check.
+                const orderId=url.searchParams.get('id')||body.applyId;
+                if(orderId){const raw=await env.EXCHANGE_KV.get(`exchange:${orderId}`);if(raw){const actual=JSON.parse(raw).syncCode;if(family&&family!==actual)return json({error:'订单不属于此家庭。'},403);family=actual;}}
+                if(!family)return json({error:'缺少家庭信息，请重新打开订单。'},400);
+                const mode=await env.SYNC_SERVICE.fetch(`https://sync.internal/auth/mode?code=${encodeURIComponent(family)}`);
+                if(!mode.ok)return json({error:'无法确认家庭权限，已暂停兑换。'},503);
+                const info=await mode.json();
+                if(typeof info.required!=='boolean')return json({error:'家庭权限响应无效。'},503);
+                if(info.required){
+                    const op=path==='/api/limits'?'limits':path.split('/').pop();
+                    const target=new URL(`https://sync.internal/exchange/${op}`);target.searchParams.set('code',family);
+                    if(url.searchParams.has('id'))target.searchParams.set('id',url.searchParams.get('id'));
+                    const reply=await env.SYNC_SERVICE.fetch(new Request(target,request));
+                    const response=new Response(reply.body,reply);response.headers.set('Access-Control-Allow-Origin','*');response.headers.set('Access-Control-Expose-Headers','X-Family-Auth');response.headers.set('X-Family-Auth','required');return response;
+                }
+            }
+            if((path.startsWith('/api/price/')&&request.method==='POST')||['/api/update-rate','/api/update-bigmac'].includes(path)){
+                const token=request.headers.get('Authorization');
+                if(!env.OPERATIONS_TOKEN||env.OPERATIONS_TOKEN.length<32||token!==`Bearer ${env.OPERATIONS_TOKEN}`)return json({error:'需要运营管理员授权。'},403);
+            }
             // 获取今日汇率
             if (path === '/api/rate' && request.method === 'GET') {
                 const data = await env.EXCHANGE_KV.get('rate:latest');
@@ -500,7 +531,7 @@ export default {
 
             return json({ error: 'Not found' }, 404);
         } catch (e) {
-            return json({ error: e.message }, 500);
+            return json({ error: e.message }, e.status||500);
         }
     },
 
