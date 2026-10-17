@@ -13,6 +13,7 @@ import { COLOR_PALETTES, BASE_THEME_IDS } from './data/themes';
 import { WECOM_API_URL, EXCHANGE_WORKER_URL, PUSH_WORKER_URL } from './constants/api';
 import { SettingsModal, LowPerfToggle } from './components/modals/SettingsModal';
 import {syncFetch,deviceAccess,securityUrl} from './utils/deviceAccess';
+import {pushRequest} from './utils/pushTransport';
 import {stripSecrets} from '../shared/access-policy';
 import {calculateGold,pinExchangeHistory} from '../shared/gold-balance';
 import { ExchangePanel } from './components/modals/ExchangePanel';
@@ -5448,12 +5449,16 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                     return;
                 }
+                let cancelled=false;
+                setPushSubscribed(false);
                 navigator.serviceWorker.register('/sw.js').then(reg => {
                     // 推送订阅仅在支持 PushManager 的浏览器检查
                     if (!('PushManager' in window)) return null;
                     return reg.pushManager.getSubscription();
-                }).then(sub => {
-                    setPushSubscribed(!!sub);
+                }).then(async sub => {
+                    if(!sub||!syncCode||!activeChild)return;
+                    const result=await pushRequest('push-status',{syncCode,childName:activeChild,endpoint:sub.endpoint});
+                    if(!cancelled)setPushSubscribed(result.subscribed===true);
                 }).catch(() => {});
                 // 监听 Service Worker 发来的同步触发消息
                 const swMessageHandler = (event) => {
@@ -5462,8 +5467,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 };
                 navigator.serviceWorker.addEventListener('message', swMessageHandler);
-                return () => navigator.serviceWorker.removeEventListener('message', swMessageHandler);
-            }, [syncCode]);
+                return () => {cancelled=true;navigator.serviceWorker.removeEventListener('message', swMessageHandler);};
+            }, [syncCode,activeChild]);
 
             // 请求通知权限并订阅
             const enablePushNotifications = async () => {
@@ -5505,14 +5510,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     });
 
                     // 存储订阅
-                    await fetch(`${PUSH_WORKER_URL}/api/subscribe`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
+                    await pushRequest('subscribe', {
                             subscription: subscription.toJSON(),
                             syncCode: syncCode,
                             childName: activeChild
-                        })
                     });
 
                     setPushSubscribed(true);
@@ -5539,25 +5540,17 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const testPushNotification = async () => {
                 if (!syncCode || !activeChild) return;
                 try {
-                    const resp = await fetch(`${PUSH_WORKER_URL}/api/test-push`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ syncCode, childName: activeChild })
-                    });
-                    const text = await resp.text();
-                    console.log('test-push response:', resp.status, text);
-                    let result = {};
-                    try { result = JSON.parse(text); } catch (parseErr) {}
-                    if (resp.ok && result.ok) {
+                    const result = await pushRequest('test-push', { syncCode, childName: activeChild });
+                    if (result.ok) {
                         showToast('success', '测试通知已发送，请检查手机！');
                     } else if (result.status === 403 || (result.error && result.error.includes('403'))) {
                         showToast('error', '推送被拒绝：VAPID 密钥与当前订阅不匹配，请关闭通知后重新开启');
                     } else {
-                        showToast('error', '发送失败：' + (result.error || `服务器错误 ${resp.status}`));
+                        showToast('error', '发送失败：' + (result.error || '服务未确认'));
                     }
                 } catch (e) {
                     console.error('test-push client error:', e);
-                    showToast('error', '发送失败，请检查网络');
+                    showToast('error', '发送失败：' + e.message);
                 }
             };
 

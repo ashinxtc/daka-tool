@@ -1,5 +1,6 @@
 import {FamilyAccess,AccessError} from './family-access.js';
 import {FamilyExchange} from './family-exchange.js';
+import {pushProjection} from './push-projection.js';
 const MAX_BYTES = 8 * 1024 * 1024, PART_SIZE = 64 * 1024;
 const encoder = new TextEncoder(), decoder = new TextDecoder();
 export class SyncError extends Error {
@@ -132,6 +133,7 @@ export class SyncFamily {
     async handleRequest(request) {
         try {
             const url = new URL(request.url);
+            if(url.pathname==='/services/push')return json(await pushProjection(this,request));
             if(url.pathname.startsWith('/exchange/'))return json(await new FamilyExchange(this).handle(request,url.searchParams.get('code')));
             const authResponse=await this.access.handle(request,url.searchParams.get('code'));
             if(authResponse)return authResponse;

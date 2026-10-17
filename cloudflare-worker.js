@@ -15,7 +15,7 @@ export default {
         if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
         const url = new URL(request.url), code = url.searchParams.get('code');
         if (!code || code.length < 4 || code.length > 32 || !/^[\w一-鿿-]+$/.test(code)) return withCors(json({ error: '同步码需为 4-32 位字母、数字、中文、连字符或下划线。' }, 400));
-        const authRoute=url.pathname.startsWith('/auth/')||url.pathname.startsWith('/exchange/');
+        const authRoute=url.pathname.startsWith('/auth/')||url.pathname.startsWith('/exchange/')||url.pathname==='/services/push';
         if (!authRoute&&!['/', '/ts', '/bak'].includes(url.pathname)) return withCors(json({ error: 'Not found' }, 404));
         if (!['GET', 'POST'].includes(request.method) || (request.method === 'POST' && url.pathname !== '/'&&!authRoute)) return withCors(json({ error: 'Method not allowed' }, 405));
         try {

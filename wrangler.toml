@@ -10,6 +10,7 @@ SYNC_MODE = "readonly"
 AUTH_MODE = "legacy"
 # Isolated migration preview only. No production exchange cutover yet.
 EXCHANGE_MODE = "off"
+# PUSH_SERVICE_SECRET must be injected as a Worker secret, matching daka-push.
 
 [[durable_objects.bindings]]
 name = "SYNC_FAMILIES"
