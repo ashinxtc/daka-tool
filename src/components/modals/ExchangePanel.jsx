@@ -1,12 +1,17 @@
+import {verificationPageUrl} from '../../constants/api';
 import React from 'react';
 import QRCode from 'qrcode';
 import { EXCHANGE_WORKER_URL } from '../../constants/api.js';
+import {deviceAccess} from '../../utils/deviceAccess.js';
+import {exchangeCny} from '../../../shared/gold-balance.js';
+import {exchangeRequest,pendingExchange,clearExchangeIntent,confirmExchangeIntent} from '../../utils/exchangeTransport.js';
 import { getLocalDateKey } from '../../utils/date.js';
 import { storage } from '../../utils/storage.js';
+import { readStoredString } from '../../utils/storedValues.js';
 import { XIcon, Coins, TrendingUp, Sparkles, CheckCircle2 } from '../icons.jsx';
 
 // 网络请求超时包装器（防止移动端弱网/断网时无限期挂起，强制穿透缓存获取实时最新数据）
-const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+const legacyFetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -59,7 +64,7 @@ const mergeExchangeRecords = (existingList = [], incomingList = []) => {
         if (!prev) {
             map.set(r.id, r);
         } else {
-            const statusPriority = { verified: 3, cancelled: 2, pending: 1 };
+            const statusPriority = { verified: 3, cancelled: 2, expired:2, pending: 1 };
             const prevPrio = statusPriority[prev.status] || 0;
             const newPrio = statusPriority[r.status] || 0;
             map.set(r.id, newPrio >= prevPrio ? { ...prev, ...r } : { ...r, ...prev });
@@ -80,6 +85,33 @@ export const ExchangePanel = ({
     setWheelHistory, 
     tasks = {} 
 }) => {
+    const protectedFamily=deviceAccess.required(syncCode);
+    const [secureLimits,setSecureLimits]=React.useState(null);
+    const fetchWithTimeout=async(url,options={},timeoutMs=8000)=>{
+        const target=new URL(url,location.origin),match=/^\/api\/exchange\/(apply|verify|cancel|order|status)$/.exec(target.pathname);
+        if(!match||!deviceAccess.required(syncCode)){
+            const response=await legacyFetchWithTimeout(url,options,timeoutMs);
+            if(response.headers.get('X-Family-Auth')==='required'){deviceAccess.rememberRequired(syncCode);throw new Error('此家庭需要设备授权，请先完成配对。');}
+            return response;
+        }
+        const op=match[1],controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+        try{
+            let body=options.body?JSON.parse(options.body):undefined;
+            if(op==='apply')body=pendingExchange(syncCode,activeChild,{childName:activeChild,goldAmount:body.goldAmount,rateMicros:secureLimits?.rateMicros,...(secureLimits?.quoteId?{quoteId:secureLimits.quoteId}:{})});
+            const data=await exchangeRequest(syncCode,op,{body,id:target.searchParams.get('id'),signal:controller.signal});
+            confirmExchangeIntent(syncCode,activeChild,data.records||(data.record?[data.record]:[]));
+            if(op==='apply')clearExchangeIntent(syncCode,activeChild);
+            return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
+        }catch(error){
+            if(op==='apply'&&['QUOTE_CHANGED','LIMIT','CHILD_REQUIRED','INSUFFICIENT_BALANCE','DAILY_LIMIT','WEEKLY_LIMIT','PENDING_ORDER'].includes(error.code)){
+                clearExchangeIntent(syncCode,activeChild);
+                setSecureLimits(null);
+                exchangeRequest(syncCode,'limits').then(d=>setSecureLimits(d.limits)).catch(()=>{});
+            }
+            throw error;
+        }finally{clearTimeout(timer);}
+    };
+    React.useEffect(()=>{let active=true;if(show&&protectedFamily){setSecureLimits(null);exchangeRequest(syncCode,'limits').then(d=>{if(active){setSecureLimits(d.configured?d.limits:null);if(!d.configured)showToast('warning','请家庭管理员先确认兑换汇率与限额。');}}).catch(e=>{if(active)showToast('error',e.message);});}return()=>{active=false;};},[show,syncCode,protectedFamily]);
     const [rate, setRate] = React.useState(null);
     const [knowledge, setKnowledge] = React.useState(null);
     const [applying, setApplying] = React.useState(false);
@@ -129,7 +161,7 @@ export const ExchangePanel = ({
     }, [exchangeRecords]);
 
     // 核心对齐：累计已核销金额取记录核销累计与存储累计总额的较大者（绝不因任何单端漏记而少算）
-    const totalVerifiedCny = Math.max(verifiedAmountFromRecords, storedTotal);
+    const totalVerifiedCny = protectedFamily?verifiedAmountFromRecords:Math.max(verifiedAmountFromRecords, storedTotal);
 
     // 自动对齐修复：如果记录核销总额大于当前存储的累计金额，立即更新持久化存储并标记版本
     React.useEffect(() => {
@@ -314,7 +346,7 @@ export const ExchangePanel = ({
                     // 严格隔离：仅过滤出当前选中孩子的记录，绝不带入没有孩子名或属于其他孩子的单据
                     const childRecords = d.records.filter(r => r.childName === activeChild);
                     setExchangeRecords(prev => {
-                        const merged = mergeExchangeRecords(prev, childRecords);
+                        const merged = protectedFamily?childRecords:mergeExchangeRecords(prev, childRecords);
                         try {
                             storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged));
                         } catch (e) {}
@@ -344,7 +376,7 @@ export const ExchangePanel = ({
                                 }
                             }
                         } catch (e) {}
-                        setApplyResult(localPending);
+                        setApplyResult(protectedFamily?null:localPending);
                     }
 
                     // 检查已核销订单自动扣减（仅针对当前孩子）
@@ -382,10 +414,10 @@ export const ExchangePanel = ({
                     if (data.record.status === 'verified') {
                         settleVerifiedOrder(data.record);
                         refreshRecords();
-                    } else if (data.record.status === 'cancelled') {
+                    } else if (['cancelled','expired'].includes(data.record.status)) {
                         storage.removeItem(`app_offline_exchange_${activeChild}`);
                         setApplyResult(null);
-                        showToast('info', '该兑换申请已被撤销。');
+                        showToast('info', data.record.status==='expired'?'该兑换申请已过期，未扣款。':'该兑换申请已被撤销。');
                         refreshRecords();
                     }
                 }
@@ -431,19 +463,20 @@ export const ExchangePanel = ({
         try { return parseFloat(storage.getItem('app_exchange_base_cents') || '1'); } catch(e) { return 1; } 
     })();
     // 1 金元宝 = X 元人民币
-    const cnyPerGold = Math.max(0.001, (todayRate * baseCentsPerGold) / 100);
+    const cnyPerGold = protectedFamily?(secureLimits?.rateMicros||10000)/1e6:Math.max(0.001, (todayRate * baseCentsPerGold) / 100);
 
     // 每日变动百分比
     const yesterdayRate = rawTodayRate * (1 + (realChange - 1) * amplifier * (realYesterday && realToday ? (realYesterday / realToday) : 1));
     const yesterdayCnyPerGold = (yesterdayRate * baseCentsPerGold) / 100;
-    const dailyChange = cnyPerGold - yesterdayCnyPerGold;
-    const dailyChangePercent = yesterdayCnyPerGold > 0 ? ((dailyChange / yesterdayCnyPerGold) * 100).toFixed(1) : '0.0';
+    const dailyChange = protectedFamily?(secureLimits?.dailyChange||0):cnyPerGold - yesterdayCnyPerGold;
+    const dailyChangePercent = protectedFamily?(secureLimits?.dailyChangePercent||'0.0'):yesterdayCnyPerGold > 0 ? ((dailyChange / yesterdayCnyPerGold) * 100).toFixed(1) : '0.0';
 
     // 财富总额人民币等值
     const totalCny = (totalGold * cnyPerGold).toFixed(2);
 
     // 门槛配置
     const minGoldLimit = (() => { 
+        if(protectedFamily)return secureLimits?.minGold||500;
         try { return parseInt(storage.getItem('app_exchange_min_gold') || '500', 10); } catch(e) { return 500; } 
     })();
     // 最低人民币起兑值
@@ -452,7 +485,7 @@ export const ExchangePanel = ({
     const maxCny = (totalGold * cnyPerGold).toFixed(2);
 
     // 趋势建议
-    const trendAdvice = todayRate > 1.02 ? '📈 当前汇率升值，金元宝更值钱，正是兑换好时机！' :
+    const trendAdvice = protectedFamily?'按服务器浮动报价兑换，已提交订单的金额不再随行情变化。':todayRate > 1.02 ? '📈 当前汇率升值，金元宝更值钱，正是兑换好时机！' :
                        todayRate < 0.98 ? '📉 当前汇率微跌，建议暂时积攒，等升值后再兑换。' :
                        '➡️ 汇率平稳如常，可按需随时兑换。';
 
@@ -470,11 +503,12 @@ export const ExchangePanel = ({
         neededGold = targetCny > 0 ? Math.ceil(targetCny / cnyPerGold) : 0;
     }
 
+    if(protectedFamily&&secureLimits&&Number.isSafeInteger(neededGold))targetCny=exchangeCny(neededGold,secureLimits.rateMicros);
     const remainingGold = totalGold - neededGold;
     const isZero = exchangeMode === 'gold' ? (neededGold <= 0) : (targetCny <= 0);
     const isExceeding = neededGold > totalGold;
     const isBelowMin = neededGold < minGoldLimit;
-    const canSubmit = !isZero && !isExceeding && !isBelowMin && !applying;
+    const canSubmit = !isZero && !isExceeding && !isBelowMin && !applying&&(!protectedFamily||!!secureLimits);
 
     // 模式切换联动函数：切换时将另一侧的换算值作为初始值，平滑衔接
     const handleSwitchMode = (mode) => {
@@ -503,7 +537,7 @@ export const ExchangePanel = ({
         }
         let active = true;
         const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-        const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+        const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
 
         QRCode.toDataURL(verifyUrl, {
             width: 320,
@@ -550,6 +584,7 @@ export const ExchangePanel = ({
 
     // 7. 提交兑换申请
     const handleApply = async () => {
+        if(deviceAccess.required(syncCode)&&!secureLimits)return showToast('warning','请先连接云端确认家庭汇率与限额。');
         if (isZero) return showToast('warning', exchangeMode === 'gold' ? '请输入要兑换的金元宝数量' : '请输入要兑换的现金金额');
         if (isBelowMin) return showToast('warning', `最低起兑门槛为 ${minGoldLimit} 金元宝（约合 ¥${minCny} 元）`);
         if (isExceeding) return showToast('warning', `金元宝储蓄不足！您当前最多可兑换 ¥${maxCny} 元（现有 ${totalGold.toLocaleString()} 金元宝）`);
@@ -557,11 +592,11 @@ export const ExchangePanel = ({
         const maxSingle = (() => { try { return parseInt(storage.getItem('app_exchange_max_single') || '0', 10); } catch(e) { return 0; } })();
         const maxWeekly = (() => { try { return parseInt(storage.getItem('app_exchange_max_weekly') || '0', 10); } catch(e) { return 0; } })();
 
-        if (maxSingle > 0 && neededGold > maxSingle) {
+        if (!protectedFamily && maxSingle > 0 && neededGold > maxSingle) {
             return showToast('warning', `超过家长设置的单次上限 ${maxSingle} 金元宝（约 ¥${(maxSingle * cnyPerGold).toFixed(2)} 元）`);
         }
 
-        if (maxWeekly > 0) {
+        if (!protectedFamily && maxWeekly > 0) {
             const now = new Date();
             const dayOfWeek = now.getDay() || 7;
             const weekStart = new Date(now);
@@ -596,6 +631,11 @@ export const ExchangePanel = ({
             const data = await resp.json();
 
             if (data.ok) {
+                if(protectedFamily&&data.record?.status!=='pending'){
+                    setApplyResult(null);storage.removeItem(`app_offline_exchange_${activeChild}`);
+                    if(data.record?.status==='verified')settleVerifiedOrder(data.record);
+                    showToast('info','原申请已有最终结果，请查看历史记录。');refreshRecords();return;
+                }
                 const newRecord = {
                     id: data.applyId,
                     applyId: data.applyId,
@@ -605,7 +645,8 @@ export const ExchangePanel = ({
                     rate: cnyPerGold,
                     childName: activeChild,
                     status: 'pending',
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    ...(data.record||{})
                 };
                 setApplyResult(newRecord);
                 storage.setItem(`app_offline_exchange_${activeChild}`, JSON.stringify(newRecord));
@@ -614,7 +655,7 @@ export const ExchangePanel = ({
                     try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch (e) {}
                     return merged;
                 });
-                showToast('success', `🎉 申请已提交！请家长扫码或当面核销 ¥${targetCny.toFixed(2)} 元零花钱`);
+                showToast('success', `🎉 申请已提交！请家长扫码或当面核销 ¥${Number(newRecord.cnyAmount).toFixed(2)} 元零花钱`);
                 // 刷新记录列表
                 fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                     .then(r => r.json())
@@ -655,6 +696,7 @@ export const ExchangePanel = ({
                 showToast('error', data.error || '申请提交失败，请重试');
             }
         } catch (e) {
+            if(deviceAccess.required(syncCode)){showToast('error',`${e.message||'云端尚未确认。'} 未生成离线单，也未扣款；网络恢复后可重试原申请。`);return;}
             // 离线极致兜底：当云端网络异常或超时，自动生成离线防伪单，绝不阻断孩子！
             const localApplyId = `ex_local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             const localVerifyCode = String(Math.floor(1000 + Math.random() * 9000));
@@ -689,7 +731,10 @@ export const ExchangePanel = ({
     // 家长当面核销（即使完全无网也能瞬间完成结清与扣减）
     const handleParentDirectVerify = () => {
         if (!applyResult) return;
-        const parentPwd = storage.getItem('app_settings_password');
+        if(deviceAccess.required(syncCode)){
+            location.assign(`/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1`);return;
+        }
+        const parentPwd = readStoredString(storage.getItem('app_settings_password'));
         let promptMsg = `【👨‍👩‍👧 家长当面核销确认】\n孩子申请兑换零花钱：¥${(applyResult.cnyAmount || targetCny).toFixed(2)} 元\n需扣减金元宝：${applyResult.goldAmount || neededGold} 个\n\n`;
         if (parentPwd) {
             promptMsg += '请家长确认已向孩子给付现金或转账，并输入家长管理密码确认核销：';
@@ -763,6 +808,7 @@ export const ExchangePanel = ({
 
         // 如果是本地离线单，直接撤销
         if (applyResult?.isOffline || (id && id.startsWith('ex_local_'))) {
+            if(deviceAccess.required(syncCode)){setApplying(false);showToast('error','这是迁移前的离线单，请由管理员核对，不能当作云端订单撤销。');return;}
             storage.removeItem(`app_offline_exchange_${activeChild}`);
             setApplyResult(null);
             setApplying(false);
@@ -809,6 +855,7 @@ export const ExchangePanel = ({
                 showToast('error', data.error || '撤销失败，请重试');
             }
         } catch (e) {
+            if(deviceAccess.required(syncCode)){showToast('error',`${e.message||'网络中断'}，未确认撤销；订单已保留，请重试。`);return;}
             storage.removeItem(`app_offline_exchange_${activeChild}`);
             setApplyResult(null);
             showToast('info', '已在本地撤销申请，您可以重新输入金额兑换。');
@@ -875,7 +922,7 @@ export const ExchangePanel = ({
                                 </span>
                             </div>
                             <p className="text-white/90 text-xs mt-0.5">
-                                财商启蒙 · 真实世界汇率与物价联动实践
+                                {protectedFamily?'浮动汇率 · 服务器报价 · 订单金额锁定':'财商启蒙 · 真实世界汇率与物价联动实践'}
                             </p>
                         </div>
                     </div>
@@ -1000,7 +1047,7 @@ export const ExchangePanel = ({
                                             onClick={handleParentDirectVerify}
                                             className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
                                         >
-                                            <span>👨‍👩‍👧 家长当面核销 · 立即扣减结清 ➔</span>
+                                            <span>{protectedFamily?'👨‍👩‍👧 打开家长授权核销 ➔':'👨‍👩‍👧 家长当面核销 · 立即扣减结清 ➔'}</span>
                                         </button>
                                         <div className="flex gap-2">
                                             <button
@@ -1014,7 +1061,7 @@ export const ExchangePanel = ({
                                                 type="button"
                                                 onClick={() => {
                                                     const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-                                                    const verifyUrl = `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+                                                    const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
                                                     if (navigator.clipboard) {
                                                         navigator.clipboard.writeText(verifyUrl);
                                                         showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');
@@ -1286,7 +1333,7 @@ export const ExchangePanel = ({
                                             <>
                                                 <span>申请兑换 ¥{targetCny.toFixed(2)} 元零花钱 (扣 {neededGold.toLocaleString()} 元宝) 💰</span>
                                             </>
-                                        ) : isZero ? (
+                                        ) : protectedFamily&&!secureLimits ? '请先确认云端兑换汇率与限额' : isZero ? (
                                             exchangeMode === 'gold' ? '请输入要兑换的金元宝数量' : '请输入要兑换的现金金额'
                                         ) : isExceeding ? (
                                             '金元宝储蓄不足'
@@ -1376,11 +1423,11 @@ export const ExchangePanel = ({
                                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                                         r.status === 'verified' 
                                                             ? 'bg-emerald-100 text-emerald-800' 
-                                                            : r.status === 'cancelled' 
+                                                            : ['cancelled','expired'].includes(r.status)
                                                                 ? 'bg-gray-100 text-gray-500' 
                                                                 : 'bg-amber-100 text-amber-800 animate-pulse'
                                                     }`}>
-                                                        {r.status === 'verified' ? '✅ 已核销' : r.status === 'cancelled' ? '❌ 已取消' : '⏳ 待核销'}
+                                                        {r.status === 'verified' ? '✅ 已核销' : r.status === 'cancelled' ? '❌ 已取消' : r.status==='expired'?'已过期':'⏳ 待核销'}
                                                     </span>
                                                 </div>
                                             </div>

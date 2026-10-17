@@ -4,6 +4,10 @@
 const DB_NAME = 'daka_app_db';
 const STORE_NAME = 'app_keyval';
 const DB_VERSION = 1;
+// A missing sync baseline causes conservative reconciliation, never data loss.
+// Keep this potentially large duplicate snapshot in IndexedDB, not the small
+// synchronous recovery journal or the localStorage-only fallback.
+const RECONSTRUCTIBLE_KEYS = new Set(['_sync_checkpoint_v2']);
 
 // 开屏秒开必需的极简配置（保留在 localStorage 作为镜像）
 export const FAST_BOOT_KEYS = new Set([
@@ -45,6 +49,20 @@ let dbWriteTimer = null;
 let dbPromise = null;
 let dbInstance = null;
 let isIdbSupported = typeof window !== 'undefined' && !!window.indexedDB;
+let initialization = null;
+let state = { phase: 'loading', error: '', saveError: '' };
+let inFlightWrites = new Map();
+let inFlightDeletes = new Set();
+let journalReplayReady = false;
+const RESTORE_BACKUP = '_restore_backup_v1';
+const RESTORE_MIRRORS = '_restore_mirrors_v1';
+const RESTORE_FALLBACK = '_restore_fallback_v1';
+const updateState = patch => {
+    state = { ...state, ...patch };
+    window.dispatchEvent(new Event('_storageStateChanged'));
+};
+export const getStorageState = () => state;
+export const canSyncStorage = () => state.phase === 'ready' && !state.saveError;
 
 // --- 1. 底层 IndexedDB 封装 ---
 const openDB = () => {
@@ -52,7 +70,7 @@ const openDB = () => {
     if (dbPromise) return dbPromise;
     if (!isIdbSupported) return Promise.resolve(null);
 
-    dbPromise = new Promise((resolve) => {
+    dbPromise = new Promise((resolve, reject) => {
         try {
             const req = window.indexedDB.open(DB_NAME, DB_VERSION);
             req.onupgradeneeded = (e) => {
@@ -71,19 +89,17 @@ const openDB = () => {
                 resolve(dbInstance);
             };
             req.onerror = (e) => {
-                console.warn('[Storage] IndexedDB open failed, falling back to localStorage:', e);
-                isIdbSupported = false;
+                console.warn('[Storage] IndexedDB open failed:', e);
                 dbPromise = null;
-                resolve(null);
+                reject(new Error('无法打开本地数据库，请重新尝试。'));
             };
             req.onblocked = () => {
-                console.warn('[Storage] IndexedDB open blocked');
+                updateState({ error: '本地数据库被其他页面占用，请关闭其他打卡页面后重试。' });
             };
         } catch (err) {
             console.warn('[Storage] IndexedDB exception:', err);
-            isIdbSupported = false;
             dbPromise = null;
-            resolve(null);
+            reject(err);
         }
     });
     return dbPromise;
@@ -92,7 +108,7 @@ const openDB = () => {
 const idbGetAll = async () => {
     const db = await openDB();
     if (!db) return {};
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         try {
             const tx = db.transaction(STORE_NAME, 'readonly');
             const store = tx.objectStore(STORE_NAME);
@@ -103,13 +119,12 @@ const idbGetAll = async () => {
                 if (cursor) {
                     result[cursor.key] = cursor.value;
                     cursor.continue();
-                } else {
-                    resolve(result);
                 }
             };
-            req.onerror = () => resolve({});
-        } catch {
-            resolve({});
+            tx.oncomplete = () => resolve(result);
+            tx.onerror = tx.onabort = () => reject(new Error('本地数据读取失败，请重试。'));
+        } catch (error) {
+            reject(error);
         }
     });
 };
@@ -126,26 +141,43 @@ const flushDbBatch = async () => {
     const deletes = new Set(pendingDbDeletes);
     pendingDbWrites.clear();
     pendingDbDeletes.clear();
-
-    const db = await openDB();
+    inFlightWrites = writes;
+    inFlightDeletes = deletes;
+    const journalId = readJournal().id;
+    const finish = ok => {
+        inFlightWrites = new Map();
+        inFlightDeletes = new Set();
+        if (!ok) {
+            writes.forEach((value, key) => { if (!pendingDbWrites.has(key) && !pendingDbDeletes.has(key)) pendingDbWrites.set(key, value); });
+            deletes.forEach(key => { if (!pendingDbWrites.has(key) && !pendingDbDeletes.has(key)) pendingDbDeletes.add(key); });
+            updateState({ saveError: '本地保存尚未完成，请保留页面并重试保存。' });
+        } else {
+            if (!pendingDbWrites.size && !pendingDbDeletes.size) {
+                if (journalReplayReady && journalId && readJournal().id === journalId) window.localStorage.removeItem(ACCOUNTING_JOURNAL);
+                updateState({ saveError: '' });
+            }
+        }
+        return ok;
+    };
+    let db;
+    try { db = await openDB(); } catch { return finish(false); }
     if (!db) {
         try {
-            writes.forEach((value, key) => window.localStorage.setItem(key, value));
+            writes.forEach((value, key) => { if (!RECONSTRUCTIBLE_KEYS.has(key)) window.localStorage.setItem(key, value); });
             deletes.forEach(key => window.localStorage.removeItem(key));
-            return true;
-        } catch { return false; }
+            return finish(true);
+        } catch { return finish(false); }
     }
 
     return new Promise((resolve) => {
-        const finish = ok => {
-            if (!ok) {
-                writes.forEach((value, key) => { if (!pendingDbWrites.has(key) && !pendingDbDeletes.has(key)) pendingDbWrites.set(key, value); });
-                deletes.forEach(key => { if (!pendingDbWrites.has(key) && !pendingDbDeletes.has(key)) pendingDbDeletes.add(key); });
-            }
-            resolve(ok);
-        };
+        let tx;
+        let finished = false;
+        const complete = ok => { if (!finished) { finished = true; resolve(finish(ok)); } };
         try {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.oncomplete = () => complete(true);
+            tx.onerror = () => {}; // onabort is the final failure signal; do not finish twice.
+            tx.onabort = () => complete(false);
             const store = tx.objectStore(STORE_NAME);
             writes.forEach((val, key) => {
                 store.put(val, key);
@@ -153,15 +185,10 @@ const flushDbBatch = async () => {
             deletes.forEach(key => {
                 store.delete(key);
             });
-            tx.oncomplete = () => finish(true);
-            tx.onerror = (err) => {
-                console.warn('[Storage] Flush tx error:', err);
-                finish(false);
-            };
-            tx.onabort = () => finish(false);
         } catch (e) {
             console.warn('[Storage] Flush to IndexedDB error:', e);
-            finish(false);
+            if (tx) { try { tx.abort(); } catch { /* already aborted */ } }
+            complete(false);
         }
     });
 };
@@ -171,7 +198,7 @@ const scheduleDbFlush = () => {
     dbWriteTimer = setTimeout(() => {
         dbWriteTimer = null;
         if (typeof window !== 'undefined' && window.requestIdleCallback) {
-            window.requestIdleCallback(() => flushPendingDbWrites());
+            window.requestIdleCallback(() => flushPendingDbWrites(), { timeout: 1000 });
         } else {
             flushPendingDbWrites();
         }
@@ -191,22 +218,60 @@ export const isJunkKey = (k) => {
 // Keep the journal until all IndexedDB writes finish; startup replays interrupted transactions.
 const ACCOUNTING_JOURNAL = '_accounting_journal_v1';
 let journalSequence = 0;
-export function commitDurable(entries) {
-    const previous = JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
-    const journal = { id: `${Date.now()}-${++journalSequence}-${Math.random().toString(36).slice(2)}`, entries: { ...(previous.entries || {}), ...entries } };
-    // Quota/security errors deliberately propagate: never claim a command without a durable record.
+const readJournal = () => JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
+const writeJournal = (entries, deletions = []) => {
+    const previous = readJournal();
+    const values = { ...(previous.entries || {}) };
+    RECONSTRUCTIBLE_KEYS.forEach(key => { delete values[key]; });
+    const deletedKeys = new Set(previous.deletedKeys || []);
+    const put = (key, value) => { if (!RECONSTRUCTIBLE_KEYS.has(key)) values[key] = value; deletedKeys.delete(key); };
+    const del = key => { delete values[key]; deletedKeys.add(key); };
+    inFlightWrites.forEach((value, key) => put(key, value)); inFlightDeletes.forEach(del);
+    pendingDbWrites.forEach((value, key) => put(key, value)); pendingDbDeletes.forEach(del);
+    Object.entries(entries).forEach(([key, value]) => put(key, value));
+    deletions.forEach(del);
+    const journal = { id: `${Date.now()}-${++journalSequence}-${Math.random().toString(36).slice(2)}`, entries: values, deletedKeys: [...deletedKeys] };
     window.localStorage.setItem(ACCOUNTING_JOURNAL, JSON.stringify(journal));
-    for (const [key, value] of Object.entries(journal.entries)) {
+    return journal;
+};
+export function commitDurable(entries, deletions = []) {
+    if (state.phase === 'restoring') throw new Error('正在恢复数据，请稍后重试。');
+    // Quota/security errors deliberately propagate: never claim a command without a durable record.
+    const versions = storage.getKeyVersions();
+    for (const key of Object.keys(entries)) versions[key] = Date.now();
+    const writes = { ...entries, _key_versions: JSON.stringify(versions) };
+    writeJournal(writes, deletions);
+    for (const [key, value] of Object.entries(writes)) {
         storage.setItem(key, value);
-        storage.markKeyVersion(key);
         if (window._pendingWrites) delete window._pendingWrites[key];
     }
-    window.dispatchEvent(new CustomEvent('_durableDataCommitted', { detail: Object.keys(entries) }));
-    flushPendingDbWrites().then(ok => {
-        if (ok && JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}').id === journal.id) {
-            window.localStorage.removeItem(ACCOUNTING_JOURNAL);
-        }
-    }).catch(error => console.error('[Storage] Durable flush failed; recovery journal retained', error));
+    for (const key of deletions) {
+        storage.removeItem(key);
+        if (window._pendingWrites) delete window._pendingWrites[key];
+    }
+    window.dispatchEvent(new CustomEvent('_durableDataCommitted', { detail: [...Object.keys(entries), ...deletions] }));
+    flushPendingDbWrites().catch(error => console.error('[Storage] Durable flush failed; recovery journal retained', error));
+}
+
+// React pending values are decoded values, including strings: always JSON.stringify them.
+export function flushPendingState() {
+    if (state.phase !== 'ready') return;
+    for (const [key, value] of Object.entries(window._pendingWrites || {})) {
+        storage.setItem(key, JSON.stringify(value));
+        storage.markKeyVersion(key);
+        delete window._pendingWrites[key];
+    }
+}
+
+export function persistBeforeSuspend() {
+    if (state.phase !== 'ready') return;
+    flushPendingState();
+    try {
+        if (pendingDbWrites.size || pendingDbDeletes.size || inFlightWrites.size || inFlightDeletes.size) writeJournal({});
+    } catch {
+        updateState({ saveError: '本地空间不足，尚有数据未保存，请保留页面并重试保存。' });
+    }
+    return flushPendingDbWrites();
 }
 
 // --- 2. 核心 Storage 接口 ---
@@ -228,6 +293,7 @@ export const storage = {
 
     // 写入：内存即刻生效，高频小配置镜像到 localStorage，其余入异步 IndexedDB 批处理
     setItem(key, value) {
+        if (state.phase === 'restoring') throw new Error('正在恢复数据，请稍后重试。');
         const valStr = typeof value === 'string' ? value : JSON.stringify(value ?? null);
         memoryCache.set(key, valStr);
 
@@ -247,6 +313,7 @@ export const storage = {
 
     // 删除
     removeItem(key) {
+        if (state.phase === 'restoring') throw new Error('正在恢复数据，请稍后重试。');
         memoryCache.delete(key);
         if (typeof window !== 'undefined' && window.localStorage) {
             try { window.localStorage.removeItem(key); } catch (e) {}
@@ -282,7 +349,7 @@ export const storage = {
         Object.entries(entries).forEach(([k, v]) => {
             this.setItem(k, v);
         });
-        flushPendingDbWrites();
+        return flushPendingDbWrites();
     },
 
     // 版本标记（按 key 记录最新本地修改时间戳）
@@ -306,129 +373,173 @@ export const storage = {
 
     // 强制立即刷入磁盘
     flush() {
+        flushPendingState();
         return flushPendingDbWrites();
     }
 };
 
-// --- 3. 初始化与老数据无缝安全迁移 (Zero-Loss Migration) ---
-export const initStorage = async () => {
-    // 1. 先将 localStorage 中的 FAST_BOOT_KEYS 和现有数据预热入 memoryCache (0ms 同步极速)
-    if (typeof window !== 'undefined' && window.localStorage) {
-        for (let i = 0; i < window.localStorage.length; i++) {
-            const k = window.localStorage.key(i);
-            if (k && (k.startsWith('app_') || k.startsWith('_'))) {
-                memoryCache.set(k, window.localStorage.getItem(k));
-            }
-        }
-    }
-
-    if (!isIdbSupported) {
-        console.warn('[Storage] IndexedDB not supported, running on localStorage fallback');
-        const journal = JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
-        if (journal.entries) {
-            for (const [key, value] of Object.entries(journal.entries)) storage.setItem(key, value);
-            if (await flushPendingDbWrites()) window.localStorage.removeItem(ACCOUNTING_JOURNAL);
-        }
-        return true;
-    }
-
-    // 设置 1500ms 超时保护，防止老旧浏览器卡住 IndexedDB 回调
-    const timeoutPromise = new Promise(resolve => setTimeout(resolve, 1500));
-    const initPromise = (async () => {
+// Initialization never treats a read timeout/error as an empty installation.
+export const initStorage = () => {
+    if (initialization) return initialization;
+    initialization = (async () => {
+        updateState({ phase: 'loading', error: '' });
         try {
-            // 2. 从 IndexedDB 加载全部持久化数据
+            recoverFallbackRestore();
+            for (let i = 0; i < window.localStorage.length; i++) {
+                const key = window.localStorage.key(i);
+                if (key && (key.startsWith('app_') || key.startsWith('_'))) memoryCache.set(key, window.localStorage.getItem(key));
+            }
+            if (!isIdbSupported && window.localStorage.getItem('_storage_migrated_v1')) {
+                throw new Error('当前无法读取已有本地数据库，请恢复浏览器的存储访问后重试。');
+            }
             const idbData = await idbGetAll();
-            Object.entries(idbData).forEach(([k, v]) => {
-                // 如果是 FAST_BOOT_KEYS，且 localStorage 中已有该键，优先以 localStorage 的实时同步值为准（防止上次关闭页面时 150ms 异步写盘未完成）
-                if (FAST_BOOT_KEYS.has(k) && window.localStorage?.getItem(k) !== null) {
-                    return;
-                }
-                memoryCache.set(k, v);
-            });
+            const restoredKeys = new Set(JSON.parse(idbData[RESTORE_MIRRORS] || '[]'));
+            for (const [key, value] of Object.entries(idbData)) {
+                if (!restoredKeys.has(key) && FAST_BOOT_KEYS.has(key) && window.localStorage.getItem(key) !== null) continue;
+                memoryCache.set(key, value);
+            }
+            if (restoredKeys.size) await repairRestoreMirrors(restoredKeys);
 
-            // 3. 检查是否需要从 localStorage 迁移老数据
-            const migrated = window.localStorage?.getItem('_storage_migrated_v1');
-            if (!migrated && typeof window !== 'undefined' && window.localStorage) {
-                console.log('[Storage] Performing one-time migration from localStorage to IndexedDB...');
-                const keysToMigrate = [];
+            if (isIdbSupported && !window.localStorage.getItem('_storage_migrated_v1')) {
+                const originals = new Map();
                 for (let i = 0; i < window.localStorage.length; i++) {
-                    const k = window.localStorage.key(i);
-                    if (k && (k.startsWith('app_') || k.startsWith('_')) && k !== '_storage_migrated_v1' && k !== ACCOUNTING_JOURNAL) {
-                        keysToMigrate.push(k);
+                    const key = window.localStorage.key(i);
+                    if (key && (key.startsWith('app_') || key.startsWith('_')) &&
+                        !['_storage_migrated_v1', ACCOUNTING_JOURNAL, RESTORE_BACKUP, RESTORE_MIRRORS, RESTORE_FALLBACK].includes(key)) {
+                        originals.set(key, window.localStorage.getItem(key));
                     }
                 }
-
-                // 将 localStorage 中的所有旧 app_* 数据写入 IndexedDB
-                keysToMigrate.forEach(k => {
-                    const val = window.localStorage.getItem(k);
-                    if (val !== null) {
-                        memoryCache.set(k, val);
-                        pendingDbWrites.set(k, val);
-                    }
-                });
-
-                await flushPendingDbWrites();
-
-                // 迁移成功后：标记已迁移，并清理 localStorage 中的非快起大键（如打卡记录、大账本等），瞬间释放 5MB 配额！
+                for (const [key, value] of originals) { memoryCache.set(key, value); pendingDbWrites.set(key, value); }
+                if (!await flushPendingDbWrites()) throw new Error('旧数据迁移未完成，原数据已保留，请重试。');
+                const saved = await idbGetAll();
+                if ([...originals].some(([key, value]) => saved[key] !== value)) throw new Error('迁移核验未通过，原数据已保留，请重试。');
                 window.localStorage.setItem('_storage_migrated_v1', 'true');
-                keysToMigrate.forEach(k => {
-                    if (!FAST_BOOT_KEYS.has(k)) {
-                        try {
-                            window.localStorage.removeItem(k);
-                        } catch (e) {}
-                    }
-                });
-                console.log(`[Storage] Migrated ${keysToMigrate.length} keys to IndexedDB successfully, localStorage pruned!`);
+                for (const [key, value] of originals) {
+                    if (!FAST_BOOT_KEYS.has(key) && window.localStorage.getItem(key) === value) window.localStorage.removeItem(key);
+                }
             }
 
-            // 4. 清理内存和磁盘上的历史残留垃圾脏键（如 app_undefined_*, app_2047* 等）
-            const junkKeysToPrune = [];
-            memoryCache.forEach((_, k) => {
-                if (isJunkKey(k)) junkKeysToPrune.push(k);
-            });
-            if (junkKeysToPrune.length > 0) {
-                junkKeysToPrune.forEach(k => {
-                    memoryCache.delete(k);
-                    pendingDbWrites.delete(k);
-                    pendingDbDeletes.add(k);
-                    if (typeof window !== 'undefined' && window.localStorage) {
-                        try { window.localStorage.removeItem(k); } catch (e) {}
-                    }
-                });
-                scheduleDbFlush();
+            const journal = readJournal();
+            journalReplayReady = true;
+            if (journal.entries) {
+                for (const [key, value] of Object.entries(journal.entries)) storage.setItem(key, value);
+                for (const key of journal.deletedKeys || []) storage.removeItem(key);
+                if (!await flushPendingDbWrites()) throw new Error('上次保存的数据尚未恢复完成，请重试。');
             }
-
+            // Only clean malformed application keys. Sync metadata is valid state.
+            for (const key of memoryCache.keys()) {
+                if (key.startsWith('app_') && isJunkKey(key)) storage.removeItem(key);
+            }
+            updateState({ phase: 'ready', error: '', saveError: '' });
             return true;
-        } catch (err) {
-            console.error('[Storage] Init IndexedDB error:', err);
+        } catch (error) {
+            console.error('[Storage] Initialization failed:', error);
+            updateState({ phase: 'error', error: error.message || '本地数据读取失败，请重试。' });
             return false;
         }
     })();
-
-    // Accounting recovery must not race a late IDB load overwriting recovered values.
-    const journal = JSON.parse(window.localStorage.getItem(ACCOUNTING_JOURNAL) || '{}');
-    await (journal.entries ? initPromise : Promise.race([initPromise, timeoutPromise]));
-    if (journal.entries) {
-        for (const [key, value] of Object.entries(journal.entries)) storage.setItem(key, value);
-        if (await flushPendingDbWrites()) window.localStorage.removeItem(ACCOUNTING_JOURNAL);
-    }
-    return true;
+    return initialization;
 };
 
-// 挂载全局对象，便于调试与兼容直调
+async function repairRestoreMirrors(keys) {
+    try {
+        for (const key of keys) {
+            if (FAST_BOOT_KEYS.has(key) || key.startsWith('app_exchange_total_') || key.startsWith('app_exchange_records_')) {
+                window.localStorage.setItem(key, memoryCache.get(key));
+            } else window.localStorage.removeItem(key);
+        }
+        const db = await openDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).delete(RESTORE_MIRRORS);
+            tx.oncomplete = resolve;
+            tx.onabort = tx.onerror = reject;
+        });
+        memoryCache.delete(RESTORE_MIRRORS);
+    } catch {
+        // The committed marker makes IDB authoritative on next boot, even if LS is full.
+    }
+}
+
+function recoverFallbackRestore() {
+    const raw = window.localStorage.getItem(RESTORE_FALLBACK);
+    if (!raw) return;
+    const { before } = JSON.parse(raw);
+    // Free newly added/replaced values before reinstating the original set (quota safe).
+    for (const key of Object.keys(before)) window.localStorage.removeItem(key);
+    for (const [key, value] of Object.entries(before)) if (value !== null) window.localStorage.setItem(key, value);
+    window.localStorage.removeItem(RESTORE_FALLBACK);
+}
+
+function restoreWithoutIdb(writes, previous) {
+    const before = {};
+    for (const key of [...Object.keys(writes), RESTORE_BACKUP]) before[key] = window.localStorage.getItem(key);
+    // If the recovery copy does not fit, reject before changing any existing value.
+    window.localStorage.setItem(RESTORE_FALLBACK, JSON.stringify({ before }));
+    try {
+        window.localStorage.setItem(RESTORE_BACKUP, JSON.stringify(previous));
+        for (const [key, value] of Object.entries(writes)) window.localStorage.setItem(key, value);
+        window.localStorage.removeItem(RESTORE_FALLBACK);
+    } catch (error) {
+        try { recoverFallbackRestore(); }
+        catch { updateState({ phase: 'error', error: '恢复中断，原数据快照已保留，请恢复存储访问后重新打开页面。' }); }
+        throw error;
+    }
+}
+
+// One IDB transaction saves the previous snapshot, imported values and mirror repair marker.
+// No imported value is published to React until the transaction has committed.
+export async function restoreEntries(entries) {
+    if (state.phase !== 'ready') throw new Error('本地数据尚未就绪，请稍后重试。');
+    for (const [key, value] of Object.entries(entries)) {
+        if (!key.startsWith('app_') || isJunkKey(key) || typeof value !== 'string') throw new Error('备份中包含无效数据。');
+    }
+    flushPendingState();
+    updateState({ phase: 'restoring', epoch: (state.epoch || 0) + 1 });
+    try {
+        if (!await flushPendingDbWrites()) throw new Error('当前数据尚未保存，已取消恢复。请先重试保存。');
+        const db = await openDB();
+        const previous = { version: '2.0', exportDate: new Date().toISOString(), _allSyncData: storage.getAllSyncData() };
+        const versions = storage.getKeyVersions();
+        for (const key of Object.keys(entries)) versions[key] = Date.now();
+        const writes = { ...entries, _key_versions: JSON.stringify(versions) };
+        const mirrorKeys = [...new Set([...JSON.parse(memoryCache.get(RESTORE_MIRRORS) || '[]'), ...Object.keys(writes)])];
+        if (!db) restoreWithoutIdb(writes, previous);
+        else await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            try {
+                store.put(JSON.stringify(previous), RESTORE_BACKUP);
+                for (const [key, value] of Object.entries(writes)) store.put(value, key);
+                store.put(JSON.stringify(mirrorKeys), RESTORE_MIRRORS);
+            } catch (error) { tx.abort(); reject(error); return; }
+            tx.oncomplete = resolve;
+            tx.onerror = () => {};
+            tx.onabort = () => reject(new Error('恢复写入失败，当前数据未被覆盖。'));
+        });
+        for (const [key, value] of Object.entries(writes)) memoryCache.set(key, value);
+        memoryCache.set(RESTORE_BACKUP, JSON.stringify(previous));
+        if (db) {
+            memoryCache.set(RESTORE_MIRRORS, JSON.stringify(mirrorKeys));
+            await repairRestoreMirrors(mirrorKeys);
+        }
+        window._pendingWrites = {};
+    } finally {
+        if (state.phase === 'restoring') updateState({ phase: 'ready' });
+    }
+}
+
+export function getPreRestoreBackup() {
+    const value = memoryCache.get(RESTORE_BACKUP);
+    return value ? JSON.parse(value) : null;
+}
+
 if (typeof window !== 'undefined') {
     window.storage = storage;
-    window._markKeyVersion = (key) => storage.markKeyVersion(key);
-
-    // 页面卸载前紧急保存
-    window.addEventListener('beforeunload', () => {
-        if (window._pendingWrites) {
-            Object.entries(window._pendingWrites).forEach(([k, v]) => {
-                try {
-                    storage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
-                } catch (e) {}
-            });
-        }
-        flushPendingDbWrites();
+    window._markKeyVersion = key => storage.markKeyVersion(key);
+    window.addEventListener('beforeunload', persistBeforeSuspend);
+    window.addEventListener('pagehide', persistBeforeSuspend);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') persistBeforeSuspend();
     });
 }

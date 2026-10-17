@@ -22,7 +22,7 @@ export function pendingNotices(receipts, child) {
         .sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
 }
 
-export function applyDeductions({ actions, child, devices = [], history = {}, receipts = {}, stats = {}, balance }) {
+export function applyDeductions({ actions, child, devices = [], strictAuthorization = false, history = {}, receipts = {}, stats = {}, balance }) {
     let nextHistory = { ...history }, nextReceipts = { ...receipts }, nextStats = { ...stats };
     if (!Array.isArray(actions)) return { changed: false };
     const processed = new Map();
@@ -33,7 +33,7 @@ export function applyDeductions({ actions, child, devices = [], history = {}, re
         if (action.id === undefined || action.id === null || action.id === '') continue;
         const id = identity(child, action.id);
         if (nextReceipts[id]) { processed.set(action.id, 'claimed'); continue; }
-        if (devices.length && !validDevices.has(action.operatorDeviceId)) {
+        if ((strictAuthorization || devices.length) && !validDevices.has(action.operatorDeviceId)) {
             processed.set(action.id, 'rejected_unauthorized'); continue;
         }
         const amount = Math.abs(Number(action.amount));
@@ -93,7 +93,7 @@ export function mergeEscrows(local = {}, cloud = {}) {
             const b = right[id];
             if (!b) { records[id] = a; continue; }
             // Every device chooses the same immutable terms even if two offline wheel draws differ.
-            const terms = r => { const { status, redeemedAt, redeemedDate, forfeitedAt, ...rest } = r; return rest; };
+            const terms = r => { const { status, redeemedAt, redeemedDate, redeemedDates, forfeitedAt, ...rest } = r; return rest; };
             const base = canonical(terms(a), terms(b));
             const redeemed = [a, b].filter(r => r.status === 'redeemed' &&
                 (!base.deadlineDate || (r.redeemedDate && r.redeemedDate <= base.deadlineDate)))
@@ -103,6 +103,14 @@ export function mergeEscrows(local = {}, cloud = {}) {
                 status: a.status === 'forfeited' || b.status === 'forfeited' ? 'forfeited' : 'pending' };
             // Existing legacy redeemed saves may predate redeemedDate.
             if (base.legacy && (a.status === 'redeemed' || b.status === 'redeemed')) records[id].status = 'redeemed';
+            // Safety history is cumulative state, not an immutable contract term.
+            // Keep both devices' accepted protection dates without adding refunds.
+            if (records[id].status === 'redeemed') {
+                const accepted = base.legacy ? [a, b].filter(r => r.status === 'redeemed') : redeemed;
+                const dates = accepted.flatMap(r => Array.isArray(r.redeemedDates) ? r.redeemedDates : []);
+                if (dates.length) records[id].redeemedDates = [...new Set(dates.filter(d =>
+                    typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+            }
         }
         result[child] = { records: ordered(records) };
     }

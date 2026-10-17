@@ -9,6 +9,7 @@
 
 // ============================================================
 // VAPID 签名和 Web Push 加密
+import {authorizePush,readPushProjection,validateSubscription,subscriptions} from './server/push-access.js';
 // ============================================================
 
 function base64UrlEncode(buffer) {
@@ -50,7 +51,7 @@ async function hkdf(ikm, salt, info, length) {
     const prkKey = await crypto.subtle.importKey('raw', salt, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const prk = new Uint8Array(await crypto.subtle.sign('HMAC', prkKey, ikm));
 
-    const infoBuf = new TextEncoder().encode(info);
+    const infoBuf = typeof info === 'string' ? new TextEncoder().encode(info) : info;
     const result = new Uint8Array(length);
     let prev = new Uint8Array(0);
     let offset = 0;
@@ -92,20 +93,18 @@ async function encryptPushPayload(payload, p256dh, auth) {
     const sharedSecret = await computeSharedSecret(keyPair.privateKey, base64UrlDecode(p256dh));
 
     const authSecret = base64UrlDecode(auth);
-    const ikm = await hkdf(sharedSecret, authSecret, 'Content-Encoding: auth\x00', 32);
+    const info = new Uint8Array([...new TextEncoder().encode('WebPush: info\x00'), ...base64UrlDecode(p256dh), ...senderPubKey]);
+    const ikm = await hkdf(sharedSecret, authSecret, info, 32);
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const prk = await hkdf(ikm, salt, 'Content-Encoding: aesgcm\x00', 32);
-
-    const keyInfo = new Uint8Array([...new TextEncoder().encode('Content-Encoding: aesgcm\x00'), ...base64UrlDecode(p256dh)]);
-    const key = (await hkdf(prk, new Uint8Array(0), keyInfo, 16)).slice(0, 16);
-
-    const nonceInfo = new Uint8Array([...new TextEncoder().encode('Content-Encoding: nonce\x00'), ...base64UrlDecode(p256dh)]);
-    const nonce = (await hkdf(prk, new Uint8Array(0), nonceInfo, 12)).slice(0, 12);
-
-    const padded = pkcs7Pad(content, 16);
+    const key = await hkdf(ikm, salt, 'Content-Encoding: aes128gcm\x00', 16);
+    const nonce = await hkdf(ikm, salt, 'Content-Encoding: nonce\x00', 12);
+    if (content.length > 3993) throw new Error('推送内容超过单条消息限制');
+    const padded = new Uint8Array([...content, 2]);
     const encrypted = await aesGcmEncrypt(key, nonce, padded);
-
-    return { salt: base64UrlEncode(salt), publicKey: base64UrlEncode(senderPubKey), ciphertext: encrypted };
+    const header = new Uint8Array(86);
+    header.set(salt); new DataView(header.buffer).setUint32(16, 4096);
+    header[20] = senderPubKey.length; header.set(senderPubKey, 21);
+    return { ciphertext: new Uint8Array([...header, ...encrypted]) };
 }
 
 // Generate VAPID JWT
@@ -204,7 +203,8 @@ function decodePrivateKey(input) {
 }
 
 // Send Web Push notification
-async function sendWebPush(subscription, payload, vapidKeys) {
+export async function sendWebPush(subscription, payload, vapidKeys) {
+    validateSubscription(subscription);
     const endpoint = subscription.endpoint;
     const p256dh = subscription.keys?.p256dh;
     const auth = subscription.keys?.auth;
@@ -226,9 +226,7 @@ async function sendWebPush(subscription, payload, vapidKeys) {
         const encrypted = await encryptPushPayload(payload, p256dh, auth);
         body = encrypted.ciphertext;
         headers['Content-Type'] = 'application/octet-stream';
-        headers['Content-Encoding'] = 'aesgcm';
-        headers['Encryption'] = `salt=${encrypted.salt}`;
-        headers['Crypto-Key'] = `dh=${encrypted.publicKey}`;
+        headers['Content-Encoding'] = 'aes128gcm';
     } else {
         headers['Content-Type'] = 'application/octet-stream';
         headers['Content-Length'] = '0';
@@ -237,8 +235,15 @@ async function sendWebPush(subscription, payload, vapidKeys) {
     const response = await fetch(endpoint, {
         method: 'POST',
         headers: headers,
-        body: body
+        body: body,
+        // Workers supports manual/follow, not the browser's error mode.
+        // Keep credentials on the validated push endpoint; never follow Location.
+        redirect: 'manual'
     });
+
+    if (response.status >= 300 && response.status < 400) {
+        throw new Error('推送服务返回重定向，已拒绝跟随；请稍后重试');
+    }
 
     // 410 Gone = 订阅已失效；404 也可能表示订阅不存在
     const expired = response.status === 410 || response.status === 404;
@@ -260,12 +265,12 @@ function getVapidKeys(env) {
 // ============================================================
 
 async function handleCronTrigger(env) {
-    const today = new Date().toISOString().slice(0, 10);
-    const hour = new Date().getHours();
-    const listResult = await env.PUSH_KV.list({ prefix: 'push_sub:' });
+    const chinaNow = new Date(Date.now()+8*3600000);
+    const today = chinaNow.toISOString().slice(0, 10);
+    const hour = chinaNow.getUTCHours();
     const results = [];
 
-    for (const key of listResult.keys) {
+    for await (const key of subscriptions(env.PUSH_KV,'push_sub:')) {
         try {
             const subData = JSON.parse(await env.PUSH_KV.get(key.name));
             const { subscription, syncCode, childName, lastNotified, pushTimes } = subData;
@@ -279,7 +284,7 @@ async function handleCronTrigger(env) {
             if (lastNotified === notifyKey) continue;
 
             // 从同步 KV 读取该家庭的任务和打卡数据
-            const familyData = await env.DAKA_SYNC.get(`sync:${syncCode}`);
+            const familyData = await readFamilyForPush(env, syncCode,childName,subData.deviceId);
             if (!familyData) continue;
 
             const parsed = JSON.parse(familyData);
@@ -337,7 +342,9 @@ export default {
         const corsHeaders = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Expose-Headers': 'X-Family-Auth',
+            'Cache-Control': 'no-store',
         };
 
         if (request.method === 'OPTIONS') {
@@ -348,9 +355,27 @@ export default {
         const path = url.pathname;
 
         try {
+            let authorized;
+            if(['/api/subscribe','/api/unsubscribe','/api/test-push','/api/notify-sync','/api/push-status'].includes(path)){
+                if(request.method!=='POST')return json({error:'Method not allowed'},405,corsHeaders);
+                authorized=await authorizePush(request.clone(),env);
+                corsHeaders['X-Family-Auth']=authorized.user.required?'required':'legacy';
+                const {body,user}=authorized;
+                if(path!=='/api/notify-sync'){
+                    if(typeof body.childName!=='string'||!body.childName||body.childName.length>100)return json({error:'孩子信息无效'},400,corsHeaders);
+                    if(!await readFamilyForPush(env,body.syncCode,body.childName,user.id))return json({error:'未找到孩子'},404,corsHeaders);
+                }
+            }
+            if(['/api/cron-check','/api/test-vapid'].includes(path)&&(!env.OPERATIONS_TOKEN||env.OPERATIONS_TOKEN.length<32||request.headers.get('Authorization')!==`Bearer ${env.OPERATIONS_TOKEN}`))return json({error:'需要运营管理员授权'},403,corsHeaders);
+            if(path==='/api/push-status'){
+                const {syncCode,childName,endpoint}=authorized.body;
+                const key=`push_sub:${syncCode}:${childName}${authorized.user.id?':'+authorized.user.id:''}`;
+                const raw=await env.PUSH_KV.get(key),record=raw?JSON.parse(raw):null;
+                return json({ok:true,subscribed:!!record&&record.subscription.endpoint===endpoint},200,corsHeaders);
+            }
             // 订阅推送
             if (path === '/api/subscribe' && request.method === 'POST') {
-                const body = await request.json();
+                const body = authorized.body;
                 const { subscription, syncCode, childName, pushTimes } = body;
 
                 if (!subscription || !syncCode || !childName) {
@@ -358,9 +383,12 @@ export default {
                 }
 
                 // 用 syncCode + childName 作为 key
-                const key = `push_sub:${syncCode}:${childName}`;
+                validateSubscription(subscription);
+                if(pushTimes!==undefined&&(!Array.isArray(pushTimes)||pushTimes.length>3||pushTimes.some(h=>![8,16,20].includes(h))))return json({error:'提醒时间无效'},400,corsHeaders);
+                const key = `push_sub:${syncCode}:${childName}${authorized.user.id?':'+authorized.user.id:''}`;
                 await env.PUSH_KV.put(key, JSON.stringify({
                     subscription,
+                    deviceId:authorized.user.id||null,
                     syncCode,
                     childName,
                     pushTimes: pushTimes || [8, 16, 20],
@@ -375,7 +403,7 @@ export default {
             if (path === '/api/unsubscribe' && request.method === 'POST') {
                 const body = await request.json();
                 const { syncCode, childName } = body;
-                const key = `push_sub:${syncCode}:${childName}`;
+                const key = `push_sub:${syncCode}:${childName}${authorized.user.id?':'+authorized.user.id:''}`;
                 await env.PUSH_KV.delete(key);
                 return json({ ok: true }, 200, corsHeaders);
             }
@@ -387,7 +415,7 @@ export default {
                 if (!syncCode || !childName) {
                     return json({ error: '缺少 syncCode 或 childName' }, 400, corsHeaders);
                 }
-                const key = `push_sub:${syncCode}:${childName}`;
+                const key = `push_sub:${syncCode}:${childName}${authorized.user.id?':'+authorized.user.id:''}`;
                 const subData = await env.PUSH_KV.get(key);
                 if (!subData) return json({ error: '未找到订阅' }, 404, corsHeaders);
 
@@ -428,13 +456,13 @@ export default {
                 if (!syncCode) return json({ error: '缺少 syncCode' }, 400, corsHeaders);
 
                 // 列出该 syncCode 的所有订阅
-                const listResult = await env.PUSH_KV.list({ prefix: `push_sub:${syncCode}:` });
                 const results = [];
-                for (const key of listResult.keys) {
+                for await (const key of subscriptions(env.PUSH_KV,`push_sub:${syncCode}:`)) {
                     try {
                         const subData = JSON.parse(await env.PUSH_KV.get(key.name));
                         // 排除发起打卡的设备，避免自己给自己发
                         if (excludeChild && subData.childName === excludeChild) continue;
+                        if(!await readFamilyForPush(env,syncCode,subData.childName,subData.deviceId))continue;
                         const pushResult = await sendWebPush(subData.subscription, JSON.stringify({
                             triggerSync: true,
                             syncCode: syncCode
@@ -470,7 +498,7 @@ export default {
             return json({ error: 'Not found' }, 404, corsHeaders);
         } catch (e) {
             console.error('push-worker error:', e);
-            return json({ error: e.message, stack: e.stack }, 500, corsHeaders);
+            return json({ error: e.message }, e.status||500, corsHeaders);
         }
     },
 
@@ -486,3 +514,7 @@ function json(data, status, corsHeaders) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 }
+
+// Transitional KV fallback applies only before the service binding is deployed.
+// A bound service error must never fall back to stale KV data.
+export const readFamilyForPush=readPushProjection;

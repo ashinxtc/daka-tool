@@ -1,0 +1,21 @@
+{
+  "name": "daka-push-staging",
+  "main": "push-worker.js",
+  "compatibility_date": "2024-01-01",
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "PUSH_KV",
+      "id": "2f96ef86376645d09db8c099436f97ac"
+    }
+  ],
+  "triggers": {
+    "crons": []
+  },
+  "services": [
+    {
+      "binding": "SYNC_SERVICE",
+      "service": "daka-sync-staging"
+    }
+  ]
+}
