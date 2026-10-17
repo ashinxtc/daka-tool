@@ -101,6 +101,14 @@ test('legacy gateway cannot bypass protected family through another code, order 
     assert.equal((await call('/api/exchange/verify',{applyId:'old',verifyCode:'1234'})).status,401);
     assert.equal((await worker.fetch(new Request('https://exchange.test/api/exchange/status?code=test'),{})).status,503);
     assert.equal((await call('/api/price/update',{})).status,403);assert.equal((await call('/api/update-rate')).status,403);
+    const f=await family(),live={EXCHANGE_KV:env.EXCHANGE_KV,SYNC_SERVICE:{fetch:async input=>{
+        if(typeof input==='string')return mf.dispatchFetch(input);
+        return mf.dispatchFetch(input.url,{method:input.method,headers:Object.fromEntries(input.headers),...(input.method==='POST'?{body:await input.text()}:{})});
+    }}};
+    const forwarded=(op,token,body)=>worker.fetch(new Request(`https://exchange.test/api/exchange/${op}`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({syncCode:f.code,...body})}),live);
+    const order=await json(await forwarded('apply',f.main,terms()));
+    await json(await forwarded('verify',f.parent,{applyId:order.applyId,verifyCode:order.verifyCode}));
+    assert.equal(debitCount(await json(await read(f))),1);
 });
 test('shared balance covers historical entries, buffs and completion; pending intent survives refresh without changing amount',()=>{
     const tasks={孩子:[{id:'a',reward:2,targetCount:1,completedReward:5}]},checkins={孩子:{a:{'2026-10-01':[{t:1},{t:2}]}}};
