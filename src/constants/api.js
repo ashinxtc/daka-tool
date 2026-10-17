@@ -12,3 +12,6 @@ const shouldUseProxy = isBrowser && (
 export const EXCHANGE_WORKER_URL = shouldUseProxy ? '' : 'https://daka-exchange.2378385593.workers.dev';
 export const WECOM_API_URL = shouldUseProxy ? '' : 'https://daka-wecom.2378385593.workers.dev';
 export const PUSH_WORKER_URL = shouldUseProxy ? '' : 'https://daka-push.2378385593.workers.dev';
+// The same-origin proxy reserves /api/push/*; /api/* belongs to exchange.
+export const pushApiUrl = (operation, endpoint = PUSH_WORKER_URL) =>
+    endpoint ? `${endpoint}/api/${operation}` : `/api/push/${operation}`;

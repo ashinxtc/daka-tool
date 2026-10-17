@@ -9,6 +9,11 @@ export default defineConfig({
     port: 3000,
     host: '0.0.0.0',
     proxy: {
+      '/api/push': {
+        target: 'https://daka-push.2378385593.workers.dev',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/push(?=\/|$)/, '/api'),
+      },
       '/api': {
         target: 'https://daka-exchange.2378385593.workers.dev',
         changeOrigin: true,
@@ -19,6 +24,11 @@ export default defineConfig({
     port: 4173,
     host: '0.0.0.0',
     proxy: {
+      '/api/push': {
+        target: 'https://daka-push.2378385593.workers.dev',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/push(?=\/|$)/, '/api'),
+      },
       '/api': {
         target: 'https://daka-exchange.2378385593.workers.dev',
         changeOrigin: true,

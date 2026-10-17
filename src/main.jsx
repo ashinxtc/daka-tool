@@ -10,7 +10,7 @@ import { isIOSSafari, isPWAStandalone } from './utils/platform';
 import { getCheckinEntries, getCheckinMinutes, getCheckinUnits, getCheckinSessionCount, getTaskTotalMinutes, getTaskTotalSessions } from './utils/checkin';
 import { getLocalDateKey, dateKeySubtractDays, dateObjToLocalKey, tsToLocalDateKey, getDatesInRange, getMonthDates } from './utils/date';
 import { COLOR_PALETTES, BASE_THEME_IDS } from './data/themes';
-import { WECOM_API_URL, EXCHANGE_WORKER_URL, PUSH_WORKER_URL } from './constants/api';
+import { WECOM_API_URL, EXCHANGE_WORKER_URL, pushApiUrl } from './constants/api';
 import { SettingsModal, LowPerfToggle } from './components/modals/SettingsModal';
 import {syncFetch,deviceAccess,securityUrl} from './utils/deviceAccess';
 import {pushRequest} from './utils/pushTransport';
@@ -5498,7 +5498,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
 
                     // 获取 VAPID 公钥
-                    const vapidResp = await fetch(`${PUSH_WORKER_URL}/api/vapid-key`);
+                    const vapidResp = await fetch(pushApiUrl('vapid-key'));
                     if (!vapidResp.ok) throw new Error('获取推送密钥失败');
                     const { publicKey } = await vapidResp.json();
                     if (!publicKey) throw new Error('推送密钥为空');

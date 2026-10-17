@@ -1,0 +1,21 @@
+{
+  "name": "daka-exchange-staging",
+  "main": "exchange-worker.js",
+  "compatibility_date": "2024-01-01",
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "EXCHANGE_KV",
+      "id": "12434f967c38402e9b66d93e57c5672a"
+    }
+  ],
+  "triggers": {
+    "crons": []
+  },
+  "services": [
+    {
+      "binding": "SYNC_SERVICE",
+      "service": "daka-sync-staging"
+    }
+  ]
+}
