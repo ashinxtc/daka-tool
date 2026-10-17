@@ -12,6 +12,8 @@ import { getLocalDateKey, dateKeySubtractDays, dateObjToLocalKey, tsToLocalDateK
 import { COLOR_PALETTES, BASE_THEME_IDS } from './data/themes';
 import { WECOM_API_URL, EXCHANGE_WORKER_URL, PUSH_WORKER_URL } from './constants/api';
 import { SettingsModal, LowPerfToggle } from './components/modals/SettingsModal';
+import {syncFetch,deviceAccess,securityUrl} from './utils/deviceAccess';
+import {stripSecrets} from '../shared/access-policy';
 import { ExchangePanel } from './components/modals/ExchangePanel';
 
 import { StatsModal } from './components/stats/StatsModal';
@@ -1154,6 +1156,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
             // 自动确保生成家庭专属配对密钥
             React.useEffect(() => {
+                if(authorizedParents?.securityVersion===1||deviceAccess.required(syncCode))return;
                 if (!authorizedParents || !authorizedParents.pairToken) {
                     const token = 'token_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
                     setAuthorizedParents(prev => ({
@@ -4758,6 +4761,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 },
                 // 家长已授权设备表 (支持 revokedDevices 解绑墓碑，防止解绑设备被并集复活)
                 'app_authorized_parents_v1': (l, c) => {
+                    if(c?.securityVersion===1)return semanticResult(c,l,c);
                     if (!l || !c || typeof l !== 'object' || typeof c !== 'object') return null;
                     const pairToken = l.pairToken || c.pairToken || '';
                     const lDevs = Array.isArray(l.devices) ? l.devices : [];
@@ -5096,7 +5100,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     Object.keys(data).forEach(k => { if (versions[k]) trimmed[k] = versions[k]; });
                     data._keyVersions = trimmed;
                 } catch (e) {}
-                return data;
+                return deviceAccess.required(syncCode)?stripSecrets(data):data;
             };
 
             // 并发锁（修复 Bug5）
@@ -5295,7 +5299,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 if (!acquireSyncLock()) return; // 并发保护
                 setSyncStatus('syncing');
                 try {
-                    const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
+                    const resp = await syncFetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
                     if (!canSyncStorage() || getStorageState().epoch !== storageEpoch || currentSyncCodeRef.current !== syncCode) return;
                     const meta = syncMetadata(resp);
                     if (meta.protocol === 2) {
@@ -5429,14 +5433,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         if (stopped) return;
                         if (document.visibilityState === 'visible' && canSyncStorage() && !syncLockRef.current && !syncConflictRef.current) {
                             try {
-                                const resp = await fetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
+                                const resp = await syncFetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
                                 if (resp.ok) {
                                     const { ts, revision, protocol } = await resp.json();
                                     const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
                                     const cp = loadSyncCheckpoint();
                                     if (protocol === 2 ? cp?.code !== syncCode || cp?.revision !== revision : ts && ts > localTs) await syncFromCloud();
                                 }
-                            } catch (e) {} // 网络异常静默跳过，下轮再试
+                            } catch (e) {if(e.code==='AUTH_REQUIRED'||e.code==='AUTH_DOWNGRADE')setSyncStatus('error');} // 保留本机数据，下轮或重新配对后恢复
                         }
                         schedulePoll();
                     }, delay);
@@ -8270,8 +8274,10 @@ ${context}
             };
             useEffect(() => {
                 const snapshot = accountingRef.current;
+                if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return;
                 const result = applyDeductions({ ...snapshot, child: activeChild,
                     devices: authorizedParents?.devices || [],
+                    strictAuthorization:authorizedParents?.securityVersion===1,
                     balance: (history, child) => calculateTotalGold(checkins, history, child, activeBuffs, tasks) });
                 if (result.changed) persistAccounting({ history: result.history, receipts: result.receipts,
                     actions: result.actions, stats: result.stats });
@@ -8282,8 +8288,9 @@ ${context}
             // 筛选当前孩子的未领取礼物（红包、额外转盘）
             const unclaimedGifts = useMemo(() => {
                 if (!parentActions || !Array.isArray(parentActions)) return [];
+                if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return [];
                 const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
-                const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
+                const hasRegisteredDevices = authorizedParents?.securityVersion===1||(authorizedParents?.devices || []).length > 0;
                 return parentActions.filter(a =>
                     a && a.status === 'pending' &&
                     (!a.targetChild || a.targetChild === activeChild) &&
@@ -8299,6 +8306,7 @@ ${context}
             // 4. 拦截未授权设备的恶意指令
             React.useEffect(() => {
                 if (!parentActions || !Array.isArray(parentActions) || parentActions.length === 0) return;
+                if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return;
 
                 const pendingActions = parentActions.filter(a =>
                     a && a.status === 'pending' && (!a.targetChild || a.targetChild === activeChild)
@@ -8306,7 +8314,7 @@ ${context}
                 if (pendingActions.length === 0) return;
 
                 const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
-                const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
+                const hasRegisteredDevices = authorizedParents?.securityVersion===1||(authorizedParents?.devices || []).length > 0;
                 let hasUpdates = false;
 
                 const updatedActions = parentActions.map(action => {
@@ -9086,7 +9094,7 @@ ${context}
 					setWelcomeSyncLoading(true);
 					setWelcomeSyncError('');
 					try {
-						const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
+						const resp = await syncFetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
 						if (resp.status === 404) {
 							setWelcomeSyncError(`云端未找到同步码【${code}】的数据。请核对大小写与拼写；若这是您第一次使用，请直接切换到【创建新家庭】新建成员进入系统！`);
 							return;
@@ -9254,7 +9262,7 @@ ${context}
 										<div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-2xl text-left space-y-2.5 animate-in fade-in">
 											<div className="flex items-start gap-2 text-xs text-amber-900 font-medium leading-relaxed">
 												<span className="text-base shrink-0">⚠️</span>
-												<span>{welcomeSyncError}</span>
+												<span>{welcomeSyncError} <a className="underline" href={securityUrl(welcomeSyncCodeInput)}>打开设备配对</a></span>
 											</div>
 											<button
 												type="button"

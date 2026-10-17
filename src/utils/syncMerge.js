@@ -1,4 +1,8 @@
+import {isSecretKey} from '../../shared/access-policy.js';
 // Baselines belong to the snapshot actually read; wall clocks never pick a winner.
+export const protectedSnapshot = snapshot => {
+    try{return JSON.parse(snapshot?.app_authorized_parents_v1||'null')?.securityVersion===1;}catch{return false;}
+};
 const missing = Symbol('missing');
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 export const stableStringify = v => JSON.stringify(v, (_, x) => object(x)
@@ -15,6 +19,7 @@ const localKeys = new Set(['app_sync_code','app_sync_last_time','app_test_mode']
 export const syncValues = (snapshot = {}) => Object.fromEntries(Object.entries(snapshot).filter(([k]) => k.startsWith('app_') && !localKeys.has(k)));
 
 export function mergeSyncSnapshots(base, local, remote, { resolve = {}, mergeKey } = {}) {
+    const protectedRemote=protectedSnapshot(remote);
     const conflicts = [];
     const merge = (b, l, r, path) => {
         if (equal(l, b)) return r;
@@ -50,6 +55,8 @@ export function mergeSyncSnapshots(base, local, remote, { resolve = {}, mergeKey
     const data = {};
     for (const key of new Set([...Object.keys(base || {}), ...Object.keys(local || {}), ...Object.keys(remote || {})])) {
         if (!key.startsWith('app_') || localKeys.has(key)) continue;
+        if(protectedRemote&&isSecretKey(key))continue;
+        if(protectedRemote&&key==='app_authorized_parents_v1'){data[key]=remote[key];continue;}
         const b = own(base || {}, key), l = own(local || {}, key), r = own(remote || {}, key);
         let v;
         if (mergeKey && !equal(l, b) && !equal(r, b) && l !== missing && r !== missing) v = mergeKey(key, l, r);

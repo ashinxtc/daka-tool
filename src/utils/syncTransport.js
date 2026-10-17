@@ -1,3 +1,4 @@
+import {syncFetch} from './deviceAccess.js';
 export const SYNC_ENDPOINT = 'https://sync.daka-tool.top';
 export class SyncRequestError extends Error {
     constructor(message, status, code, details) { super(message); Object.assign(this, { status, code, details }); }
@@ -17,14 +18,14 @@ export async function checkedSyncJson(response) {
     if (!response.ok) throw new SyncRequestError(body.error || `同步失败 (${response.status})`,response.status,body.code,body);
     return body;
 }
-export async function readSyncSnapshot(code, { fetchImpl = fetch, endpoint = SYNC_ENDPOINT, minProtocol = 1 } = {}) {
+export async function readSyncSnapshot(code, { fetchImpl = syncFetch, endpoint = SYNC_ENDPOINT, minProtocol = 1 } = {}) {
     const response = await fetchImpl(`${endpoint}/?code=${encodeURIComponent(code)}`, {cache:'no-store'});
     const meta = syncMetadata(response);
     if (meta.protocol < minProtocol) throw new SyncRequestError('服务器版本回退，已保留本机操作并暂停同步。',409,'PROTOCOL_DOWNGRADE');
     if (response.status === 404) return { ...meta, data:{}, exists:false };
     return { ...meta, data:await checkedSyncJson(response), exists:true };
 }
-export async function writeSyncSnapshot(code, data, base, { fetchImpl = fetch, endpoint = SYNC_ENDPOINT,
+export async function writeSyncSnapshot(code, data, base, { fetchImpl = syncFetch, endpoint = SYNC_ENDPOINT,
     operationId = newSyncOperationId(), isCurrent = () => true, delay = ms => new Promise(r => setTimeout(r,ms)) } = {}) {
     const body = JSON.stringify(data); // Frozen bytes and ID across ambiguous failures.
     const headers = {'Content-Type':'application/json'};

@@ -45,6 +45,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         parent: 'parent.html',
+        security: 'security.html',
         exchangeVerify: 'exchange-verify.html',
         exemptionVerify: 'exemption-verify.html',
         redemptionVerify: 'redemption-verify.html',

@@ -2,8 +2,8 @@ import { mergeSyncSnapshots, stableStringify, syncValues } from './syncMerge.js'
 import { readSyncSnapshot, writeSyncSnapshot, SyncRequestError } from './syncTransport.js';
 export const SYNC_CHECKPOINT_KEY = '_sync_checkpoint_v2';
 // The history cap must never discard commands an offline child has not handled.
-export const appendParentAction = (actions, action) => [action, ...actions]
-    .filter((item, index) => index < 100 || item.status === 'pending');
+export const appendParentAction = (actions, action, protectedMode=false) => [action, ...actions]
+    .filter((item, index) => index < 100 || item.status === 'pending'||(protectedMode&&item.operatorDeviceId!==action.operatorDeviceId));
 export class SyncConflictError extends Error {
     constructor(context) { super('两端同时修改了相同内容，已保留双方数据，请先处理同步冲突。'); this.code='MERGE_CONFLICT'; this.context=context; }
 }
@@ -75,7 +75,7 @@ export async function updateSyncKeys(code,base,updates,options={}) {
         for(const key of ['app_parent_actions_v1','app_global_messages_v2']) {
             if(!(key in intent))continue;
             const old=JSON.parse(prior[key]||'[]'),desired=JSON.parse(intent[key]),latest=JSON.parse(current[key]||'[]');
-            const core=key==='app_parent_actions_v1'?['id','type','targetChild','amount','reason','operatorRole','operatorDeviceId','wheelType','count','timestamp']:['id','text','author','parentRole','isParent','expire','timestamp'];
+            const core=key==='app_parent_actions_v1'?['id','type','targetChild','amount','reason','operatorRole','operatorDeviceId','wheelType','count','timestamp']:['id','text','author','parentRole','operatorDeviceId','isParent','expire','timestamp'];
             intent[key]=JSON.stringify(desired.map(item=>{
                 const found=latest.find(x=>x.id===item.id);
                 if(!found || old.some(x=>x.id===item.id))return item;

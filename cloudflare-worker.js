@@ -3,7 +3,7 @@ export { SyncFamily } from './server/sync-family.js';
 const cors = {
     'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, If-Match, Idempotency-Key, Authorization',
-    'Access-Control-Expose-Headers': 'ETag, X-Sync-Protocol, X-Sync-Revision', 'Cache-Control': 'no-store',
+    'Access-Control-Expose-Headers': 'ETag, X-Sync-Protocol, X-Sync-Revision, X-Family-Auth', 'Cache-Control': 'no-store',
 };
 const withCors = response => {
     const result = new Response(response.body, response);

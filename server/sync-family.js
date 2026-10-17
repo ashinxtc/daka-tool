@@ -117,6 +117,11 @@ export class SyncFamily {
         await tx.put('head',{...head,...version,revision,ts,backupRevision:head.revision});
     }
     async fetch(request) {
+        const response=await this.handleRequest(request);
+        try{response.headers.set('X-Family-Auth',await this.access.required()?'required':'legacy');}catch{}
+        return response;
+    }
+    async handleRequest(request) {
         try {
             const url = new URL(request.url);
             const authResponse=await this.access.handle(request,url.searchParams.get('code'));

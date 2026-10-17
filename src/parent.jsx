@@ -4,6 +4,7 @@ import './index.css';
 import { updateSyncKeys, appendParentAction } from './utils/syncCoordinator';
 import { syncMetadata, SyncRequestError, newSyncOperationId } from './utils/syncTransport';
 import SyncConflictDialog from './components/common/SyncConflictDialog';
+import {deviceAccess,parentFetch,securityUrl} from './utils/deviceAccess';
 
 // 保证必须在 HTTPS 协议下运行，避免因 Origin 隔离导致 localStorage 丢失
 if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -14,9 +15,9 @@ if (typeof window !== 'undefined' && window.location.protocol === 'http:' && win
 const SYNC_URL = 'https://sync.daka-tool.top';
 const parentProtocolKey = code => `parent_sync_protocol_v2:${code}`;
 const parentPendingKey = code => `parent_pending_sync_v2:${code}`;
-const parentTransport = code => ({minProtocol:localStorage.getItem(parentProtocolKey(code))==='2'?2:1});
+const parentTransport = code => ({fetchImpl:parentFetch,minProtocol:localStorage.getItem(parentProtocolKey(code))==='2'?2:1});
 const fetchParentCloud = async code => {
-    const response=await fetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`,{cache:'no-store'});
+    const response=await parentFetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`,{cache:'no-store'});
     const meta=syncMetadata(response);
     if(meta.protocol===2 && (response.ok||response.status===404))localStorage.setItem(parentProtocolKey(code),'2');
     if(meta.protocol!==2 && parentTransport(code).minProtocol===2)throw new SyncRequestError('服务器版本回退，已暂停同步并保留操作。',409,'PROTOCOL_DOWNGRADE');
@@ -356,6 +357,8 @@ export const ParentApp = () => {
         if (!silent) setIsLoading(true);
         try {
             const resp = await fetchParentCloud(codeToUse);
+            const secureIdentity=deviceAccess.required(codeToUse)?deviceAccess.credential(codeToUse,'parent'):null;
+            if(secureIdentity){setDeviceId(secureIdentity.id);setOperatorRole(secureIdentity.label);localStorage.setItem('parent_device_id',secureIdentity.id);localStorage.setItem('parent_role',secureIdentity.label);}
             if (resp.status === 404) {
                 console.warn('云端尚未上传该同步码数据，等待电脑主程序上传同步');
                 setCloudData(null);
@@ -379,7 +382,7 @@ export const ParentApp = () => {
                 try { authConfig = JSON.parse(authConfigStr); } catch (e) {}
             }
 
-            const currentDevId = deviceId;
+            const currentDevId = secureIdentity?.id||deviceId;
             const revokedMap = (authConfig && typeof authConfig.revokedDevices === 'object') ? authConfig.revokedDevices : {};
             const isRevoked = Boolean(revokedMap[currentDevId]);
 
@@ -399,7 +402,11 @@ export const ParentApp = () => {
             const localToken = tokenOverride || pairToken || localStorage.getItem('parent_pair_token');
             const hasLocalBound = (localStorage.getItem('parent_is_bound') === 'true') || Boolean(localStorage.getItem('parent_sync_code'));
 
-            if (existingDev) {
+            if(authConfig.securityVersion===1){
+                if(!secureIdentity||!existingDev)throw new Error('此设备不在有效授权名单中，请重新配对。');
+                setIsBound(true);localStorage.setItem('parent_is_bound','true');setAuthError('');
+                setOperatorRole(existingDev.role);
+            } else if (existingDev) {
                 setIsBound(true);
                 localStorage.setItem('parent_is_bound', 'true');
                 // 同步本地角色为已注册角色
@@ -436,6 +443,10 @@ export const ParentApp = () => {
             return data;
         } catch (err) {
             if(err.registrationFailed){setIsBound(false);localStorage.removeItem('parent_is_bound');}
+            if(err.code==='AUTH_REQUIRED'||err.code==='AUTH_DOWNGRADE'||deviceAccess.required(codeToUse)){
+                setIsBound(false);setCloudData(null);localStorage.removeItem('parent_is_bound');
+                setAuthError(err.message||'请重新配对设备。');
+            }
             console.error('Fetch cloud data error:', err);
             if (!silent) showToast('error', err.message || '获取云端数据失败');
             return null;
@@ -446,6 +457,7 @@ export const ParentApp = () => {
 
     // 辅助：向云端注册本设备信息并持久化本地凭证
     const registerCurrentDevice = async (currentCloudData, code, authConfig, devId, roleToUse = operatorRole) => {
+        if(deviceAccess.required(code)||authConfig?.securityVersion===1)throw new Error('此家庭使用服务端授权，请打开设备配对页面。');
         try {
             const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
             const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -513,6 +525,11 @@ export const ParentApp = () => {
             }
             if (!resp.ok) throw new Error('云端服务连接失败，请稍后重试');
             const data = await resp.json();
+            if(deviceAccess.required(trimmedCode)){
+                await loadCloudData(trimmedCode);
+                setSyncCode(trimmedCode);localStorage.setItem('parent_sync_code',trimmedCode);
+                return;
+            }
 
             // 校验家长密码 (彻底兼容 useStickyState 的 JSON.stringify 引号序列化包裹)
             let cloudPwd = data.app_settings_password;
@@ -564,7 +581,7 @@ export const ParentApp = () => {
         if (!syncCode || !isBound) return;
         const interval = setInterval(async () => {
             try {
-                const resp = await fetch(`${SYNC_URL}/ts?code=${encodeURIComponent(syncCode)}`);
+                const resp = await parentFetch(`${SYNC_URL}/ts?code=${encodeURIComponent(syncCode)}`);
                 if (resp.ok) {
                     const { ts } = await resp.json();
                     const currentTs = cloudData?._syncTs || 0;
@@ -572,7 +589,7 @@ export const ParentApp = () => {
                         loadCloudData(syncCode, true);
                     }
                 }
-            } catch (e) {}
+            } catch (e) {if(e.code==='AUTH_REQUIRED'||e.code==='AUTH_DOWNGRADE'){setIsBound(false);setCloudData(null);setAuthError(e.message);}}
         }, 15000);
         return () => clearInterval(interval);
     }, [syncCode, isBound, cloudData]);
@@ -889,7 +906,7 @@ export const ParentApp = () => {
             };
 
             const currentActions = parentActions;
-            const updatedActions = appendParentAction(currentActions,newAction);
+            const updatedActions = appendParentAction(currentActions,newAction,deviceAccess.required(syncCode));
 
             const ok = await updateCloudKeys({
                 app_parent_actions_v1: JSON.stringify(updatedActions)
@@ -926,7 +943,7 @@ export const ParentApp = () => {
             };
 
             const currentActions = parentActions;
-            const updatedActions = appendParentAction(currentActions,newAction);
+            const updatedActions = appendParentAction(currentActions,newAction,deviceAccess.required(syncCode));
 
             const ok = await updateCloudKeys({
                 app_parent_actions_v1: JSON.stringify(updatedActions)
@@ -959,7 +976,7 @@ export const ParentApp = () => {
             };
 
             const currentActions = parentActions;
-            const updatedActions = appendParentAction(currentActions,newAction);
+            const updatedActions = appendParentAction(currentActions,newAction,deviceAccess.required(syncCode));
 
             const ok = await updateCloudKeys({
                 app_parent_actions_v1: JSON.stringify(updatedActions)
@@ -989,7 +1006,7 @@ export const ParentApp = () => {
             };
 
             const currentActions = parentActions;
-            const updatedActions = appendParentAction(currentActions,newAction);
+            const updatedActions = appendParentAction(currentActions,newAction,deviceAccess.required(syncCode));
 
             const ok = await updateCloudKeys({
                 app_parent_actions_v1: JSON.stringify(updatedActions)
@@ -1015,6 +1032,7 @@ export const ParentApp = () => {
             const cleanText = oracleText.trim().slice(0, 32);
             const newMsg = {
                 id: `msg_parent_${newSyncOperationId()}`,
+                ...(deviceAccess.required(syncCode)?{operatorDeviceId:deviceId}:{}),
                 text: cleanText,
                 author: operatorRole,
                 isParent: true,
@@ -1026,7 +1044,7 @@ export const ParentApp = () => {
             };
 
             const currentList = oracleMessages;
-            const updatedList = [newMsg, ...currentList].slice(0, 50);
+            const updatedList = deviceAccess.required(syncCode)?[newMsg,...currentList]:[newMsg, ...currentList].slice(0, 50);
 
             const ok = await updateCloudKeys({
                 app_global_messages_v2: JSON.stringify(updatedList)
@@ -1044,6 +1062,7 @@ export const ParentApp = () => {
     // 操作 5：撤回寄语
     const handleDeleteOracle = async (msgId) => {
         const currentList = oracleMessages;
+        if(deviceAccess.required(syncCode)&&currentList.find(m=>m.id===msgId)?.operatorDeviceId!==deviceId){showToast('error','只能撤回本设备发布的寄语。');return;}
         const updatedList = currentList.filter(m => m.id !== msgId);
         const ok = await updateCloudKeys({
             app_global_messages_v2: JSON.stringify(updatedList)
@@ -1058,6 +1077,7 @@ export const ParentApp = () => {
         return (
             <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4">
                 <div className="w-full max-w-md bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-indigo-950/80">
+                    <a className="block p-3 mb-3 rounded-xl bg-indigo-700 text-white text-center" href={securityUrl(inputSyncCode||syncCode)}>设备配对 / 重新授权</a>
                     <div className="text-center mb-6">
                         <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-indigo-600/20 border border-indigo-400/40 flex items-center justify-center text-3xl shadow-inner shadow-indigo-500/40">
                             🛡️
@@ -2145,7 +2165,9 @@ export const ParentApp = () => {
                                     const currentDevId = deviceId;
 
                                     try {
-                                        if (currentCode) {
+                                        if(currentCode&&deviceAccess.required(currentCode)){
+                                            await deviceAccess.revokeSelf(currentCode,'parent');
+                                        }else if (currentCode) {
                                             const resp=await fetchParentCloud(currentCode);
                                             if(!resp.ok)throw new Error('云端暂时无法确认解绑，请稍后重试。');
                                             const latest=await resp.json();
