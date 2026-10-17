@@ -32,5 +32,11 @@
         "SyncFamily"
       ]
     }
+  ],
+  "services": [
+    {
+      "binding": "EXCHANGE_MARKET_SERVICE",
+      "service": "daka-exchange-staging"
+    }
   ]
 }

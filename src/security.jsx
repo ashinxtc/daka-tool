@@ -69,9 +69,9 @@ function SecurityApp(){
                 <button disabled={busy} onClick={()=>run(async()=>{const grant=await request(code,'/auth/invite',{token:owner,body:{role,label}});setLink(`${location.origin}/security.html?code=${encodeURIComponent(code)}#invite=${grant.invite}&role=${grant.role}`);setMessage('邀请十分钟内有效，只能连接一台设备。不要公开转发。');})}>生成限时邀请</button>
                 {link&&<div>{qr&&<img alt="限时设备配对二维码" src={qr}/>}<label>邀请链接<textarea readOnly value={link}/></label></div>}
                 <details><summary>兑换汇率与限额</summary>
-                    <p>安全兑换按这里确认的家庭汇率结算；市场图表仅作财商参考。设置变更不改变已提交订单。</p>
-                    <button disabled={busy} onClick={()=>run(async()=>{const data=await request(code,'/exchange/limits',{token:owner});setLimits(data.limits);})}>读取兑换设置</button>
-                    {limits&&<>{[['minGold','最低兑换元宝'],['maxSingle','单笔上限（0 不限）'],['maxWeekly','每周上限（0 不限）'],['rateMicros','每个元宝兑换人民币（元）']].map(([key,title])=><label key={key}>{title}<input type="number" min="0" step={key==='rateMicros'?'0.000001':'1'} value={key==='rateMicros'?limits[key]/1e6:limits[key]} onChange={e=>setLimits({...limits,[key]:key==='rateMicros'?Math.round(Number(e.target.value)*1e6):Number(e.target.value)})}/></label>)}
+                    <p>保留浮动汇率玩法：服务器根据行情、基准汇率和放大系数报价。每笔订单锁定申请时的金额，设置变更不改变已提交订单。</p>
+                    <button disabled={busy} onClick={()=>run(async()=>{const data=await request(code,'/exchange/limits',{token:owner});setLimits({...data.limits,pricingMode:'floating',baseCentsPerGold:data.limits.baseCentsPerGold||1,baseUsd:data.limits.baseUsd||'',amplifier:data.limits.amplifier||10});})}>读取兑换设置</button>
+                    {limits&&<>{[['minGold','最低兑换元宝'],['maxSingle','单笔上限（0 不限）'],['maxWeekly','每周上限（0 不限）'],['baseCentsPerGold','每元宝基础分值（分）'],['baseUsd','基准 USD 汇率'],['amplifier','波动放大系数']].map(([key,title])=><label key={key}>{title}<input type="number" min="0" step={['baseUsd','baseCentsPerGold','amplifier'].includes(key)?'any':'1'} value={limits[key]} onChange={e=>setLimits({...limits,[key]:Number(e.target.value)})}/></label>)}
                     <button disabled={busy} onClick={()=>run(async()=>{const data=await request(code,'/exchange/limits',{token:owner,body:{limits}});setLimits(data.limits);setMessage('兑换设置已由服务端确认。');})}>保存兑换设置</button></>}
                 </details>
                 <button disabled={busy} onClick={()=>run(()=>list(owner))}>刷新设备列表</button>

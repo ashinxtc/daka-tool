@@ -3,7 +3,7 @@ import {Miniflare} from 'miniflare';
 import {mintActivation,randomToken} from '../../server/family-access.js';
 let mf,kv;const secret='browser-exchange-secret-test-only-isolated';
 test.setTimeout(90000);
-test.beforeAll(async()=>{mf=new Miniflare({modules:true,modulesRules:[{type:'ESModule',include:['**/*.js']}],scriptPath:'cloudflare-worker.js',compatibilityDate:'2026-07-30',durableObjects:{SYNC_FAMILIES:{className:'SyncFamily',useSQLite:true}},kvNamespaces:['DAKA_SYNC'],bindings:{SYNC_MODE:'active',AUTH_MODE:'enforced',EXCHANGE_MODE:'preview',AUTH_BOOTSTRAP_SECRET:secret}});kv=await mf.getKVNamespace('DAKA_SYNC');});
+test.beforeAll(async()=>{mf=new Miniflare({modules:true,modulesRules:[{type:'ESModule',include:['**/*.js']}],scriptPath:'cloudflare-worker.js',compatibilityDate:'2026-07-30',durableObjects:{SYNC_FAMILIES:{className:'SyncFamily',useSQLite:true}},kvNamespaces:['DAKA_SYNC'],serviceBindings:{EXCHANGE_MARKET_SERVICE:async()=>Response.json({ok:true,rate:{rates:{USD:0.15}}})},bindings:{SYNC_MODE:'active',AUTH_MODE:'enforced',EXCHANGE_MODE:'preview',AUTH_BOOTSTRAP_SECRET:secret}});kv=await mf.getKVNamespace('DAKA_SYNC');});
 test.afterAll(async()=>{await mf?.dispose();});
 async function api(f,path,role='main',body){const r=await mf.dispatchFetch(`https://sync.daka-tool.top${path}${path.includes('?')?'&':'?'}code=${f.code}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${f[role]?.token||f[role]}`},...(body?{body:JSON.stringify(body)}:{})});expect(r.status,await r.clone().text()).toBe(200);return r.json();}
 async function family(){
@@ -11,7 +11,7 @@ async function family(){
     f.data=Object.fromEntries(Object.entries({app_profiles_v1:[{id:'c1',name:'孩子',theme:'rose'}],app_tasks_v2:{孩子:[{id:'math',name:'数学',frequencyType:'daily_must',reward:1}]},app_checkins_v2:{},app_wheel_history:{'孩子-BASE-1792000000000':1500},app_achievements_v1:{孩子:{first_pot:1792000000000,tycoon:1792000000000}},app_parent_actions_v1:[],app_evil_auto_trigger:false,app_gamification_config_v1:{redemptionEnabled:true,firstBloodEnabled:false},app_notified_levels:{孩子:100},app_weekend_settings:{enabled:false},app_user_city_v1:'厦门'}).map(([k,v])=>[k,JSON.stringify(v)]));
     await kv.put(`sync:${f.code}`,JSON.stringify(f.data));await api(f,'/auth/claim','owner',{token:f.owner,voucher:await mintActivation(secret,f.code)});
     for(const role of ['main','parent']){const g=await api(f,'/auth/invite','owner',{role,label:'爸爸'}),token=randomToken();const d=await api(f,'/auth/redeem','owner',{invite:g.invite,token});f[role]={...d,token};}
-    await api(f,'/exchange/limits','owner',{limits:{minGold:500,maxSingle:0,maxWeekly:0,rateMicros:10000}});return f;
+    await api(f,'/exchange/limits','owner',{limits:{minGold:500,maxSingle:0,maxWeekly:0,pricingMode:'floating',baseCentsPerGold:1,baseUsd:0.15,amplifier:10}});return f;
 }
 async function route(page,control={}){
     await page.route('**/*',async r=>{const req=r.request(),u=new URL(req.url());

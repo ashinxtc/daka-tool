@@ -97,7 +97,7 @@ export const ExchangePanel = ({
         const op=match[1],controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
         try{
             let body=options.body?JSON.parse(options.body):undefined;
-            if(op==='apply')body=pendingExchange(syncCode,activeChild,{childName:activeChild,goldAmount:body.goldAmount,rateMicros:secureLimits?.rateMicros});
+            if(op==='apply')body=pendingExchange(syncCode,activeChild,{childName:activeChild,goldAmount:body.goldAmount,rateMicros:secureLimits?.rateMicros,...(secureLimits?.quoteId?{quoteId:secureLimits.quoteId}:{})});
             const data=await exchangeRequest(syncCode,op,{body,id:target.searchParams.get('id'),signal:controller.signal});
             confirmExchangeIntent(syncCode,activeChild,data.records||(data.record?[data.record]:[]));
             if(op==='apply')clearExchangeIntent(syncCode,activeChild);
@@ -105,6 +105,7 @@ export const ExchangePanel = ({
         }catch(error){
             if(op==='apply'&&['QUOTE_CHANGED','LIMIT','CHILD_REQUIRED','INSUFFICIENT_BALANCE','DAILY_LIMIT','WEEKLY_LIMIT','PENDING_ORDER'].includes(error.code)){
                 clearExchangeIntent(syncCode,activeChild);
+                setSecureLimits(null);
                 exchangeRequest(syncCode,'limits').then(d=>setSecureLimits(d.limits)).catch(()=>{});
             }
             throw error;
@@ -467,8 +468,8 @@ export const ExchangePanel = ({
     // 每日变动百分比
     const yesterdayRate = rawTodayRate * (1 + (realChange - 1) * amplifier * (realYesterday && realToday ? (realYesterday / realToday) : 1));
     const yesterdayCnyPerGold = (yesterdayRate * baseCentsPerGold) / 100;
-    const dailyChange = protectedFamily?0:cnyPerGold - yesterdayCnyPerGold;
-    const dailyChangePercent = yesterdayCnyPerGold > 0 ? ((dailyChange / yesterdayCnyPerGold) * 100).toFixed(1) : '0.0';
+    const dailyChange = protectedFamily?(secureLimits?.dailyChange||0):cnyPerGold - yesterdayCnyPerGold;
+    const dailyChangePercent = protectedFamily?(secureLimits?.dailyChangePercent||'0.0'):yesterdayCnyPerGold > 0 ? ((dailyChange / yesterdayCnyPerGold) * 100).toFixed(1) : '0.0';
 
     // 财富总额人民币等值
     const totalCny = (totalGold * cnyPerGold).toFixed(2);
@@ -484,7 +485,7 @@ export const ExchangePanel = ({
     const maxCny = (totalGold * cnyPerGold).toFixed(2);
 
     // 趋势建议
-    const trendAdvice = protectedFamily?'兑换按家庭管理员确认的汇率结算，市场涨跌不会改变已提交订单。':todayRate > 1.02 ? '📈 当前汇率升值，金元宝更值钱，正是兑换好时机！' :
+    const trendAdvice = protectedFamily?'按服务器浮动报价兑换，已提交订单的金额不再随行情变化。':todayRate > 1.02 ? '📈 当前汇率升值，金元宝更值钱，正是兑换好时机！' :
                        todayRate < 0.98 ? '📉 当前汇率微跌，建议暂时积攒，等升值后再兑换。' :
                        '➡️ 汇率平稳如常，可按需随时兑换。';
 
@@ -921,7 +922,7 @@ export const ExchangePanel = ({
                                 </span>
                             </div>
                             <p className="text-white/90 text-xs mt-0.5">
-                                {protectedFamily?'安全兑换按家庭汇率结算 · 市场图表仅供参考':'财商启蒙 · 真实世界汇率与物价联动实践'}
+                                {protectedFamily?'浮动汇率 · 服务器报价 · 订单金额锁定':'财商启蒙 · 真实世界汇率与物价联动实践'}
                             </p>
                         </div>
                     </div>

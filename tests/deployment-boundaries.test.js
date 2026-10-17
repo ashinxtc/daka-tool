@@ -41,7 +41,7 @@ test('staging resources cannot reuse production storage, services, domains or ti
         assert.deepEqual(c.triggers.crons,[]);
         assert.equal(c.kv_namespaces.length,1);
         for(const kv of c.kv_namespaces){assert.match(kv.id,/^[a-f0-9]{32}$/);assert.ok(!production.includes(kv.id));assert.ok(!ids.has(kv.id));ids.add(kv.id);}
-        for(const binding of c.services||[])assert.equal(binding.service,'daka-sync-staging');
+        for(const binding of c.services||[])assert.equal(binding.service,service==='sync'?'daka-exchange-staging':'daka-sync-staging');
         if(service==='sync'){
             assert.equal(c.vars.AUTH_MODE,'enforced');
             assert.equal(c.vars.SYNC_MODE,'active');

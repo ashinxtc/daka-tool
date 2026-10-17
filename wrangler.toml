@@ -23,3 +23,8 @@ new_sqlite_classes = ["SyncFamily"]
 [[kv_namespaces]]
 binding = "DAKA_SYNC"
 id = "d5f0e4601ff84b3e908ff248042d78a2"
+
+# Trusted public market data; never forwards device credentials.
+[[services]]
+binding = "EXCHANGE_MARKET_SERVICE"
+service = "daka-exchange"
