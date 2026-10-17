@@ -6,10 +6,7 @@
     "preview": "vite preview",
     "test": "node --test tests/*.test.js",
     "test:e2e": "playwright test",
-    "test:all": "npm test && npm run test:e2e && npm run build",
-    "build:staging": "vite build --mode staging",
-    "dev:staging": "vite --mode staging",
-    "test:staging": "npm run build:staging && playwright test --config playwright.staging.config.js"
+    "test:all": "npm test && npm run test:e2e && npm run build"
   },
   "dependencies": {
     "@babel/parser": "^8.0.0",
@@ -29,7 +26,6 @@
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
     "fake-indexeddb": "^6.2.5",
-    "miniflare": "4.20260730.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"

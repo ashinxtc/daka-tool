@@ -1,36 +1,177 @@
-import { json } from './server/sync-family.js';
-export { SyncFamily } from './server/sync-family.js';
-const cors = {
-    'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, If-Match, Idempotency-Key, Authorization',
-    'Access-Control-Expose-Headers': 'ETag, X-Sync-Protocol, X-Sync-Revision, X-Family-Auth', 'Cache-Control': 'no-store',
-};
-const withCors = response => {
-    const result = new Response(response.body, response);
-    for (const [key, value] of Object.entries(cors)) result.headers.set(key, value);
-    return result;
-};
+// Cloudflare Worker — 打卡工具数据同步服务
+// 部署步骤：
+// 1. Cloudflare Dashboard → Workers & Pages → Create Worker
+// 2. 粘贴此脚本 → Deploy
+// 3. 创建 KV 命名空间 "daka-sync" → 绑定到 Worker（变量名 DAKA_SYNC）
+// 4. 添加自定义域名路由：sync.daka-tool.top/* → daka-sync Worker
+// 5. DNS 记录：sync.daka-tool.top CNAME daka-tool.top (Proxied)
+//
+// 接口：
+//   POST /?code=xxx        — 上传数据（metadata 附带时间戳，不额外消耗写额度）
+//   GET  /?code=xxx        — 下载完整数据
+//   GET  /ts?code=xxx      — 仅返回云端时间戳（轻量轮询用，只读 metadata 不读 body）
+
 export default {
     async fetch(request, env) {
-        if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-        const url = new URL(request.url), code = url.searchParams.get('code');
-        if (!code || code.length < 4 || code.length > 32 || !/^[\w一-鿿-]+$/.test(code)) return withCors(json({ error: '同步码需为 4-32 位字母、数字、中文、连字符或下划线。' }, 400));
-        const authRoute=url.pathname.startsWith('/auth/')||url.pathname.startsWith('/exchange/')||url.pathname==='/services/push';
-        if (!authRoute&&!['/', '/ts', '/bak'].includes(url.pathname)) return withCors(json({ error: 'Not found' }, 404));
-        if (!['GET', 'POST'].includes(request.method) || (request.method === 'POST' && url.pathname !== '/'&&!authRoute)) return withCors(json({ error: 'Method not allowed' }, 405));
+        const corsHeaders = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+        };
+
+        // CORS preflight
+        if (request.method === 'OPTIONS') {
+            return new Response(null, { headers: corsHeaders });
+        }
+
+        const url = new URL(request.url);
+        const code = url.searchParams.get('code');
+
+        // 校验同步码
+        if (!code || code.length < 4 || code.length > 32) {
+            return new Response(
+                JSON.stringify({ error: '同步码长度需为 4-32 个字符' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
+        // 仅允许字母、数字、中文、连字符、下划线
+        if (!/^[\w一-鿿-]+$/.test(code)) {
+            return new Response(
+                JSON.stringify({ error: '同步码只能包含字母、数字、中文、连字符、下划线' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         try {
-            // Read-only cutover lets legacy KV replicas converge before one-time
-            // import. There is deliberately no unsafe write fallback.
-            if (!authRoute&&!['active','paused'].includes(env.SYNC_MODE)) {
-                if (request.method !== 'GET') return withCors(json({ error: '云同步正在升级，本机修改已保留，请稍后重试。', code: 'UPGRADE_PAUSED' }, 503));
-                // Even a rollback must consult the persisted family lock. Never
-                // serve the old, potentially secret-bearing KV snapshot here.
+            // GET /ts — 轻量时间戳查询（轮询专用）
+            // 只读 metadata，不消费数据 body；响应仅几十字节
+            if (request.method === 'GET' && url.pathname === '/ts') {
+                const entry = await env.DAKA_SYNC.getWithMetadata(`sync:${code}`, { type: 'stream' });
+                if (!entry || entry.value === null) {
+                    return new Response(
+                        JSON.stringify({ ts: 0 }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+                // 丢弃 body 流（不读取内容）
+                try { entry.value.cancel(); } catch (e) {}
+                const ts = (entry.metadata && entry.metadata.ts) || 0;
+                return new Response(
+                    JSON.stringify({ ts }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
             }
-            if (!env.SYNC_FAMILIES) return withCors(json({ error: '同步服务配置未完成，本机数据不会被覆盖。', code: 'CONFIGURATION_REQUIRED' }, 503));
-            if (!authRoute&&env.SYNC_MODE==='paused' && request.method==='POST') return withCors(json({error:'云端保存暂时暂停，本机修改已保留。',code:'UPGRADE_PAUSED'},503));
-            return withCors(await env.SYNC_FAMILIES.get(env.SYNC_FAMILIES.idFromName(code)).fetch(request));
-        } catch {
-            return withCors(json({ error: '云端暂时不可用，请稍后重试。', code: 'STORAGE_UNAVAILABLE' }, 503));
+
+            // GET /bak — 获取上一版自动快照（防灾应急用）
+            if (request.method === 'GET' && url.pathname === '/bak') {
+                const bakData = await env.DAKA_SYNC.get(`sync:${code}:bak`);
+                if (!bakData) {
+                    return new Response(
+                        JSON.stringify({ error: '未找到快照备份数据' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+                return new Response(bakData, {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            // POST — 上传数据
+            if (request.method === 'POST') {
+                const body = await request.text();
+                // 验证是合法 JSON，并提取时间戳写入 metadata
+                let ts = Date.now();
+                let parsed = null;
+                try {
+                    parsed = JSON.parse(body);
+                    if (parsed && typeof parsed._syncTs === 'number') ts = parsed._syncTs;
+                } catch (e) {
+                    return new Response(
+                        JSON.stringify({ error: '请求体不是合法 JSON' }),
+                        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                // 读旧数据进行防御性比对与自动快照备份
+                const oldRaw = await env.DAKA_SYNC.get(`sync:${code}`);
+                if (oldRaw) {
+                    // 1. 自动留存快照备份（双保险）
+                    try {
+                        await env.DAKA_SYNC.put(`sync:${code}:bak`, oldRaw, {
+                            expirationTtl: 90 * 86400,
+                        });
+                    } catch (e) {}
+
+                    // 2. 检查是否有恶性减员倾向（如原有多个孩子，新上传被削减为空或仅默认测试员冲刷）
+                    try {
+                        const oldParsed = JSON.parse(oldRaw);
+                        const oldProfiles = JSON.parse(oldParsed.app_profiles_v1 || '[]');
+                        const newProfiles = JSON.parse(parsed.app_profiles_v1 || '[]');
+                        const newTombstones = JSON.parse(parsed.app_deleted_profiles_v1 || '{}');
+                        const tombstoneCount = Object.keys(newTombstones).length;
+
+                        // 拦截1：严禁空成员覆盖非空云端家庭档案
+                        if (Array.isArray(oldProfiles) && oldProfiles.length > 0 && (!Array.isArray(newProfiles) || newProfiles.length === 0)) {
+                            return new Response(
+                                JSON.stringify({ error: '云端安全拦截：上传的成员列表为空，已拒绝覆盖现有家庭数据！' }),
+                                { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                            );
+                        }
+
+                        // 拦截2：严禁空设备默认单一「测试员」冲刷已有真实多孩家庭
+                        if (Array.isArray(oldProfiles) && oldProfiles.length >= 1 && oldProfiles.some(p => p.name !== '测试员')) {
+                            const isSingleTester = Array.isArray(newProfiles) && newProfiles.length === 1 && newProfiles[0].name === '测试员';
+                            if (isSingleTester && tombstoneCount === 0 && !url.searchParams.get('forceWipe')) {
+                                return new Response(
+                                    JSON.stringify({ error: '云端安全拦截：新设备默认测试员试图覆盖现有真实家庭档案！请先拉取云端数据。' }),
+                                    { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                                );
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                // 存储，90 天过期；metadata 与主数据同一次写入，不额外计费
+                await env.DAKA_SYNC.put(`sync:${code}`, body, {
+                    expirationTtl: 90 * 86400,
+                    metadata: { ts },
+                });
+                return new Response(
+                    JSON.stringify({ ok: true, ts }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            // GET — 下载完整数据
+            if (request.method === 'GET') {
+                const data = await env.DAKA_SYNC.get(`sync:${code}`);
+                if (!data) {
+                    return new Response(
+                        JSON.stringify({ error: '未找到数据，请先在其他设备上传' }),
+                        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+                return new Response(data, {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+
+            return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+        } catch (e) {
+            return new Response(
+                JSON.stringify({ error: '服务器错误: ' + e.message }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
     }
 };
+
+// Rollback compatibility: retain the migrated namespace and its data while the
+// previous sync-code/KV application is active. No public route calls this class.
+// A future migration must reconcile fresh KV data before reactivating it.
+export class SyncFamily {
+    async fetch() {
+        return new Response('Migrated storage is archived during rollback', { status: 503 });
+    }
+}

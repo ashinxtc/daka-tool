@@ -124,25 +124,3 @@ test('remote completion during wheel animation prevents another local settlement
     await expect(page.getByRole('button',{name:'命运天平裁决中...'})).toHaveCount(0);
     expect(Object.keys(await value(page,'app_wheel_history')).filter(k=>k.includes('ESCROW_FROZEN'))).toHaveLength(0);
 });
-
-for (const cachedPenalty of [false, true]) {
-    test(`comeback safe yesterday prevents next-day penalty (cached=${cachedPenalty})`, async ({page}) => {
-        const penaltyKey = `${child}-EVIL_PENALTY-2026-10-15`;
-        await seed(page, {
-            app_evil_auto_trigger: true,
-            app_escrow_penalties_v1: {[child]: {records: {safe: {
-                id: 'safe', status: 'redeemed', frozenGold: 20,
-                createdDate: '2026-10-15', redeemedDate: '2026-10-15',
-                redeemedDates: ['2026-10-15'], redeemedAt: new Date('2026-10-15T12:00:00+08:00').getTime()
-            }}}},
-            app_pending_evil_penalties_v2: cachedPenalty
-                ? {[child]: {source: 'auto', date: '2026-10-15', reason: '昨日未完成', penaltyKey}} : {},
-        });
-        await expect.poll(async () => (await value(page, 'app_pending_evil_penalties_v2'))?.[child] ?? null).toBe(null);
-        await expect(page.getByRole('button', {name: '启动命运审判 ⚖️'})).toHaveCount(0);
-        await page.reload();
-        await page.waitForFunction(() => window.storage && document.querySelector('main'));
-        await expect(page.getByRole('button', {name: '启动命运审判 ⚖️'})).toHaveCount(0);
-        expect(Object.keys(await value(page, 'app_wheel_history')).filter(k => k.includes('ESCROW_FROZEN'))).toHaveLength(0);
-    });
-}

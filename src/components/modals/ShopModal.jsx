@@ -1,4 +1,3 @@
-import {verificationPageUrl} from '../../constants/api';
 import React, { useState, useEffect } from 'react';
 import { SHOP_ITEMS, checkItemRestriction } from '../../data/shopItems';
 import { Zap, Lock, Coins, XIcon, CheckCircle2, Sparkles, Shield, Gift } from '../icons';
@@ -706,7 +705,7 @@ export const ShopModal = ({
 
                 {/* ======================= 子弹窗 2: 家长扫码核销弹窗 ======================= */}
                 {verifyModal && setRedeemedCoupons && (() => {
-                    const verifyBase = verificationPageUrl('redemption-verify.html');
+                    const verifyBase = 'https://www.daka-tool.top/redemption-verify.html';
                     const verifyPageUrl = verifyBase + '?code=' + verifyModal.coupon.verifyCode + '&account=' + encodeURIComponent(verifyModal.account) + '&product=' + encodeURIComponent(verifyModal.coupon.name);
 
                     return (

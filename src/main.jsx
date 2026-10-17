@@ -10,12 +10,8 @@ import { isIOSSafari, isPWAStandalone } from './utils/platform';
 import { getCheckinEntries, getCheckinMinutes, getCheckinUnits, getCheckinSessionCount, getTaskTotalMinutes, getTaskTotalSessions } from './utils/checkin';
 import { getLocalDateKey, dateKeySubtractDays, dateObjToLocalKey, tsToLocalDateKey, getDatesInRange, getMonthDates } from './utils/date';
 import { COLOR_PALETTES, BASE_THEME_IDS } from './data/themes';
-import { WECOM_API_URL, EXCHANGE_WORKER_URL, SYNC_WORKER_URL, verificationPageUrl, pushApiUrl } from './constants/api';
+import { WECOM_API_URL, EXCHANGE_WORKER_URL, PUSH_WORKER_URL } from './constants/api';
 import { SettingsModal, LowPerfToggle } from './components/modals/SettingsModal';
-import {syncFetch,deviceAccess,securityUrl} from './utils/deviceAccess';
-import {pushRequest} from './utils/pushTransport';
-import {stripSecrets} from '../shared/access-policy';
-import {calculateGold,pinExchangeHistory} from '../shared/gold-balance';
 import { ExchangePanel } from './components/modals/ExchangePanel';
 
 import { StatsModal } from './components/stats/StatsModal';
@@ -51,13 +47,7 @@ import { CompletedWallModal } from './components/modals/CompletedWallModal';
 import { TesterDashboard } from './components/tester/TesterDashboard';
 import { getHolidayInfo, getHeaderTheme, isDateHolidayOrWeekend } from './utils/holidays';
 import { useStickyState, markKeyVersion } from './hooks/useStickyState';
-import { storage, commitDurable, canSyncStorage, getStorageState, flushPendingState } from './utils/storage';
-import StorageGate from './components/common/StorageGate';
-import { selectAndRestoreBackup } from './utils/backup';
-import { readSyncSnapshot, writeSyncSnapshot, syncMetadata, checkedSyncJson, SyncRequestError } from './utils/syncTransport';
-import { mergeSyncSnapshots, syncValues,protectedSnapshot } from './utils/syncMerge';
-import { createSyncCoordinator, SYNC_CHECKPOINT_KEY } from './utils/syncCoordinator';
-import SyncConflictDialog from './components/common/SyncConflictDialog';
+import { storage, initStorage, commitDurable } from './utils/storage';
 import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
@@ -952,18 +942,12 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [aiBubbleChild, setAiBubbleChild] = React.useState('');
 
             // --- 云同步状态 ---
-            const SYNC_URL = SYNC_WORKER_URL;
+            const SYNC_URL = 'https://sync.daka-tool.top';
             const [syncCode, setSyncCode] = useStickyState('', 'app_sync_code');
             const [syncLastTime, setSyncLastTime] = useStickyState(null, 'app_sync_last_time');
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
             const syncDebounceRef = React.useRef(null);
             const syncDownloadingRef = React.useRef(false);
-            const [syncConflict, setSyncConflict] = React.useState(null);
-            const syncConflictRef = React.useRef(null);
-            const syncCheckpointCacheRef = React.useRef({raw:null,value:null});
-            const currentSyncCodeRef = React.useRef(syncCode);
-            currentSyncCodeRef.current = syncCode;
-            React.useEffect(() => { syncConflictRef.current = null; setSyncConflict(null); }, [syncCode]);
 
             // --- 企业微信亲子互动状态 ---
             const [wecomEnabled, setWecomEnabled] = useStickyState(false, 'app_wecom_enabled');
@@ -1165,7 +1149,6 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
             // 自动确保生成家庭专属配对密钥
             React.useEffect(() => {
-                if(authorizedParents?.securityVersion===1||deviceAccess.required(syncCode))return;
                 if (!authorizedParents || !authorizedParents.pairToken) {
                     const token = 'token_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
                     setAuthorizedParents(prev => ({
@@ -1637,7 +1620,55 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             }, [tasks, deferredActiveChild, sortBy, checkins]);
 
             // --- 辅助函数：计算总资产 (独立于 state 用于成就检查) ---
-            const calculateTotalGold = (cCheckins, cWheelHistory, child, cBuffs, cTasks) => calculateGold(cCheckins,cWheelHistory,child,cBuffs,cTasks||tasks);
+            const calculateTotalGold = (cCheckins, cWheelHistory, child, cBuffs, cTasks) => {
+                let total = 0;
+                const childBuffs = cBuffs?.[child] || {};
+
+                if ((cTasks || tasks)[child]) {
+                    (cTasks || tasks)[child].forEach(task => {
+                        const record = cCheckins[child]?.[task.id] || {};
+                        const currentCount = Object.keys(record).length;
+                        
+                        Object.keys(record).forEach(date => {
+                            const val = record[date];
+                            // 多次打卡数组
+                            if (Array.isArray(val)) {
+                                val.forEach(entry => {
+                                    const t = entry.t || 0;
+                                    const histKey = t ? `${child}-TASK-${task.id}-${date}_${t}` : `${child}-TASK-${task.id}-${date}`;
+                                    if (cWheelHistory[histKey]) return;
+                                    let multiplier = 1;
+                                    const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
+                                    if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
+                                        multiplier = childBuffs.investMultiplier;
+                                    }
+                                    total += task.reward * multiplier;
+                                });
+                                return;
+                            }
+                            // 旧格式：数字
+                            const historyKey = `${child}-TASK-${task.id}-${date}`;
+                            if (cWheelHistory[historyKey]) return;
+                            let multiplier = 1;
+                            const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
+                            if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
+                                multiplier = childBuffs.investMultiplier;
+                            }
+                            total += task.reward * multiplier;
+                        })
+
+                        // 每日必做/每周选做：仅 earlyCompleted 时计入完成奖励（已从周结算移除）
+                        const freq = task.frequencyType || 'count';
+                        if (freq === 'count' && currentCount >= (task.targetCount || 0)) total += (task.completedReward || 0);
+						if ((freq === 'daily_must' || freq === 'weekly_optional') && task.earlyCompleted) total += (task.completedReward || 0);
+                    });
+                }
+                Object.keys(cWheelHistory).forEach(key => {
+                    // 扣除商店消费
+                    if (key.startsWith(`${child}-`)) total += cWheelHistory[key];
+                });
+                return Math.max(0, total);
+            };
 
             const totalGold = useMemo(() => {
                 // 【修改】传入 activeBuffs
@@ -3850,8 +3881,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                 // 1. 彻底移除本地测试模式开关，绝不同步
                 delete clean['app_test_mode'];
-                delete clean['app_sync_code'];
-                delete clean['app_sync_last_time'];
 
                 // 2. 移除任何以 测试员 或 TESTER 命名的 key 及测试员兑换总额
                 Object.keys(clean).forEach(k => {
@@ -4722,7 +4751,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 },
                 // 家长已授权设备表 (支持 revokedDevices 解绑墓碑，防止解绑设备被并集复活)
                 'app_authorized_parents_v1': (l, c) => {
-                    if(c?.securityVersion===1)return semanticResult(c,l,c);
                     if (!l || !c || typeof l !== 'object' || typeof c !== 'object') return null;
                     const pairToken = l.pairToken || c.pairToken || '';
                     const lDevs = Array.isArray(l.devices) ? l.devices : [];
@@ -5006,8 +5034,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 window._syncActiveCloudEvilLogKeys = null;
                 const mergedValue = key => JSON.parse(writes[key] ?? localSnapshot[key] ?? storage.getItem(key) ?? '{}');
                 const receipts = mergedValue(RECEIPTS_KEY), escrows = mergedValue(ESCROWS_KEY);
-                const projected = projectAccounting(mergedValue('app_wheel_history'), receipts, escrows);
-                const projectedHistory=protectedSnapshot(cloudData)?pinExchangeHistory(projected,JSON.parse(cloudData.app_wheel_history||'{}')):projected;
+                const projectedHistory = projectAccounting(mergedValue('app_wheel_history'), receipts, escrows);
                 const projectedStats = reconcileDeductionStats(mergedValue('app_stats_v1'), receipts);
                 for (const [key, value] of [['app_wheel_history', projectedHistory], ['app_stats_v1', projectedStats]]) {
                     if (JSON.stringify(value) !== JSON.stringify(mergedValue(key))) {
@@ -5050,8 +5077,15 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             const collectSyncData = () => {
-                if (!canSyncStorage()) throw new Error('本地数据尚未安全保存，暂缓同步。');
-                flushPendingState();
+                // H3: 先刷新所有 pending 写入，确保读到最新数据
+                if (window._pendingWrites) {
+                    Object.entries(window._pendingWrites).forEach(([k, v]) => {
+                        try {
+                            storage.setItem(k, JSON.stringify(v));
+                            storage.markKeyVersion(k);
+                        } catch (e) {}
+                    });
+                }
                 const rawData = storage.getAllSyncData();
                 const data = stripTesterDataFromPayload(rawData);
                 data._syncTs = Date.now();
@@ -5062,7 +5096,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     Object.keys(data).forEach(k => { if (versions[k]) trimmed[k] = versions[k]; });
                     data._keyVersions = trimmed;
                 } catch (e) {}
-                return deviceAccess.required(syncCode)?stripSecrets(data):data;
+                return data;
             };
 
             // 并发锁（修复 Bug5）
@@ -5083,70 +5117,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 };
             }, []);
 
-            const loadSyncCheckpoint = () => {
-                const raw = storage.getItem(SYNC_CHECKPOINT_KEY);
-                if (syncCheckpointCacheRef.current.raw === raw) return syncCheckpointCacheRef.current.value;
-                let value = null;
-                try { value = JSON.parse(raw || 'null'); } catch {}
-                syncCheckpointCacheRef.current = {raw,value};
-                return value;
-            };
-            const makeSyncCoordinator = (epoch = getStorageState().epoch) => {
-                const mergeAccountingKey = (key, local, remote) => {
-                    if (key === RECEIPTS_KEY) return JSON.stringify(mergeReceipts(JSON.parse(local), JSON.parse(remote)));
-                    if (key === ESCROWS_KEY) return JSON.stringify(mergeEscrows(JSON.parse(local), JSON.parse(remote)));
-                };
-                const metadata = cp => ({ [SYNC_CHECKPOINT_KEY]: JSON.stringify(cp),
-                    _sync_local_ts: String(cp.data._syncTs || 0), _sync_last_hash: hashSyncPayload(syncValues(cp.data)), _sync_has_pulled_v1: '1' });
-                return createSyncCoordinator({ code:syncCode, readLocal:collectSyncData, loadCheckpoint:loadSyncCheckpoint,
-                    isCurrent:() => canSyncStorage() && getStorageState().epoch === epoch && currentSyncCodeRef.current === syncCode,
-                    mergeKey:mergeAccountingKey,
-                    firstMerge:(local, remote) => {
-                        if(protectedSnapshot(remote))return mergeSyncSnapshots({},local,remote,{mergeKey:mergeAccountingKey});
-                        if (!remote.app_profiles_v1) return { data:syncValues(local), conflicts:[] };
-                        if (storage.getItem('_sync_has_pulled_v1') !== '1' || !Number(storage.getItem('_sync_local_ts'))) {
-                            const { snapshot, versions } = buildLocalSnapshot(remote);
-                            const result = resolveSyncMerge(remote, snapshot, versions, 0);
-                            return { data:{...syncValues(local), ...result.writes}, conflicts:[] };
-                        }
-                        return mergeSyncSnapshots({}, local, remote, {mergeKey:mergeAccountingKey});
-                    },
-                    saveCheckpoint:cp => commitDurable(metadata(cp)),
-                    applyMerged:(data, cp) => {
-                        const next = {...data}, parse = key => JSON.parse(next[key] || '{}');
-                        if (next[RECEIPTS_KEY] || next[ESCROWS_KEY]) {
-                            next.app_wheel_history = JSON.stringify(projectAccounting(parse('app_wheel_history'), parse(RECEIPTS_KEY), parse(ESCROWS_KEY)));
-                            next.app_stats_v1 = JSON.stringify(reconcileDeductionStats(parse('app_stats_v1'), parse(RECEIPTS_KEY)));
-                        }
-                        const current = syncValues(collectSyncData());
-                        const writes = Object.fromEntries(Object.entries(next).filter(([key,value]) => current[key] !== value));
-                        const deleted = Object.keys(current).filter(key => !(key in next));
-                        const cloudProfiles = JSON.parse(cp.data.app_profiles_v1 || '[]');
-                        const cloudTasks = JSON.parse(cp.data.app_tasks_v2 || '{}');
-                        commitDurable({...writes, ...metadata(cp), _sync_cloud_profiles_count:String(cloudProfiles.length),
-                            _sync_cloud_tasks_count:String(Object.values(cloudTasks).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0))}, deleted);
-                        if (Object.keys(writes).length || deleted.length) window.dispatchEvent(new CustomEvent('_syncDataMerged'));
-                    },
-                    onConflict:context => {
-                        const next={...context,code:syncCode};syncConflictRef.current=next;setSyncConflict(next);
-                    }
-                });
-            };
-            const resolveSyncConflict = async side => {
-                if (!syncConflictRef.current || !acquireSyncLock()) return;
-                try {
-                    const coordinator=makeSyncCoordinator();
-                    const result=await coordinator.resolveConflict(syncConflictRef.current,side);
-                    syncConflictRef.current=null;setSyncConflict(null);
-                    if(result.needUpload)await coordinator.push();
-                    setSyncLastTime(Date.now());setSyncStatus('success');
-                } catch(e) { showToast('error',e.message);setSyncStatus('error'); }
-                finally { releaseSyncLock(); }
-            };
-
             const syncToCloud = async (force = false) => {
-                if (!syncCode || !canSyncStorage() || syncConflictRef.current) return;
-                const storageEpoch = getStorageState().epoch;
+                if (!syncCode) return;
                 // 优先从 storage 读取最新 profiles 镜像，防止 React 闭包陈旧
                 let currentProfiles = profiles;
                 try {
@@ -5217,22 +5189,19 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 if (!acquireSyncLock()) return; // 并发保护
                 setSyncStatus('syncing');
                 try {
-                    let checkpoint = loadSyncCheckpoint();
-                    if (checkpoint?.code !== syncCode || checkpoint?.protocol !== 2) {
-                        const probe = await readSyncSnapshot(syncCode);
-                        if (!canSyncStorage() || getStorageState().epoch !== storageEpoch || currentSyncCodeRef.current !== syncCode) return;
-                        if (probe.protocol === 2) await makeSyncCoordinator(storageEpoch).pull(probe);
-                        checkpoint = loadSyncCheckpoint();
-                    }
-                    if (checkpoint?.code === syncCode && checkpoint?.protocol === 2) {
-                        await makeSyncCoordinator(storageEpoch).push();
-                        setSyncLastTime(Date.now());setSyncStatus('success');
-                        setTimeout(() => setSyncStatus(''), 3000);
-                        return;
-                    }
                     const data = collectSyncData();
-                    await writeSyncSnapshot(syncCode,data,{protocol:1},{isCurrent:()=>canSyncStorage() && getStorageState().epoch===storageEpoch && currentSyncCodeRef.current===syncCode});
-                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
+                    // KV 同 key 限 1 写/秒：429/超限时退避重试（最多 3 次）
+                    let resp = null;
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(data)
+                        });
+                        if (resp.status !== 429) break;
+                        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+                    }
+                    if (!resp.ok) throw new Error(`上传失败 (${resp.status})`);
                     const newHash = hashSyncPayload(data);
                     storage.setItem('_sync_last_hash', newHash);
                     storage.setItem('_sync_local_ts', String(data._syncTs)); // 记录本地时间戳（修复 Bug1）
@@ -5257,38 +5226,32 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             };
 
             const syncFromCloud = async () => {
-                if (!syncCode || !canSyncStorage() || syncConflictRef.current) return;
-                const storageEpoch = getStorageState().epoch;
+                if (!syncCode) return;
                 if (!acquireSyncLock()) return; // 并发保护
                 setSyncStatus('syncing');
                 try {
-                    const resp = await syncFetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
-                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch || currentSyncCodeRef.current !== syncCode) return;
-                    const meta = syncMetadata(resp);
-                    if (meta.protocol === 2) {
-                        const data = resp.status === 404 ? {} : stripTesterDataFromPayload(await checkedSyncJson(resp));
-                        const result = await makeSyncCoordinator(storageEpoch).pull({...meta,data,exists:resp.status!==404});
-                        if (result.needUpload) await makeSyncCoordinator(storageEpoch).push();
-                        setSyncLastTime(Date.now());setSyncStatus('success');
-                        setTimeout(() => setSyncStatus(''), 3000);
-                        return;
-                    }
-                    if (loadSyncCheckpoint()?.code === syncCode) throw new SyncRequestError('服务器版本回退，已保留本机数据并暂停同步。',409,'PROTOCOL_DOWNGRADE');
+                    const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`);
                     if (resp.status === 404) {
                         // 云端无数据，直接上传（不释放锁，内联执行）
                         storage.setItem('_sync_has_pulled_v1', '1');
                         const data = collectSyncData();
-                        await writeSyncSnapshot(syncCode,data,{protocol:1},{isCurrent:()=>canSyncStorage() && getStorageState().epoch===storageEpoch && currentSyncCodeRef.current===syncCode});
-                        storage.setItem('_sync_last_hash', hashSyncPayload(data));
-                        storage.setItem('_sync_local_ts', String(data._syncTs));
+                        try {
+                            const resp2 = await fetch(`${SYNC_URL}?code=${encodeURIComponent(syncCode)}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(data)
+                            });
+                            if (resp2.ok) {
+                                storage.setItem('_sync_last_hash', hashSyncPayload(data));
+                                storage.setItem('_sync_local_ts', String(data._syncTs));
+                            }
+                        } catch (e) { console.warn('Initial upload failed:', e); }
                         setSyncStatus('success');
                         setTimeout(() => setSyncStatus(''), 3000);
                         return;
                     }
                     if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
                     const cloudDataRaw = await resp.json();
-                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
-                    flushPendingState();
                     const cloudData = stripTesterDataFromPayload(cloudDataRaw);
                     storage.setItem('_sync_has_pulled_v1', '1');
 
@@ -5394,16 +5357,16 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const delay = active ? 3500 : 8000;
                     pollTimer = setTimeout(async () => {
                         if (stopped) return;
-                        if (document.visibilityState === 'visible' && canSyncStorage() && !syncLockRef.current && !syncConflictRef.current) {
+                        if (document.visibilityState === 'visible' && !syncLockRef.current) {
                             try {
-                                const resp = await syncFetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
+                                const resp = await fetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
                                 if (resp.ok) {
-                                    const { ts, revision, protocol } = await resp.json();
+                                    const { ts } = await resp.json();
                                     const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
-                                    const cp = loadSyncCheckpoint();
-                                    if (protocol === 2 ? cp?.code !== syncCode || cp?.revision !== revision : ts && ts > localTs) await syncFromCloud();
+                                    // 云端时间戳比本地新 → 有其他设备上传过 → 完整拉取合并
+                                    if (ts && ts > localTs) await syncFromCloud();
                                 }
-                            } catch (e) {if(e.code==='AUTH_REQUIRED'||e.code==='AUTH_DOWNGRADE')setSyncStatus('error');} // 保留本机数据，下轮或重新配对后恢复
+                            } catch (e) {} // 网络异常静默跳过，下轮再试
                         }
                         schedulePoll();
                     }, delay);
@@ -5456,16 +5419,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                     return;
                 }
-                let cancelled=false;
-                setPushSubscribed(false);
                 navigator.serviceWorker.register('/sw.js').then(reg => {
                     // 推送订阅仅在支持 PushManager 的浏览器检查
                     if (!('PushManager' in window)) return null;
                     return reg.pushManager.getSubscription();
-                }).then(async sub => {
-                    if(!sub||!syncCode||!activeChild)return;
-                    const result=await pushRequest('push-status',{syncCode,childName:activeChild,endpoint:sub.endpoint});
-                    if(!cancelled)setPushSubscribed(result.subscribed===true);
+                }).then(sub => {
+                    setPushSubscribed(!!sub);
                 }).catch(() => {});
                 // 监听 Service Worker 发来的同步触发消息
                 const swMessageHandler = (event) => {
@@ -5474,8 +5433,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 };
                 navigator.serviceWorker.addEventListener('message', swMessageHandler);
-                return () => {cancelled=true;navigator.serviceWorker.removeEventListener('message', swMessageHandler);};
-            }, [syncCode,activeChild]);
+                return () => navigator.serviceWorker.removeEventListener('message', swMessageHandler);
+            }, [syncCode]);
 
             // 请求通知权限并订阅
             const enablePushNotifications = async () => {
@@ -5505,7 +5464,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
 
                     // 获取 VAPID 公钥
-                    const vapidResp = await fetch(pushApiUrl('vapid-key'));
+                    const vapidResp = await fetch(`${PUSH_WORKER_URL}/api/vapid-key`);
                     if (!vapidResp.ok) throw new Error('获取推送密钥失败');
                     const { publicKey } = await vapidResp.json();
                     if (!publicKey) throw new Error('推送密钥为空');
@@ -5517,10 +5476,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     });
 
                     // 存储订阅
-                    await pushRequest('subscribe', {
+                    await fetch(`${PUSH_WORKER_URL}/api/subscribe`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
                             subscription: subscription.toJSON(),
                             syncCode: syncCode,
                             childName: activeChild
+                        })
                     });
 
                     setPushSubscribed(true);
@@ -5547,17 +5510,25 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const testPushNotification = async () => {
                 if (!syncCode || !activeChild) return;
                 try {
-                    const result = await pushRequest('test-push', { syncCode, childName: activeChild });
-                    if (result.ok) {
+                    const resp = await fetch(`${PUSH_WORKER_URL}/api/test-push`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ syncCode, childName: activeChild })
+                    });
+                    const text = await resp.text();
+                    console.log('test-push response:', resp.status, text);
+                    let result = {};
+                    try { result = JSON.parse(text); } catch (parseErr) {}
+                    if (resp.ok && result.ok) {
                         showToast('success', '测试通知已发送，请检查手机！');
                     } else if (result.status === 403 || (result.error && result.error.includes('403'))) {
                         showToast('error', '推送被拒绝：VAPID 密钥与当前订阅不匹配，请关闭通知后重新开启');
                     } else {
-                        showToast('error', '发送失败：' + (result.error || '服务未确认'));
+                        showToast('error', '发送失败：' + (result.error || `服务器错误 ${resp.status}`));
                     }
                 } catch (e) {
                     console.error('test-push client error:', e);
-                    showToast('error', '发送失败：' + e.message);
+                    showToast('error', '发送失败，请检查网络');
                 }
             };
 
@@ -7993,7 +7964,7 @@ ${context}
                             setEvilPenaltySource(null);
                             setEvilPenaltyReason('');
                             const isSafeDay = comebackSafeDates.includes(targetDate);
-                            showToast('success', isSafeDay
+                            showToast('success', isSafeDay 
                                 ? `🎉 经系统核对，【${activeChild}】在 ${targetDate} 逆风翻盘成功享有安全保护，已自动撤销惩罚！`
                                 : `🎉 经系统核对，【${activeChild}】在 ${targetDate} 的打卡已全额达标，已自动撤销惩罚！`
                             );
@@ -8236,10 +8207,8 @@ ${context}
             };
             useEffect(() => {
                 const snapshot = accountingRef.current;
-                if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return;
                 const result = applyDeductions({ ...snapshot, child: activeChild,
                     devices: authorizedParents?.devices || [],
-                    strictAuthorization:authorizedParents?.securityVersion===1,
                     balance: (history, child) => calculateTotalGold(checkins, history, child, activeBuffs, tasks) });
                 if (result.changed) persistAccounting({ history: result.history, receipts: result.receipts,
                     actions: result.actions, stats: result.stats });
@@ -8250,9 +8219,8 @@ ${context}
             // 筛选当前孩子的未领取礼物（红包、额外转盘）
             const unclaimedGifts = useMemo(() => {
                 if (!parentActions || !Array.isArray(parentActions)) return [];
-                if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return [];
                 const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
-                const hasRegisteredDevices = authorizedParents?.securityVersion===1||(authorizedParents?.devices || []).length > 0;
+                const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
                 return parentActions.filter(a =>
                     a && a.status === 'pending' &&
                     (!a.targetChild || a.targetChild === activeChild) &&
@@ -8268,7 +8236,6 @@ ${context}
             // 4. 拦截未授权设备的恶意指令
             React.useEffect(() => {
                 if (!parentActions || !Array.isArray(parentActions) || parentActions.length === 0) return;
-                if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return;
 
                 const pendingActions = parentActions.filter(a =>
                     a && a.status === 'pending' && (!a.targetChild || a.targetChild === activeChild)
@@ -8276,7 +8243,7 @@ ${context}
                 if (pendingActions.length === 0) return;
 
                 const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
-                const hasRegisteredDevices = authorizedParents?.securityVersion===1||(authorizedParents?.devices || []).length > 0;
+                const hasRegisteredDevices = (authorizedParents?.devices || []).length > 0;
                 let hasUpdates = false;
 
                 const updatedActions = parentActions.map(action => {
@@ -9046,8 +9013,6 @@ ${context}
 			// 如果当前设备没有任何账户记录，直接拦截并全屏显示初始引导页，防止任何误操作触发底层数据
 			if (profiles.length === 0) {
 				const handleWelcomeSync = async () => {
-                    if (!canSyncStorage()) return;
-                    const storageEpoch = getStorageState().epoch;
 					const code = welcomeSyncCodeInput.trim();
 					if (!code) {
 						setWelcomeSyncError('请输入家庭私密同步码');
@@ -9056,20 +9021,18 @@ ${context}
 					setWelcomeSyncLoading(true);
 					setWelcomeSyncError('');
 					try {
-						const resp = await syncFetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
+						const resp = await fetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`);
 						if (resp.status === 404) {
 							setWelcomeSyncError(`云端未找到同步码【${code}】的数据。请核对大小写与拼写；若这是您第一次使用，请直接切换到【创建新家庭】新建成员进入系统！`);
 							return;
 						}
 						if (!resp.ok) throw new Error(`云端服务响应异常 (${resp.status})`);
 						const cloudDataRaw = await resp.json();
-                        if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
 						if (!cloudDataRaw || typeof cloudDataRaw !== 'object') {
 							setWelcomeSyncError(`同步码【${code}】的数据格式异常，请核对`);
 							return;
 						}
 						const cloudData = stripTesterDataFromPayload(cloudDataRaw);
-                        const welcomeMeta = syncMetadata(resp);
 
 						storage.setItem('app_sync_code', code);
 						setSyncCode(code);
@@ -9079,9 +9042,6 @@ ${context}
 						storage.setItem('_sync_local_ts', String(cloudData._syncTs || Date.now()));
 						storage.setItem('_sync_last_hash', hashSyncPayload(cloudData));
 						storage.setItem('_sync_has_pulled_v1', '1');
-                        if (welcomeMeta.protocol === 2) commitDurable({[SYNC_CHECKPOINT_KEY]:JSON.stringify({
-                            code,protocol:2,revision:welcomeMeta.revision,data:cloudData
-                        })});
 
 						let validProfiles = [];
 						try {
@@ -9224,7 +9184,7 @@ ${context}
 										<div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-2xl text-left space-y-2.5 animate-in fade-in">
 											<div className="flex items-start gap-2 text-xs text-amber-900 font-medium leading-relaxed">
 												<span className="text-base shrink-0">⚠️</span>
-												<span>{welcomeSyncError} <a className="underline" href={securityUrl(welcomeSyncCodeInput)}>打开设备配对</a></span>
+												<span>{welcomeSyncError}</span>
 											</div>
 											<button
 												type="button"
@@ -9318,7 +9278,94 @@ ${context}
 
 								<button 
 									onClick={() => {
-                                        selectAndRestoreBackup(showToast);
+										const input = document.createElement('input');
+										input.type = 'file';
+										input.accept = '.json';
+										input.onchange = (e) => {
+											const file = e.target.files[0];
+											if (!file) return;
+											const reader = new FileReader();
+											reader.onload = (event) => {
+												try {
+													const data = JSON.parse(event.target.result);
+													if (!data.version) {
+														showToast('warning', '无效的备份文件：缺少版本声明！');
+														return;
+													}
+													const keyMapping = {
+														tasks: 'app_tasks_v2', checkins: 'app_checkins_v2', profiles: 'app_profiles_v1',
+														achievements: 'app_achievements_v1', stats: 'app_stats_v1', inventory: 'app_inventory_v1',
+														activeBuffs: 'app_active_buffs_v1', redeemedCoupons: 'app_coupons_v1', equippedGear: 'app_equipped_gear_v1',
+														milestones: 'app_milestones_v1', globalMessages: 'app_global_messages_v2', globalDates: 'app_global_dates',
+														wheelConfig: 'app_wheel_config', wheelSettings: 'app_wheel_settings', wheelHistory: 'app_wheel_history',
+														xpHistory: 'app_xp_history', evilWheelConfig: 'app_evil_wheel_config', randomEventHistory: 'app_random_event_history',
+														dailyRandomCounts: 'app_daily_random_counts', historicalEventProgress: 'app_historical_event_progress_v1',
+														dailyEventTypeCounts: 'app_daily_event_type_counts_v1', userCity: 'app_user_city_v1',
+														curriculumProgress: 'app_curriculum_progress_v1', xpWheelConfig: 'app_xp_wheel_config',
+														settingsPassword: 'app_settings_password', testMode: 'app_test_mode', weekendSettings: 'app_weekend_settings',
+														notifiedLevels: 'app_notified_levels', exemptedDays: 'app_exempted_days_v1', silenceMutes: 'app_silence_mutes_v1',
+														homeworkExamConfig: 'app_homework_exam_config_v1', homeworkRecords: 'app_homework_records_v1',
+														examRecords: 'app_exam_records_v1', repairedCheckins: 'app_repaired_checkins_v1',
+														weeklyPayroll: 'app_weekly_payroll_v1', reportConfig: 'app_report_config_v1', stars: 'app_stars_v1',
+														starHistory: 'app_star_history_v1', petData: 'app_pet_data_v1', ownedPets: 'app_owned_pets_v1',
+														activePet: 'app_active_pet_v1', petCooldowns: 'app_pet_cooldowns_v1', petStats: 'app_pet_stats_v1',
+														petSkillCooldowns: 'app_pet_skill_cd_v1', petBuffs: 'app_pet_buffs_v1', petAdventures: 'app_pet_adventures_v1',
+														petAdventureLog: 'app_pet_adventure_log_v1', petAdventureStats: 'app_pet_adventure_stats_v1',
+														petSlots: 'app_pet_slots_v1', petMusic: 'app_pet_music_v1', petNotif: 'app_pet_notif_v1',
+														evilPenaltyLog: 'app_evil_penalty_log_v1', evilAutoTrigger: 'app_evil_auto_trigger',
+														evilTriggerConfig: 'app_evil_trigger_config_v1',
+														pendingEvilPenalties: 'app_pending_evil_penalties_v2',
+														pendingEvilPenalty: 'app_pending_evil_penalty_v1', aiEnabled: 'app_ai_enabled',
+														deepseekApiKey: 'app_deepseek_api_key', aiPetEnabled: 'app_ai_pet_enabled',
+														aiChatEnabled: 'app_ai_chat_enabled', aiDailyLimit: 'app_ai_daily_limit',
+														aiDailyUsage: 'app_ai_daily_usage', aiChatHistory: 'app_ai_chat_history',
+														aiReminderLog: 'app_ai_reminder_log_v1', syncCode: 'app_sync_code',
+														syncLastTime: 'app_sync_last_time', authorizedParents: 'app_authorized_parents_v1',
+														parentActions: 'app_parent_actions_v1', deductionReceipts: RECEIPTS_KEY,
+														exchangeBaseCents: 'app_exchange_base_cents',
+														exchangeVolatility: 'app_exchange_volatility',
+														exchangeMinGold: 'app_exchange_min_gold',
+														exchangeMaxSingle: 'app_exchange_max_single',
+														exchangeMaxWeekly: 'app_exchange_max_weekly',
+														readingShelved: 'app_reading_shelved_v1',
+														readingHistory: 'app_reading_history_v1',
+														deletedTasks: 'app_deleted_tasks_v1',
+														deletedProfiles: 'app_deleted_profiles_v1',
+														parentQrLanHost: 'app_parent_qr_lan_host'
+													};
+													Object.entries(keyMapping).forEach(([bk, sk]) => {
+														if (data[bk] !== undefined && data[bk] !== null) {
+															storage.setItem(sk, data[bk]);
+															storage.markKeyVersion(sk);
+														}
+													});
+
+													// 恢复全量快照兜底（如各孩子累计兑换 app_exchange_total_* 及所有动态项）
+													if (data._allSyncData && typeof data._allSyncData === 'object') {
+														Object.entries(data._allSyncData).forEach(([k, v]) => {
+															if (k && k.startsWith('app_') && v !== undefined && v !== null) {
+																storage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+																storage.markKeyVersion(k);
+															}
+														});
+													}
+
+													// 恢复直接以 app_ 存储的原始键
+													Object.keys(data).forEach(k => {
+														if (k.startsWith('app_') && data[k] !== undefined && data[k] !== null) {
+															storage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
+															storage.markKeyVersion(k);
+														}
+													});
+													showToast('success', '数据恢复成功！正在重新载入...');
+													setTimeout(() => window.location.reload(), 1000);
+												} catch (err) {
+													showToast('error', '备份解析失败：' + err.message);
+												}
+											};
+											reader.readAsText(file);
+										};
+										input.click();
 									}} 
 									className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
 								>
@@ -9335,7 +9382,6 @@ ${context}
 			
             return (
                 <div className={`min-h-screen ${hasActiveBg ? 'bg-transparent' : theme.softBg} font-sans pb-24 transition-colors duration-500`}>
-                  {syncConflict && <SyncConflictDialog context={syncConflict} onResolve={resolveSyncConflict} />}
 				  {/* --- 方案4：沉浸式动态背景层延迟启动 --- */}
 				  {bgEffectsReady && <AtmosphereLayer type={deferredActiveBg} />}
                   
@@ -10382,7 +10428,7 @@ ${context}
 
                   {/* 断签豁免弹窗 */}
                   {exemptionModal && (() => {
-                      const verifyBase = verificationPageUrl('exemption-verify.html');
+                      const verifyBase = 'https://www.daka-tool.top/exemption-verify.html';
                       const verifyPageUrl = verifyBase + '?code=' + exemptionModal.exemptionCode + '&account=' + encodeURIComponent(activeChild) + '&date=' + encodeURIComponent(exemptionModal.date);
                       return (
                       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => { setExemptionModal(null); setExemptionInputCode(''); }}>
@@ -10903,16 +10949,15 @@ ${context}
 
 export default App;
 
-{
+initStorage().finally(() => {
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(
         <AppErrorBoundary>
-            <StorageGate>
             <PerformanceProvider>
                 <App />
                 <ToastContainer />
             </PerformanceProvider>
-            </StorageGate>
         </AppErrorBoundary>
     );
-}
+});
+

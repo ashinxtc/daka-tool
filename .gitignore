@@ -3,7 +3,6 @@ node_modules/
 
 # Production build outputs
 dist/
-dist-staging/
 dist-test/
 
 # Cloudflare & Wrangler cache

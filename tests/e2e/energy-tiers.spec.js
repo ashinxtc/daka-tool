@@ -74,14 +74,7 @@ test('economy mounts no animated background in all themes and retains blur and b
     await mode(page,'balanced');await bg(page,'bg_galaxy');expect((await sample(page,300)).paint).toBeGreaterThan(0);
 });
 test('balanced matrix pauses and caches glyphs while full and compatibility keep baseline drawing',async({page})=>{
-    await load(page);
-    await page.evaluate(()=>document.fonts.ready);
-    // install() still advances with real time. Freeze it before measuring a full
-    // animation phase, then remount after fonts settle so CI loading time cannot
-    // consume or restart the sampled motion window. Keep the frame bounds strict.
-    await page.clock.pauseAt(new Date('2026-10-16T12:01:00+08:00'));
-    await bg(page,null);await bg(page,'bg_matrix');
-    await page.clock.runFor(100);
+    await load(page);await page.clock.runFor(100);
     const still=await sample(page,700);expect(still.paint).toBe(0);expect(still.raf).toBe(0);
     await page.clock.runFor(250);const moving=await sample(page,1200);
     expect(moving.paint).toBeGreaterThan(20);expect(moving.paint).toBeLessThan(42);expect(moving.glyph).toBe(0);

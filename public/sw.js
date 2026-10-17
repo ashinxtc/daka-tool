@@ -3,7 +3,7 @@
 
 // ===== 离线缓存配置 =====
 // 版本号变更会触发旧缓存清理；每次改动 index.html/静态资源后应递增
-const CACHE_VERSION = 'daka-cache-v19';
+const CACHE_VERSION = 'daka-cache-v18';
 
 // 预缓存：应用核心资源（本地静态文件）
 const PRECACHE_URLS = [
@@ -142,7 +142,7 @@ self.addEventListener('push', (event) => {
             badge: '/img/icon.svg',
             tag: data.tag || 'daily-reminder',
             renotify: true,
-            data: { url: notificationUrl(data.url) },
+            data: { url: data.url || 'https://daka-tool.vip/' },
             actions: [
                 { action: 'open', title: '去打卡 ✏️' }
             ],
@@ -151,24 +151,15 @@ self.addEventListener('push', (event) => {
     );
 });
 
-// Notifications stay on the origin that owns this subscription, including staging.
-function notificationUrl(value) {
-    try {
-        const url = new URL(value || '/', self.location.origin);
-        if (url.origin === self.location.origin) return url.href;
-    } catch {}
-    return new URL('/', self.location.origin).href;
-}
-
 // 点击通知
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-    const url = notificationUrl(event.notification.data?.url);
+    const url = event.notification.data?.url || 'https://daka-tool.vip/';
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
             // 如果已有窗口打开，聚焦它
             for (const client of clientList) {
-                if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+                if (client.url.includes('daka-tool') && 'focus' in client) {
                     return client.focus();
                 }
             }
