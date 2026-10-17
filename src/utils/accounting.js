@@ -93,7 +93,7 @@ export function mergeEscrows(local = {}, cloud = {}) {
             const b = right[id];
             if (!b) { records[id] = a; continue; }
             // Every device chooses the same immutable terms even if two offline wheel draws differ.
-            const terms = r => { const { status, redeemedAt, redeemedDate, forfeitedAt, ...rest } = r; return rest; };
+            const terms = r => { const { status, redeemedAt, redeemedDate, redeemedDates, forfeitedAt, ...rest } = r; return rest; };
             const base = canonical(terms(a), terms(b));
             const redeemed = [a, b].filter(r => r.status === 'redeemed' &&
                 (!base.deadlineDate || (r.redeemedDate && r.redeemedDate <= base.deadlineDate)))
@@ -103,6 +103,14 @@ export function mergeEscrows(local = {}, cloud = {}) {
                 status: a.status === 'forfeited' || b.status === 'forfeited' ? 'forfeited' : 'pending' };
             // Existing legacy redeemed saves may predate redeemedDate.
             if (base.legacy && (a.status === 'redeemed' || b.status === 'redeemed')) records[id].status = 'redeemed';
+            // Safety history is cumulative state, not an immutable contract term.
+            // Keep both devices' accepted protection dates without adding refunds.
+            if (records[id].status === 'redeemed') {
+                const accepted = base.legacy ? [a, b].filter(r => r.status === 'redeemed') : redeemed;
+                const dates = accepted.flatMap(r => Array.isArray(r.redeemedDates) ? r.redeemedDates : []);
+                if (dates.length) records[id].redeemedDates = [...new Set(dates.filter(d =>
+                    typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort();
+            }
         }
         result[child] = { records: ordered(records) };
     }
@@ -128,7 +136,9 @@ export function settleEscrows({ escrows, child, today, star, enabled, now, retur
         } else if (enabled && star >= 1) {
             const rate = r.returnRate ?? returnRate;
             const token = encodeURIComponent(id);
-            records[id] = { ...r, returnRate: rate, status: 'redeemed', redeemedAt: now, redeemedDate: today,
+            const existingRedeemedDates = Array.isArray(r.redeemedDates) ? r.redeemedDates : [];
+            const newRedeemedDates = Array.from(new Set([...existingRedeemedDates, today, r.createdDate].filter(Boolean)));
+            records[id] = { ...r, returnRate: rate, status: 'redeemed', redeemedAt: now, redeemedDate: today, redeemedDates: newRedeemedDates,
                 redeemKey: r.redeemKey || `${child}-ESCROW_REDEEM-${token}-0000000000000` };
             returned += Math.round(r.frozenGold * rate / 100); changed = true;
         }

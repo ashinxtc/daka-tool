@@ -28,7 +28,7 @@ import { TimeEntryModal } from './components/checkin/TimeEntryModal';
 import { TaskCard } from './components/checkin/TaskCard';
 import { TaskDashboardTrack } from './components/checkin/TaskDashboardTrack';
 import { HomeworkExamRecordModal, GRADE_OPTIONS } from './components/homework/HomeworkExamRecordModal';
-import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays } from './utils/gamification';
+import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates } from './utils/gamification';
 import { StarRatingBadge } from './components/gamification/StarRatingBadge';
 import { ComebackModal, ComebackBanner } from './components/gamification/ComebackModal';
 import { FirstBloodModal } from './components/gamification/FirstBloodModal';
@@ -904,6 +904,13 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 const history = projectAccounting(snapshot.history, snapshot.receipts, result.escrows);
                 if (!persistAccounting({ escrows: result.escrows, history })) return;
                 if (result.returned > 0) {
+                    // 彻底清除待惩罚标记
+                    setPendingEvilPenalties(prev => {
+                        const next = { ...(typeof prev === 'object' && prev !== null ? prev : {}) };
+                        delete next[activeChild];
+                        return next;
+                    });
+                    setShowEvilWheel(false);
                     try { fireRoyalSalute(); } catch (e) {}
                     setShowComebackModal(true);
                     showToast('success', `🎉 翻盘成功，已返还 ${result.returned} 金元宝！`, { duration: 6000 });
@@ -7916,13 +7923,14 @@ ${context}
                     // 2. 孩子在触发后进行了补打卡并达标；
                     // 3. 对应日期已被家长豁免或使用冻结卡；
                     // 一旦核对发现已经达标或不再违规，系统立即自动撤销该惩罚，绝不冤枉孩子！
-                    if (currentPending.source === 'auto') {
+                    if (currentPending.source !== 'manual') {
                         const targetDateMatch = currentPending.penaltyKey?.match(new RegExp(`^${activeChild}-EVIL_PENALTY-(\\d{4}-\\d{2}-\\d{2})$`));
-                        const targetDate = targetDateMatch ? targetDateMatch[1] : yesterday;
+                        const targetDate = targetDateMatch ? targetDateMatch[1] : (currentPending.date || yesterday);
 
                         const freezeDates = stats?.[activeChild]?.freezeDates || [];
                         const childExemptedDays = exemptedDays?.[activeChild] || [];
-                        const isExempt = freezeDates.includes(targetDate) || childExemptedDays.includes(targetDate);
+                        const comebackSafeDates = getComebackSafeDates(escrowPenalties[activeChild]);
+                        const isExempt = freezeDates.includes(targetDate) || childExemptedDays.includes(targetDate) || comebackSafeDates.includes(targetDate);
 
                         const childTasks = tasks[activeChild] || [];
                         const targetMustTasks = childTasks
@@ -7966,7 +7974,7 @@ ${context}
                                 const neglectedTasks = targetMustTasks.filter(t => {
                                     if (t.startDate && t.startDate > earliestDate) return false;
                                     return pastNDates.every(d => {
-                                        if (freezeDates.includes(d) || childExemptedDays.includes(d)) return false;
+                                        if (freezeDates.includes(d) || childExemptedDays.includes(d) || comebackSafeDates.includes(d)) return false;
                                         return !checkins[activeChild]?.[t.id]?.[d];
                                     });
                                 });
@@ -7984,7 +7992,11 @@ ${context}
                             setEvilWheelResult(null);
                             setEvilPenaltySource(null);
                             setEvilPenaltyReason('');
-                            showToast('success', `🎉 经系统核对，【${activeChild}】在 ${targetDate} 的打卡已全额达标，已自动撤销惩罚！`);
+                            const isSafeDay = comebackSafeDates.includes(targetDate);
+                            showToast('success', isSafeDay
+                                ? `🎉 经系统核对，【${activeChild}】在 ${targetDate} 逆风翻盘成功享有安全保护，已自动撤销惩罚！`
+                                : `🎉 经系统核对，【${activeChild}】在 ${targetDate} 的打卡已全额达标，已自动撤销惩罚！`
+                            );
                             return;
                         }
                     }
@@ -8010,7 +8022,7 @@ ${context}
                     setEvilPenaltySource(null);
                     setEvilPenaltyReason('');
                 }
-            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo, checkins, tasks, stats, exemptedDays, evilTriggerConfig, evilWheelResult, evilWheelSpinning]);
+            }, [activeChild, pendingEvilPenalties, evilPenaltyLog, isEvilDemo, checkins, tasks, stats, exemptedDays, evilTriggerConfig, evilWheelResult, evilWheelSpinning, escrowPenalties]);
 
             // 清理 wheelHistory 中被错误写入的 EVIL_PENALTY 对象（一次性修复）
             React.useEffect(() => {
@@ -8052,10 +8064,12 @@ ${context}
                     return;
                 }
 
-                // 豁免与冰冻卡检查：如果昨天被豁免或冻结，不触发惩罚
+                // 豁免、冰冻卡与逆风翻盘安全保护日检查：
+                // 如果昨天被豁免、使用冰冻卡、或昨天已达成 1 星逆风翻盘赎回，则享受安全保护，次日不重复追责！
                 const freezeDates = stats?.[activeChild]?.freezeDates || [];
                 const childExemptedDays = exemptedDays?.[activeChild] || [];
-                if (freezeDates.includes(yesterday) || childExemptedDays.includes(yesterday)) {
+                const comebackSafeDates = getComebackSafeDates(escrowPenalties[activeChild]);
+                if (freezeDates.includes(yesterday) || childExemptedDays.includes(yesterday) || comebackSafeDates.includes(yesterday)) {
                     evilCheckDoneRef.current.add(penaltyKey);
                     return;
                 }
@@ -8113,7 +8127,7 @@ ${context}
                         if (t.startDate && t.startDate > earliestDate) return false;
 
                         return pastNDates.every(d => {
-                            if (freezeDates.includes(d) || childExemptedDays.includes(d)) return false;
+                            if (freezeDates.includes(d) || childExemptedDays.includes(d) || comebackSafeDates.includes(d)) return false;
                             return !checkins[activeChild]?.[t.id]?.[d];
                         });
                     });

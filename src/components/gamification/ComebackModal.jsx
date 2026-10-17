@@ -100,7 +100,7 @@ export const ComebackModal = ({
                             <p className="text-sm text-slate-300 leading-relaxed">
                                 你今天通过顽强的毅力达成了 <strong className="text-amber-300">⭐ 1星安全保底</strong>！
                                 <br />
-                                扣押的 <strong className="text-amber-300 font-bold">{frozenGold} 金元宝</strong> 已按契约返还 {escrow.returnedGold ?? frozenGold} 元宝！
+                                扣押的 <strong className="text-amber-300 font-bold">{frozenGold} 金元宝</strong> 已按契约返还 {escrow.returnedGold ?? frozenGold} 元宝！同时激活安全保护，重置连续违规计数！
                             </p>
                         </div>
                     ) : !isPending ? (
@@ -130,7 +130,7 @@ export const ComebackModal = ({
                                     </li>
                                     <li className="flex items-center gap-2">
                                         <span className="text-emerald-400 font-bold">✓ 奖励：</span>
-                                        击溃小恶魔，<strong>按契约比例赎回冻结的 {frozenGold} 金元宝</strong>！
+                                        击溃小恶魔，<strong>按契约比例赎回冻结的 {frozenGold} 金元宝</strong>，重置连续违规并获安全断点保护！
                                     </li>
                                     <li className="flex items-center gap-2">
                                         <span className="text-rose-400 font-bold">⏳ 时限：</span>

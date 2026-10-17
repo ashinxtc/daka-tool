@@ -1,7 +1,7 @@
 // src/utils/gamification.js
 // 游戏化激励与护航系统工具函数：星级通关计算、逆风翻盘、首胜盲盒算法
 
-import { getLocalDateKey, dateKeySubtractDays } from './date.js';
+import { getLocalDateKey, dateKeySubtractDays, tsToLocalDateKey } from './date.js';
 
 export const DEFAULT_GAMIFICATION_CONFIG = {
     // 1. 星级通关制
@@ -183,4 +183,35 @@ export const calculateFirstBloodReward = (config = DEFAULT_GAMIFICATION_CONFIG, 
             ? `获得 ${baseGold} 金元宝 + 早起鸟加成 ${earlyBonus} 元宝 = ${totalGold} 元宝！`
             : `获得 ${totalGold} 金元宝！`
     };
+};
+
+/**
+ * 提取孩子历史上通过逆风翻盘成功赎回（达成 1 星）所获得的安全保护日列表
+ * 这些保护日不仅赎回了当时的罚金，更作为“安全缓冲断点”阻断未做任务的连续未打卡累加，且次日免受追罚！
+ * @param {Object} escrow 该孩子的 escrow 契约记录
+ * @returns {Array<string>} 享受安全断点保护的日期数组 (YYYY-MM-DD)
+ */
+export const getComebackSafeDates = (escrow) => {
+    if (!escrow) return [];
+    const dates = new Set();
+    const records = escrow.records && typeof escrow.records === 'object'
+        ? Object.values(escrow.records)
+        : (escrow.status ? [escrow] : (typeof escrow === 'object' ? Object.values(escrow) : []));
+
+    for (const r of records) {
+        if (!r || typeof r !== 'object') continue;
+        if (Array.isArray(r.redeemedDates)) {
+            r.redeemedDates.forEach(d => { if (typeof d === 'string' && d) dates.add(d); });
+        }
+        if (r.status === 'redeemed') {
+            if (r.redeemedDate) dates.add(r.redeemedDate);
+            if (r.createdDate) dates.add(r.createdDate);
+            if (r.redeemedAt) {
+                try {
+                    dates.add(tsToLocalDateKey(r.redeemedAt));
+                } catch (e) {}
+            }
+        }
+    }
+    return Array.from(dates);
 };
