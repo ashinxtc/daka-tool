@@ -108,7 +108,16 @@ test('paired main and parent execute two deductions exactly once while keeping s
         localStorage.setItem('app_sync_code',JSON.stringify(code));localStorage.setItem('device_graphics_quality_v1','economy');
     },f);
     await c.clock.setFixedTime(new Date('2026-10-16T12:00:00+08:00'));
+    // Start the notice assertion after the first authoritative pull, not while
+    // Vite is still loading the main bundle. CI trace 38997337041 received this
+    // response at 4.8s; its failure snapshot already contained the first notice.
+    const firstPull=c.waitForResponse(response=>{
+        const url=new URL(response.url());
+        return url.hostname==='sync.daka-tool.top'&&url.pathname==='/'&&
+            url.searchParams.get('code')===f.code&&response.request().method()==='GET'&&response.status()===200;
+    });
     await c.getByRole('button',{name:'进入主程序'}).click();
+    await firstPull;
     await expect(c.getByRole('heading',{name:'【爸爸】下达扣款通知单'})).toBeVisible();
     await expect(c.getByText('“授权扣款甲”',{exact:true})).toBeVisible();
     await c.getByRole('button',{name:/我知道了/}).click();await expect(c.getByText('“授权扣款乙”',{exact:true})).toBeVisible();

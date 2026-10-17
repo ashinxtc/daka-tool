@@ -1,17 +1,10 @@
-// ===== Cloudflare Workers & API Endpoints =====
-// 在生产环境（daka-tool.top 或 vercel.app）及本地 Vite 代理下，优先使用同源相对路径（/api/...），
-// 由 Vercel 全球边缘网络或 Vite 代理反向代理直连 Cloudflare Workers，彻底解决中国大陆手机直连 *.workers.dev 被防火墙 SNI 拦截、报“提交超时”的问题。
-const isBrowser = typeof window !== 'undefined';
-const shouldUseProxy = isBrowser && (
-    window.location.hostname.includes('daka-tool.top') ||
-    window.location.hostname.includes('vercel.app') ||
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1'
-);
-
-export const EXCHANGE_WORKER_URL = shouldUseProxy ? '' : 'https://daka-exchange.2378385593.workers.dev';
-export const WECOM_API_URL = shouldUseProxy ? '' : 'https://daka-wecom.2378385593.workers.dev';
-export const PUSH_WORKER_URL = shouldUseProxy ? '' : 'https://daka-push.2378385593.workers.dev';
-// The same-origin proxy reserves /api/push/*; /api/* belongs to exchange.
-export const pushApiUrl = (operation, endpoint = PUSH_WORKER_URL) =>
-    endpoint ? `${endpoint}/api/${operation}` : `/api/push/${operation}`;
+import {deploymentEndpoints} from '../../shared/deployment.js';
+export const IS_STAGING=import.meta.env?.MODE==='staging';
+const endpoints=deploymentEndpoints(IS_STAGING?'staging':'production',typeof window==='undefined'?'':window.location.hostname);
+export const SYNC_WORKER_URL=endpoints.sync;
+export const EXCHANGE_WORKER_URL=endpoints.exchange;
+export const WECOM_API_URL=endpoints.wecom;
+export const PUSH_WORKER_URL=endpoints.push;
+// Same-origin /api/* belongs to exchange; push owns /api/push/*.
+export const pushApiUrl=(operation,endpoint=PUSH_WORKER_URL)=>endpoint?`${endpoint}/api/${operation}`:`/api/push/${operation}`;
+export const verificationPageUrl=page=>`${IS_STAGING?window.location.origin:'https://www.daka-tool.top'}/${page}`;

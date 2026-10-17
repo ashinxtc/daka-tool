@@ -147,7 +147,8 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import {EXCHANGE_WORKER_URL} from "/src/constants/api.js";
         (function() {
             var params = new URLSearchParams(window.location.search);
             if(params.has('family')||params.get('secure')==='1'||(params.get('id')||'').startsWith('exs_'))return;
@@ -170,12 +171,7 @@
             var isOffline = params.get('offline') === '1' || applyId.indexOf('ex_local_') === 0;
             var expectedCode = params.get('code') || '';
 
-            var WORKER_URL = (
-                location.hostname.includes('daka-tool.top') ||
-                location.hostname.includes('vercel.app') ||
-                location.hostname === 'localhost' ||
-                location.hostname === '127.0.0.1'
-            ) ? '' : 'https://daka-exchange.2378385593.workers.dev';
+            var WORKER_URL = EXCHANGE_WORKER_URL;
 
             confirmBtn.addEventListener('click', function() {
                 if (!applyId) {

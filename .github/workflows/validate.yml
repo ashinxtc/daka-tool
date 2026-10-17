@@ -29,6 +29,7 @@ jobs:
         run: node --input-type=module -e "import { chromium } from '@playwright/test'; console.log('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=' + chromium.executablePath());" >> "$GITHUB_ENV"
       - run: npm run test:e2e
       - run: npm run build
+      - run: npm run test:staging
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

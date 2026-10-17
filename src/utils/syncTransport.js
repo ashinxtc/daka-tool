@@ -1,5 +1,6 @@
 import {syncFetch} from './deviceAccess.js';
-export const SYNC_ENDPOINT = 'https://sync.daka-tool.top';
+import {SYNC_WORKER_URL} from '../constants/api.js';
+export const SYNC_ENDPOINT = SYNC_WORKER_URL;
 export class SyncRequestError extends Error {
     constructor(message, status, code, details) { super(message); Object.assign(this, { status, code, details }); }
 }

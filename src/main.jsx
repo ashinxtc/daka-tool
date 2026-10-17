@@ -10,7 +10,7 @@ import { isIOSSafari, isPWAStandalone } from './utils/platform';
 import { getCheckinEntries, getCheckinMinutes, getCheckinUnits, getCheckinSessionCount, getTaskTotalMinutes, getTaskTotalSessions } from './utils/checkin';
 import { getLocalDateKey, dateKeySubtractDays, dateObjToLocalKey, tsToLocalDateKey, getDatesInRange, getMonthDates } from './utils/date';
 import { COLOR_PALETTES, BASE_THEME_IDS } from './data/themes';
-import { WECOM_API_URL, EXCHANGE_WORKER_URL, pushApiUrl } from './constants/api';
+import { WECOM_API_URL, EXCHANGE_WORKER_URL, SYNC_WORKER_URL, verificationPageUrl, pushApiUrl } from './constants/api';
 import { SettingsModal, LowPerfToggle } from './components/modals/SettingsModal';
 import {syncFetch,deviceAccess,securityUrl} from './utils/deviceAccess';
 import {pushRequest} from './utils/pushTransport';
@@ -945,7 +945,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [aiBubbleChild, setAiBubbleChild] = React.useState('');
 
             // --- 云同步状态 ---
-            const SYNC_URL = 'https://sync.daka-tool.top';
+            const SYNC_URL = SYNC_WORKER_URL;
             const [syncCode, setSyncCode] = useStickyState('', 'app_sync_code');
             const [syncLastTime, setSyncLastTime] = useStickyState(null, 'app_sync_last_time');
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
@@ -10368,7 +10368,7 @@ ${context}
 
                   {/* 断签豁免弹窗 */}
                   {exemptionModal && (() => {
-                      const verifyBase = 'https://www.daka-tool.top/exemption-verify.html';
+                      const verifyBase = verificationPageUrl('exemption-verify.html');
                       const verifyPageUrl = verifyBase + '?code=' + exemptionModal.exemptionCode + '&account=' + encodeURIComponent(activeChild) + '&date=' + encodeURIComponent(exemptionModal.date);
                       return (
                       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => { setExemptionModal(null); setExemptionInputCode(''); }}>

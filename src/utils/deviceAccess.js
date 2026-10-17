@@ -1,4 +1,5 @@
-export const ACCESS_ENDPOINT='https://sync.daka-tool.top';
+import {SYNC_WORKER_URL} from '../constants/api.js';
+export const ACCESS_ENDPOINT=SYNC_WORKER_URL;
 const tokenPattern=/^[a-f0-9]{64}$/;
 const roles=new Set(['main','parent']);
 export const newDeviceToken=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');

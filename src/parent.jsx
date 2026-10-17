@@ -12,7 +12,8 @@ if (typeof window !== 'undefined' && window.location.protocol === 'http:' && win
 }
 
 // 云端同步端点
-const SYNC_URL = 'https://sync.daka-tool.top';
+import {SYNC_WORKER_URL,verificationPageUrl} from './constants/api';
+const SYNC_URL = SYNC_WORKER_URL;
 const parentProtocolKey = code => `parent_sync_protocol_v2:${code}`;
 const parentPendingKey = code => `parent_pending_sync_v2:${code}`;
 const parentTransport = code => ({fetchImpl:parentFetch,minProtocol:localStorage.getItem(parentProtocolKey(code))==='2'?2:1});
@@ -2153,7 +2154,7 @@ export const ParentApp = () => {
                             <ul className="text-[11px] text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
                                 <li><b>添加到手机桌面（强烈推荐）</b>：点击微信右上角【···】选择【添加到桌面】（iOS Safari 点击分享【添加到主屏幕】），即可像独立 App 一样一键打开。</li>
                                 <li><b>微信浮窗 / 收藏</b>：点击右上角【···】选择【浮窗】或【收藏】，随时在微信中唤出。</li>
-                                <li><b>直接保存网址</b>：<span className="font-mono text-amber-300 select-all">https://www.daka-tool.top/parent.html</span>（已自动记住本机，打开即登入）。</li>
+                                <li><b>直接保存网址</b>：<span className="font-mono text-amber-300 select-all">{verificationPageUrl('parent.html')}</span>（已自动记住本机，打开即登入）。</li>
                             </ul>
                         </div>
 

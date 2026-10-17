@@ -1,4 +1,4 @@
-# 独立测试后端部署（尚未部署）
+# 独立测试环境部署（尚未部署）
 
 这三个配置仅用于新建测试 Worker，不能替换正式 Worker 的配置。KV ID 来自账户管理员提供的完整截图。它们不是密钥。
 
@@ -23,7 +23,7 @@ npx wrangler@4.151.1 deploy --dry-run --config push-staging.wrangler.json
 
 ## Cloudflare Git 部署字段（配置分支推送后才能操作）
 
-连接 ashinxtc/daka-tool，使用包含这些文件的测试分支，根目录为仓库根目录。Worker 名称必须与上表严格一致。每个 Worker 分别填写部署命令：
+连接 ashinxtc/daka-tool，分支选择 fix/staging-environment，根目录为仓库根目录。Worker 名称必须与上表严格一致。每个 Worker 分别填写部署命令：
 
 ```sh
 npx wrangler@4.151.1 deploy --config sync-staging.wrangler.json
@@ -39,8 +39,37 @@ npx wrangler@4.151.1 deploy --config push-staging.wrangler.json
 
 ## 阻塞项与验收范围
 
-本批仅准备后端配置和修复推送代理路由。现有前端仍有正式同步地址、兑换核验地址、二维码链接、推送点击地址等硬编码，不能直接把普通 PR 预览当成隔离测试前端。必须统一这些入口、增加独立测试构建与网络隔离验证后，才能向用户提供测试入口。
+前端已提供独立 staging 构建：同步、配对、兑换、推送使用 shared/deployment.js 中固定的三个测试 Worker 地址。核验二维码留在当前测试站；通知点击只允许订阅所属站点。测试版拒绝在正式 daka-tool.top / daka-tool.vip 域名下启动，防止误用正式站的本地数据。
+
+普通 npm run build / 普通 PR 预览仍是正式服务配置，不能充当独立测试入口。必须单独新建前端项目和域名，不可沿用正式项目设置。不要在测试站导入真实备份或输入正式家庭配对凭据。
+
+## 独立测试前端（在测试 Worker 部署后）
+
+可在 Cloudflare Pages 创建独立 Git 项目。此处的 Production branch 是新测试项目的发布分支，不是现有正式网站的 main：
+
+| 字段 | 值 |
+| --- | --- |
+| 项目名 | daka-tool-staging（如已占用，选择新的测试名称） |
+| 仓库 | ashinxtc/daka-tool |
+| 分支 | fix/staging-environment |
+| 构建命令 | npm run build:staging |
+| 输出目录 | dist-staging |
+| 根目录 | 仓库根目录 |
+| Node 版本 | 22 |
+| 域名 | 新项目自己的 pages.dev 地址；不绑定正式域名 |
+
+Vercel 替代方案：独立新项目使用 vercel.staging.json，例如 CLI --local-config vercel.staging.json；不得覆盖正式 vercel.json 或把独立项目绑定到正式域名。测试构建不继承正式服务的重写规则。
+
+每个测试页面底部都有红色测试标识；CSP connect-src 只允许本站和三个测试后端，阻止向正式同步服务、企业微信、AI、天气等外部服务发请求。外部集成暂不在该环境验收，相关失败提示属预期；后续如需验证，应先建立各自独立测试集成。测试版目前直接请求 workers.dev；如果设备网络不可达，需要配置独立测试代理或测试 API 域名，不能回退到正式地址。
+
+验证命令：npm run test:staging（先构建，再用 Chromium 和 WebKit 检查主程序、家长页、配对页和旧兑换核验页的请求地址，以及 CSP 阻断正式写入）。该测试拦截网络，绝不向真实服务写入。正式构建仍需通过 npm run test:all。
+
+Pages 官方说明：https://developers.cloudflare.com/pages/configuration/build-configuration/
 
 测试 cron 暂时关闭；后续定时提醒验收必须在仅有测试订阅的环境中单独开启并记录结果。dry-run 仅证明打包及配置解析，不证明真实 KV 权限、DO 创建、服务绑定、设备授权或推送到达。
 
 三项发布门槛仍按 docs/push-and-release.md 执行；准备这些文件不代表生产发布获准。
+
+## 扣款通知 CI 失败诊断
+
+PR #12 的 GitHub Actions 38997337041 失败轨迹显示：进入主程序后约 4.8 秒首次同步 GET 才返回；原通知断言从点击起只有 5 秒，失败快照已包含第一条通知、事由“授权扣款甲”、扣款 10 和结余 90。测试现在显式等待该家庭首次同步成功，再使用原 5 秒断言检查通知。未增加通知断言 timeout，未跳过第二条、刷新恢复、35 元宝总扣款、65 结余和撤销身份检查。此改动解决的是测试前置条件的时序，不能据此宣称物理 iPad 或线上云端已经验收。

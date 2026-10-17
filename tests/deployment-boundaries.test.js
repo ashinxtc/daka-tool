@@ -3,6 +3,33 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {pushRequest} from '../src/utils/pushTransport.js';
 import {pushApiUrl} from '../src/constants/api.js';
+import {deploymentEndpoints,STAGING_SERVICES} from '../shared/deployment.js';
+import vm from 'node:vm';
+
+test('staging endpoints never inherit production proxies and refuse production hosts',()=>{
+    for(const host of ['localhost','127.0.0.1','preview.vercel.app','staging.example.test']){
+        const endpoints=deploymentEndpoints('staging',host);
+        for(const service of ['sync','exchange','push'])assert.equal(endpoints[service],STAGING_SERVICES[service]);
+        assert.equal(endpoints.wecom,'https://disabled.invalid');
+    }
+    for(const host of ['www.daka-tool.top','daka-tool.top','daka-tool.vip'])assert.throws(()=>deploymentEndpoints('staging',host));
+    assert.equal(deploymentEndpoints('production','www.daka-tool.top').push,'');
+    assert.notEqual(deploymentEndpoints('production','daka-tool.top.evil.test').push,'');
+    const config=JSON.parse(readFileSync(new URL('../vercel.staging.json',import.meta.url)));
+    assert.equal(config.outputDirectory,'dist-staging');assert.deepEqual(config.rewrites,[]);
+});
+
+test('notification clicks cannot leave the subscription origin or focus a production tab',async()=>{
+    const handlers={},origin='https://isolated-preview.example.test';let opened,focused=false;
+    const sandbox={URL,self:{location:{origin},addEventListener:(name,fn)=>handlers[name]=fn},
+        clients:{matchAll:async()=>[{url:'https://www.daka-tool.top/',focus:()=>{focused=true;}}],openWindow:url=>{opened=url;}}};
+    vm.runInNewContext(readFileSync(new URL('../public/sw.js',import.meta.url),'utf8'),sandbox);
+    for(const value of ['https://daka-tool.vip/','https://evil.test/','javascript:alert(1)',undefined]){
+        let pending;handlers.notificationclick({notification:{data:{url:value},close(){}},waitUntil:p=>{pending=p;}});
+        await pending;assert.equal(opened,origin+'/');assert.equal(focused,false);
+    }
+    assert.equal(sandbox.notificationUrl('/parent.html'),origin+'/parent.html');
+});
 
 test('staging resources cannot reuse production storage, services, domains or timers',()=>{
     const ids=new Set();

@@ -1,3 +1,4 @@
+import {verificationPageUrl} from '../../constants/api';
 import React from 'react';
 import QRCode from 'qrcode';
 import { EXCHANGE_WORKER_URL } from '../../constants/api.js';
@@ -535,7 +536,7 @@ export const ExchangePanel = ({
         }
         let active = true;
         const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-        const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+        const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
 
         QRCode.toDataURL(verifyUrl, {
             width: 320,
@@ -1059,7 +1060,7 @@ export const ExchangePanel = ({
                                                 type="button"
                                                 onClick={() => {
                                                     const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-                                                    const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `https://www.daka-tool.top/exchange-verify.html?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+                                                    const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
                                                     if (navigator.clipboard) {
                                                         navigator.clipboard.writeText(verifyUrl);
                                                         showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');
