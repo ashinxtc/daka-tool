@@ -128,7 +128,9 @@ export function settleEscrows({ escrows, child, today, star, enabled, now, retur
         } else if (enabled && star >= 1) {
             const rate = r.returnRate ?? returnRate;
             const token = encodeURIComponent(id);
-            records[id] = { ...r, returnRate: rate, status: 'redeemed', redeemedAt: now, redeemedDate: today,
+            const existingRedeemedDates = Array.isArray(r.redeemedDates) ? r.redeemedDates : [];
+            const newRedeemedDates = Array.from(new Set([...existingRedeemedDates, today, r.createdDate].filter(Boolean)));
+            records[id] = { ...r, returnRate: rate, status: 'redeemed', redeemedAt: now, redeemedDate: today, redeemedDates: newRedeemedDates,
                 redeemKey: r.redeemKey || `${child}-ESCROW_REDEEM-${token}-0000000000000` };
             returned += Math.round(r.frozenGold * rate / 100); changed = true;
         }
