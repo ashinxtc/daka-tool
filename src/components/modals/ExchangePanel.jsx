@@ -2,7 +2,6 @@ import {verificationPageUrl} from '../../constants/api';
 import React from 'react';
 import QRCode from 'qrcode';
 import { EXCHANGE_WORKER_URL } from '../../constants/api.js';
-import {deviceAccess} from '../../utils/deviceAccess.js';
 import {exchangeCny} from '../../../shared/gold-balance.js';
 import {exchangeRequest,pendingExchange,clearExchangeIntent,confirmExchangeIntent} from '../../utils/exchangeTransport.js';
 import { getLocalDateKey } from '../../utils/date.js';
@@ -85,14 +84,12 @@ export const ExchangePanel = ({
     setWheelHistory, 
     tasks = {} 
 }) => {
-    const protectedFamily=deviceAccess.required(syncCode);
+    const protectedFamily=!!syncCode;
     const [secureLimits,setSecureLimits]=React.useState(null);
     const fetchWithTimeout=async(url,options={},timeoutMs=8000)=>{
         const target=new URL(url,location.origin),match=/^\/api\/exchange\/(apply|verify|cancel|order|status)$/.exec(target.pathname);
-        if(!match||!deviceAccess.required(syncCode)){
-            const response=await legacyFetchWithTimeout(url,options,timeoutMs);
-            if(response.headers.get('X-Family-Auth')==='required'){deviceAccess.rememberRequired(syncCode);throw new Error('此家庭需要设备授权，请先完成配对。');}
-            return response;
+        if(!match||!syncCode){
+            return await legacyFetchWithTimeout(url,options,timeoutMs);
         }
         const op=match[1],controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
         try{
@@ -111,7 +108,7 @@ export const ExchangePanel = ({
             throw error;
         }finally{clearTimeout(timer);}
     };
-    React.useEffect(()=>{let active=true;if(show&&protectedFamily){setSecureLimits(null);exchangeRequest(syncCode,'limits').then(d=>{if(active){setSecureLimits(d.configured?d.limits:null);if(!d.configured)showToast('warning','请家庭管理员先确认兑换汇率与限额。');}}).catch(e=>{if(active)showToast('error',e.message);});}return()=>{active=false;};},[show,syncCode,protectedFamily]);
+    React.useEffect(()=>{let active=true;if(show&&syncCode){setSecureLimits(null);exchangeRequest(syncCode,'limits').then(d=>{if(active&&d?.limits){setSecureLimits(d.limits);}}).catch(e=>{if(active)console.warn('获取兑换限额失败:',e.message);});}return()=>{active=false;};},[show,syncCode]);
     const [rate, setRate] = React.useState(null);
     const [knowledge, setKnowledge] = React.useState(null);
     const [applying, setApplying] = React.useState(false);
@@ -584,7 +581,7 @@ export const ExchangePanel = ({
 
     // 7. 提交兑换申请
     const handleApply = async () => {
-        if(deviceAccess.required(syncCode)&&!secureLimits)return showToast('warning','请先连接云端确认家庭汇率与限额。');
+        if(syncCode&&!secureLimits)return showToast('warning','正在获取云端兑换限额与实时汇率，请稍候...');
         if (isZero) return showToast('warning', exchangeMode === 'gold' ? '请输入要兑换的金元宝数量' : '请输入要兑换的现金金额');
         if (isBelowMin) return showToast('warning', `最低起兑门槛为 ${minGoldLimit} 金元宝（约合 ¥${minCny} 元）`);
         if (isExceeding) return showToast('warning', `金元宝储蓄不足！您当前最多可兑换 ¥${maxCny} 元（现有 ${totalGold.toLocaleString()} 金元宝）`);
@@ -696,7 +693,7 @@ export const ExchangePanel = ({
                 showToast('error', data.error || '申请提交失败，请重试');
             }
         } catch (e) {
-            if(deviceAccess.required(syncCode)){showToast('error',`${e.message||'云端尚未确认。'} 未生成离线单，也未扣款；网络恢复后可重试原申请。`);return;}
+            if(syncCode){showToast('error',`${e.message||'云端尚未确认。'} 未生成离线单，也未扣款；网络恢复后可重试原申请。`);return;}
             // 离线极致兜底：当云端网络异常或超时，自动生成离线防伪单，绝不阻断孩子！
             const localApplyId = `ex_local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             const localVerifyCode = String(Math.floor(1000 + Math.random() * 9000));
@@ -731,7 +728,7 @@ export const ExchangePanel = ({
     // 家长当面核销（即使完全无网也能瞬间完成结清与扣减）
     const handleParentDirectVerify = () => {
         if (!applyResult) return;
-        if(deviceAccess.required(syncCode)){
+        if (!applyResult.isOffline && (applyResult?.applyId?.startsWith('exs_') || (typeof deviceAccess !== 'undefined' && deviceAccess.required && deviceAccess.required(syncCode)))) {
             location.assign(`/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1`);return;
         }
         const parentPwd = readStoredString(storage.getItem('app_settings_password'));
@@ -808,7 +805,7 @@ export const ExchangePanel = ({
 
         // 如果是本地离线单，直接撤销
         if (applyResult?.isOffline || (id && id.startsWith('ex_local_'))) {
-            if(deviceAccess.required(syncCode)){setApplying(false);showToast('error','这是迁移前的离线单，请由管理员核对，不能当作云端订单撤销。');return;}
+            if(syncCode){setApplying(false);showToast('error','这是迁移前的离线单，请由管理员核对，不能当作云端订单撤销。');return;}
             storage.removeItem(`app_offline_exchange_${activeChild}`);
             setApplyResult(null);
             setApplying(false);
@@ -855,7 +852,7 @@ export const ExchangePanel = ({
                 showToast('error', data.error || '撤销失败，请重试');
             }
         } catch (e) {
-            if(deviceAccess.required(syncCode)){showToast('error',`${e.message||'网络中断'}，未确认撤销；订单已保留，请重试。`);return;}
+            if(syncCode){showToast('error',`${e.message||'网络中断'}，未确认撤销；订单已保留，请重试。`);return;}
             storage.removeItem(`app_offline_exchange_${activeChild}`);
             setApplyResult(null);
             showToast('info', '已在本地撤销申请，您可以重新输入金额兑换。');

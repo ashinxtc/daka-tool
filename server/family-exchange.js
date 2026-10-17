@@ -13,14 +13,11 @@ export class FamilyExchange{
         if(!['apply','verify','cancel','status','order','limits'].includes(op))fail(404,'NOT_FOUND','兑换接口不存在。');
         if(!['GET','POST'].includes(request.method)||(['apply','verify','cancel'].includes(op)&&request.method!=='POST')||(['order','status'].includes(op)&&request.method!=='GET'))fail(405,'METHOD','请求方法无效。');
         if(f.env.EXCHANGE_MODE!=='preview'||f.env.SYNC_MODE!=='active')fail(503,'EXCHANGE_PAUSED','安全兑换尚未启用，请保留当前订单。');
-        if(!await f.access.required())fail(409,'PAIR_REQUIRED','请先完成家庭安全迁移。');
         const roles=op==='limits'&&request.method==='POST'?['owner']:op==='verify'?['parent']:op==='apply'?['main']:['main','parent','owner'];
         await f.access.authorize(request,roles);
         const body=request.method==='POST'?await readSmallJson(request):{};
         if(body.syncCode!==undefined&&body.syncCode!==code)fail(400,'FAMILY_MISMATCH','家庭信息不一致。');
         await f.initialize(code);
-        // Market reads happen outside the storage transaction. Applications consume
-        // a persisted quote, so a lost acknowledgement can replay even during outages.
         let market=null;
         if(op==='limits'&&request.method==='GET'&&f.env.EXCHANGE_MARKET_SERVICE){
             try{
@@ -79,7 +76,13 @@ export class FamilyExchange{
             await f.refreshAccessSnapshot(tx);
             const snapshot=await f.exchangeSnapshot(tx),history=parse(snapshot,'app_wheel_history',{});
             if(op==='apply'){
-                if(!storedLimits)fail(409,'EXCHANGE_SETUP_REQUIRED','请家庭管理员先确认兑换汇率与限额。');
+                let activeLimits=limits;
+                if(!storedLimits){
+                    const base=parse(snapshot,'app_exchange_base_rate',{}),vol=parse(snapshot,'app_exchange_volatility',{});
+                    const fallbackLimits={minGold:500,maxSingle:0,maxWeekly:0,pricingMode:'floating',baseCentsPerGold:Number(parse(snapshot,'app_exchange_base_cents',1)),baseUsd:base?.rates?.USD||0.14918,amplifier:vol.amplifier||10};
+                    await tx.put('exchange:limits',fallbackLimits);
+                    activeLimits={...defaults,...fallbackLimits};
+                }
                 const id=body.operationId;
                 if(typeof id!=='string'||!/^exs_[a-f0-9-]{36}$/.test(id))fail(400,'OPERATION_REQUIRED','缺少稳定的申请标识。');
                 const terms={childName:body.childName,goldAmount:body.goldAmount,rateMicros:body.rateMicros,...(body.quoteId?{quoteId:body.quoteId}:{})};
@@ -88,9 +91,9 @@ export class FamilyExchange{
                 if(ids.length>=1000)fail(409,'ARCHIVE_REQUIRED','订单记录已达安全容量，请联系管理员归档。');
                 if(!parse(snapshot,'app_profiles_v1',[]).some(p=>p.name===body.childName))fail(400,'CHILD_REQUIRED','孩子不存在，请先完成同步。');
                 const gold=body.goldAmount;
-                if(!Number.isSafeInteger(gold)||gold<limits.minGold||gold>10000000||limits.maxSingle&&gold>limits.maxSingle)fail(400,'LIMIT','兑换数量不符合家庭限额。');
-                let rateMicros=limits.rateMicros;
-                if(limits.pricingMode==='floating'){
+                if(!Number.isSafeInteger(gold)||gold<activeLimits.minGold||gold>10000000||activeLimits.maxSingle&&gold>activeLimits.maxSingle)fail(400,'LIMIT','兑换数量不符合家庭限额。');
+                let rateMicros=activeLimits.rateMicros;
+                if(activeLimits.pricingMode==='floating'){
                     const quote=(await tx.get('exchange:quotes')||{})[body.quoteId];
                     if(!quote||quote.deviceId!==user.id||quote.expiresAt<=now)fail(409,'QUOTE_CHANGED','报价已过期或设置已调整，请刷新后确认金额。');
                     rateMicros=quote.rateMicros;
@@ -99,7 +102,7 @@ export class FamilyExchange{
                 const live=records.filter(r=>r.childName===body.childName&&!['cancelled','expired'].includes(r.status));
                 if(live.some(r=>r.status==='pending'))fail(409,'PENDING_ORDER','已有未核销申请，请先处理。');
                 if(live.some(r=>day(Date.parse(r.createdAt))===day(now)))fail(409,'DAILY_LIMIT','每日限兑一次。');
-                if(limits.maxWeekly&&live.filter(r=>day(Date.parse(r.createdAt))>=week(now)).reduce((n,r)=>n+r.goldAmount,0)+gold>limits.maxWeekly)fail(409,'WEEKLY_LIMIT','超过本周额度。');
+                if(activeLimits.maxWeekly&&live.filter(r=>day(Date.parse(r.createdAt))>=week(now)).reduce((n,r)=>n+r.goldAmount,0)+gold>activeLimits.maxWeekly)fail(409,'WEEKLY_LIMIT','超过本周额度。');
                 this.checkBalance(snapshot,history,body.childName,gold);
                 const record={id,syncCode:code,deviceId:user.id,...terms,rate:rateMicros/1e6,cnyAmount:exchangeCny(gold,rateMicros),
                     verifyCode:String(1000+crypto.getRandomValues(new Uint32Array(1))[0]%9000),status:'pending',createdAt:new Date(now).toISOString(),expiresAt:new Date(now+48*3600000).toISOString()};

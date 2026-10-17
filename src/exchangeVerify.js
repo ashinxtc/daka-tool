@@ -1,10 +1,8 @@
 import {exchangeRequest} from './utils/exchangeTransport.js';
-import {securityUrl} from './utils/deviceAccess.js';
 const params=new URLSearchParams(location.search),family=params.get('family'),id=params.get('id');
 if(family||params.get('secure')==='1'||id?.startsWith('exs_')){
     const button=document.getElementById('confirmBtn');button.disabled=true;
     const message=document.createElement('p');message.setAttribute('role','status');button.before(message);
-    const link=document.createElement('a');link.href=securityUrl(family)+'#role=parent';link.textContent='家长设备配对 / 重新授权（完成后重新扫码）';link.style.color='#a5b4fc';button.after(link);
     const render=record=>{
         document.getElementById('childName').textContent=record.childName;
         document.getElementById('goldAmount').textContent=`${record.goldAmount} 金元宝`;

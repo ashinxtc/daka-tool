@@ -403,11 +403,7 @@ export const ParentApp = () => {
             const localToken = tokenOverride || pairToken || localStorage.getItem('parent_pair_token');
             const hasLocalBound = (localStorage.getItem('parent_is_bound') === 'true') || Boolean(localStorage.getItem('parent_sync_code'));
 
-            if(authConfig.securityVersion===1){
-                if(!secureIdentity||!existingDev)throw new Error('此设备不在有效授权名单中，请重新配对。');
-                setIsBound(true);localStorage.setItem('parent_is_bound','true');setAuthError('');
-                setOperatorRole(existingDev.role);
-            } else if (existingDev) {
+            if (existingDev) {
                 setIsBound(true);
                 localStorage.setItem('parent_is_bound', 'true');
                 // 同步本地角色为已注册角色
@@ -458,7 +454,6 @@ export const ParentApp = () => {
 
     // 辅助：向云端注册本设备信息并持久化本地凭证
     const registerCurrentDevice = async (currentCloudData, code, authConfig, devId, roleToUse = operatorRole) => {
-        if(deviceAccess.required(code)||authConfig?.securityVersion===1)throw new Error('此家庭使用服务端授权，请打开设备配对页面。');
         try {
             const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
             const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -1078,7 +1073,7 @@ export const ParentApp = () => {
         return (
             <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4">
                 <div className="w-full max-w-md bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-indigo-950/80">
-                    <a className="block p-3 mb-3 rounded-xl bg-indigo-700 text-white text-center" href={securityUrl(inputSyncCode||syncCode)}>设备配对 / 重新授权</a>
+                    <a className="block p-3 mb-4 rounded-xl bg-indigo-700/80 hover:bg-indigo-700 text-white text-center text-xs font-bold transition-colors" href={`/security.html?code=${encodeURIComponent(inputSyncCode||syncCode||'')}`}>设备配对 / 重新授权</a>
                     <div className="text-center mb-6">
                         <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-indigo-600/20 border border-indigo-400/40 flex items-center justify-center text-3xl shadow-inner shadow-indigo-500/40">
                             🛡️

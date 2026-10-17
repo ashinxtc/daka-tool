@@ -1,6 +1,5 @@
 import React, { useState, useContext } from 'react';
 import QRCode from 'qrcode';
-import {deviceAccess,securityUrl} from '../../utils/deviceAccess';
 import { PerformanceContext } from '../../context/PerformanceContext';
 import { COLOR_PALETTES, BASE_THEME_IDS, getThemeHeaderStyle } from '../../data/themes';
 import { getLocalDateKey, dateObjToLocalKey } from '../../utils/date';
@@ -90,7 +89,6 @@ const CopyIcon = (props) => (
 
         const SettingsModal = ({ showSettings, setShowSettings, initialTab = 'parent', theme, globalDates, setGlobalDates, profiles, handleAddProfile, deleteProfile, handleAvatarUpload, updateProfileTheme, updateProfileGrade, curriculumProgress, handleVerifyCurriculum, wheelSettings, setWheelSettings, wheelConfig, setWheelConfig, setIsDemoWheel, setShowWheel, setWheelResult, activeChild, checkins, tasks, handleDeleteTask, updateTaskSetting, handleAddTask, evilWheelConfig, setEvilWheelConfig, evilAutoTrigger, setEvilAutoTrigger, evilTriggerConfig = {}, setEvilTriggerConfig = () => {}, gamificationConfig = {}, setGamificationConfig = () => {}, onLaunchEvilWheel, onTestEvilWheel, settingsPassword, setSettingsPassword, authorizedParents = { pairToken: '', devices: [] }, setAuthorizedParents, isTestMode, setIsTestMode, setShowMilestones, setShowBackupPanel, handleSyncMilestones, handleDeduplicateAchievements, handleRecalculateLevelMilestones, onLaunchExtraWheel, weekendSettings, setWeekendSettings, handleTestSettlement, userCity, setUserCity, xpWheelConfig, setXpWheelConfig, onFixInventory, reportConfig, setReportConfig, stats = {}, homeworkExamConfig, setHomeworkExamConfig, clearNewTaskFlags, aiEnabled, setAiEnabled, deepseekApiKey, setDeepseekApiKey, aiPetEnabled, setAiPetEnabled, aiChatEnabled, setAiChatEnabled, aiDailyLimit, setAiDailyLimit, aiDailyUsage, syncCode, setSyncCode, syncLastTime, syncStatus, syncToCloud, syncFromCloud, triggerSyncUpload, wecomEnabled, setWecomEnabled, wecomWebhookKey, setWecomWebhookKey, wecomCorpId, setWecomCorpId, wecomAgentId, setWecomAgentId, wecomCallbackToken, setWecomCallbackToken, wecomCallbackAesKey, setWecomCallbackAesKey, wecomTestStatus, setWecomTestStatus, pushPermission, pushSubscribed, enablePushNotifications, testPushNotification }) => {
             const showToast = (typeof window !== "undefined" && window.showToast) || ((t, m) => alert(m));
-            const protectedFamily=authorizedParents?.securityVersion===1||deviceAccess.required(syncCode);
             const [showCompletedSettings, setShowCompletedSettings] = React.useState(false);
             const [activeSettingsTab, setActiveSettingsTab] = React.useState(initialTab);
             const [prevShowSettings, setPrevShowSettings] = React.useState(showSettings);
@@ -440,7 +438,6 @@ const CopyIcon = (props) => (
                             </section>
 
                             {/* 卡片 1.5: 家长专属手机看板与设备绑定 */}
-                            {protectedFamily?<section className="bg-white rounded-2xl border border-indigo-200 p-5 space-y-3"><h3 className="font-bold">服务端设备授权</h3><p>授权名单由服务器管理。请在管理员手机上签发限时邀请或撤销设备；旧设置密码不再用于手机配对。</p><a className="inline-block p-3 rounded-xl bg-indigo-600 text-white" href={securityUrl(syncCode)}>设备配对 / 授权管理</a></section>:
                             <section className="bg-white rounded-2xl border border-indigo-200/80 shadow-xs p-5 space-y-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-50 pb-3">
                                     <div className="flex items-center gap-3">
@@ -565,8 +562,6 @@ const CopyIcon = (props) => (
                                     )}
                                 </div>
                             </section>
-
-                            }
                             {/* 卡片 2: 周末冲刺模式 */}
                             <section className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
                                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -1339,7 +1334,6 @@ const CopyIcon = (props) => (
 
                             {/* 同步码输入与生成卡片 */}
                             <section className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-3.5">
-                                <a className="block text-indigo-700 underline" href={securityUrl(syncCode)}>设备配对 / 重新授权</a>
                                 <label className="text-xs font-bold text-slate-700 block">家庭私密同步码 (Sync Code)</label>
                                 <div className="flex gap-2 items-center">
                                     <input 
@@ -1764,7 +1758,6 @@ const CopyIcon = (props) => (
 
                                 {(() => {
                                     const saveLimitsToServer = () => {
-                                        if(protectedFamily){showToast('warning','请在设备配对管理页使用管理员身份修改兑换汇率与限额。');return;}
                                         const effectiveCode = syncCode || 'local_' + activeChild;
                                         const limits = {
                                             minGold: (() => { try { return parseInt(storage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })(),
@@ -1784,7 +1777,6 @@ const CopyIcon = (props) => (
                                             else showToast('error', d.error || '限额同步失败');
                                         }).catch(() => showToast('error', '网络错误，限额未同步到服务端'));
                                     };
-                                    if(protectedFamily)return <a href={securityUrl(syncCode)} className="block p-3 text-indigo-700 underline">打开家庭管理员页面，读取或修改服务端兑换汇率与限额</a>;
                                     return (
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                             <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">
@@ -4561,7 +4553,7 @@ const CopyIcon = (props) => (
                   </div>
 
                   {/* 家长手机扫码配对弹窗 */}
-                  {showParentQrModal && !protectedFamily && (
+                  {showParentQrModal && (
                       <div 
                           className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
                           onClick={() => setShowParentQrModal(false)}

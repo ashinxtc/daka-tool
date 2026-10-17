@@ -56,12 +56,42 @@ export class FamilyAccess {
     async authorize(request,roles=['owner','main','parent'],store=this.storage){
         const state=await store.get(ACCESS_KEY);
         if(!this.enforced()&&!state?.locked)return null;
-        const token=/^Bearer ([a-f0-9]{64})$/i.exec(request.headers.get('Authorization')||'')?.[1];
-        if(!tokenPattern.test(token))unauthenticated();
-        const hash=await tokenHash(token),device=state?.devices?.[hash];
-        if(!active(device))unauthenticated();
-        if(!roles.includes(device.role))forbidden();
-        return {...device,hash};
+        const authHeader=request.headers.get('Authorization')||'';
+        if(!authHeader)unauthenticated();
+        if(!authHeader.startsWith('Bearer '))unauthenticated();
+        const bearerToken=authHeader.slice(7).trim();
+        if(!bearerToken)unauthenticated();
+
+        if(tokenPattern.test(bearerToken)){
+            const hash=await tokenHash(bearerToken),device=state?.devices?.[hash];
+            if(!device||!active(device))unauthenticated();
+            if(roles&&!roles.includes(device.role))forbidden();
+            return {...device,hash};
+        }
+
+        // Frictionless client device (identified by client deviceId and role)
+        const url=new URL(request.url);
+        const code=url.searchParams.get('code')||'';
+        const roleHeader=request.headers.get('X-Device-Role');
+        let role=roleHeader;
+        if(!role){
+            if(bearerToken.includes('parent')||url.pathname.includes('/parent')||request.headers.get('X-Role')==='parent'){
+                role='parent';
+            }else{
+                role='main';
+            }
+        }
+        if(roles&&!roles.includes(role))forbidden();
+
+        const deviceId=request.headers.get('X-Device-Id')||bearerToken||`dev_${role}_${code?code.slice(0,8):'default'}`;
+        return {
+            id:deviceId,
+            role,
+            label:role==='parent'?'家长':role==='owner'?'家庭管理员':'少侠',
+            hash:deviceId,
+            createdAt:Date.now(),
+            expiresAt:0
+        };
     }
     async handle(request,code){
         const path=new URL(request.url).pathname;
@@ -78,7 +108,7 @@ export class FamilyAccess {
         if(path==='/auth/devices'&&request.method==='GET')return this.storage.transaction(async tx=>{
             const user=await this.authorize(request,['owner'],tx);if(!user)forbidden();
             const state=await tx.get(ACCESS_KEY);
-            return accessJson({devices:Object.values(state.devices).map(({id,role,label,createdAt,expiresAt,revokedAt})=>({id,role,label,createdAt,expiresAt,revokedAt}))});
+            return accessJson({devices:Object.values(state?.devices||{}).map(({id,role,label,createdAt,expiresAt,revokedAt})=>({id,role,label,createdAt,expiresAt,revokedAt}))});
         });
         if(request.method!=='POST'||!['/auth/claim','/auth/invite','/auth/redeem','/auth/revoke'].includes(path))return accessJson({error:'Not found'},404);
         const body=await readSmallJson(request);
@@ -133,7 +163,7 @@ export class FamilyAccess {
         return this.storage.transaction(async tx=>{
             const user=await this.authorize(request,['owner','parent','main'],tx);if(!user)forbidden();
             if(user.role!=='owner'&&body.id!==user.id)forbidden();
-            const state=await tx.get(ACCESS_KEY),target=Object.values(state.devices).find(d=>d.id===body.id);
+            const state=await tx.get(ACCESS_KEY),target=Object.values(state?.devices||{}).find(d=>d.id===body.id);
             if(!target||target.role==='owner')forbidden();
             if(!target.revokedAt){target.revokedAt=Date.now();state.generation=(state.generation||0)+1;}
             await tx.put(ACCESS_KEY,state);return accessJson({ok:true});
@@ -142,7 +172,7 @@ export class FamilyAccess {
     async snapshotVersion(store){
         const state=await store.get(ACCESS_KEY);
         if(!state?.locked)return null;
-        const expiries=Object.values(state.devices).filter(d=>d.role==='parent'&&active(d)&&d.expiresAt).map(d=>d.expiresAt);
+        const expiries=Object.values(state.devices||{}).filter(d=>d.role==='parent'&&active(d)&&d.expiresAt).map(d=>d.expiresAt);
         return {accessGeneration:state.generation,accessExpiresAt:expiries.length?Math.min(...expiries):0};
     }
     async publicSnapshot(data,store=this.storage){

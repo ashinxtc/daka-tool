@@ -5062,7 +5062,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     Object.keys(data).forEach(k => { if (versions[k]) trimmed[k] = versions[k]; });
                     data._keyVersions = trimmed;
                 } catch (e) {}
-                return deviceAccess.required(syncCode)?stripSecrets(data):data;
+                return stripSecrets(data);
             };
 
             // 并发锁（修复 Bug5）
@@ -9224,7 +9224,7 @@ ${context}
 										<div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-2xl text-left space-y-2.5 animate-in fade-in">
 											<div className="flex items-start gap-2 text-xs text-amber-900 font-medium leading-relaxed">
 												<span className="text-base shrink-0">⚠️</span>
-												<span>{welcomeSyncError} <a className="underline" href={securityUrl(welcomeSyncCodeInput)}>打开设备配对</a></span>
+												<span>{welcomeSyncError}</span>
 											</div>
 											<button
 												type="button"
