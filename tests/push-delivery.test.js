@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {hkdfSync,createDecipheriv} from 'node:crypto';
 import {sendWebPush} from '../push-worker.js';
 
 test('delivery uses Workers-compatible manual redirects and never forwards credentials',async()=>{
@@ -15,6 +16,22 @@ test('delivery uses Workers-compatible manual redirects and never forwards crede
         calls++;assert.equal(url,subscription.endpoint);assert.equal(options.redirect,'manual');
         assert.ok(options.headers.Authorization.startsWith('vapid '));
         assert.ok(options.body.byteLength>0);
+        assert.equal(options.headers['Content-Encoding'],'aes128gcm');
+        assert.equal(options.headers.Encryption,undefined);
+        const wire=Buffer.from(options.body),salt=wire.subarray(0,16);
+        assert.equal(wire.readUInt32BE(16),4096);assert.equal(wire[20],65);
+        const sender=wire.subarray(21,86);
+        const publicKey=await crypto.subtle.importKey('raw',sender,{name:'ECDH',namedCurve:'P-256'},false,[]);
+        const shared=await crypto.subtle.deriveBits({name:'ECDH',public:publicKey},receiver.privateKey,256);
+        const ua=Buffer.from(subscription.keys.p256dh,'base64url');
+        const ikm=hkdfSync('sha256',Buffer.from(shared),Buffer.from(subscription.keys.auth,'base64url'),
+            Buffer.concat([Buffer.from('WebPush: info\0'),ua,sender]),32);
+        const cek=Buffer.from(hkdfSync('sha256',Buffer.from(ikm),salt,Buffer.from('Content-Encoding: aes128gcm\0'),16));
+        const nonce=Buffer.from(hkdfSync('sha256',Buffer.from(ikm),salt,Buffer.from('Content-Encoding: nonce\0'),12));
+        const decipher=createDecipheriv('aes-128-gcm',cek,nonce);
+        decipher.setAuthTag(wire.subarray(-16));
+        const plain=Buffer.concat([decipher.update(wire.subarray(86,-16)),decipher.final()]);
+        assert.equal(plain.at(-1),2);assert.equal(plain.subarray(0,-1).toString(),'test');
         return new Response(null,{status,headers:status===302?{Location:'https://other.example/'}:{}});
     };
     try{

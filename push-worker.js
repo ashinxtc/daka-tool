@@ -51,7 +51,7 @@ async function hkdf(ikm, salt, info, length) {
     const prkKey = await crypto.subtle.importKey('raw', salt, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const prk = new Uint8Array(await crypto.subtle.sign('HMAC', prkKey, ikm));
 
-    const infoBuf = new TextEncoder().encode(info);
+    const infoBuf = typeof info === 'string' ? new TextEncoder().encode(info) : info;
     const result = new Uint8Array(length);
     let prev = new Uint8Array(0);
     let offset = 0;
@@ -93,20 +93,18 @@ async function encryptPushPayload(payload, p256dh, auth) {
     const sharedSecret = await computeSharedSecret(keyPair.privateKey, base64UrlDecode(p256dh));
 
     const authSecret = base64UrlDecode(auth);
-    const ikm = await hkdf(sharedSecret, authSecret, 'Content-Encoding: auth\x00', 32);
+    const info = new Uint8Array([...new TextEncoder().encode('WebPush: info\x00'), ...base64UrlDecode(p256dh), ...senderPubKey]);
+    const ikm = await hkdf(sharedSecret, authSecret, info, 32);
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const prk = await hkdf(ikm, salt, 'Content-Encoding: aesgcm\x00', 32);
-
-    const keyInfo = new Uint8Array([...new TextEncoder().encode('Content-Encoding: aesgcm\x00'), ...base64UrlDecode(p256dh)]);
-    const key = (await hkdf(prk, new Uint8Array(0), keyInfo, 16)).slice(0, 16);
-
-    const nonceInfo = new Uint8Array([...new TextEncoder().encode('Content-Encoding: nonce\x00'), ...base64UrlDecode(p256dh)]);
-    const nonce = (await hkdf(prk, new Uint8Array(0), nonceInfo, 12)).slice(0, 12);
-
-    const padded = pkcs7Pad(content, 16);
+    const key = await hkdf(ikm, salt, 'Content-Encoding: aes128gcm\x00', 16);
+    const nonce = await hkdf(ikm, salt, 'Content-Encoding: nonce\x00', 12);
+    if (content.length > 3993) throw new Error('推送内容超过单条消息限制');
+    const padded = new Uint8Array([...content, 2]);
     const encrypted = await aesGcmEncrypt(key, nonce, padded);
-
-    return { salt: base64UrlEncode(salt), publicKey: base64UrlEncode(senderPubKey), ciphertext: encrypted };
+    const header = new Uint8Array(86);
+    header.set(salt); new DataView(header.buffer).setUint32(16, 4096);
+    header[20] = senderPubKey.length; header.set(senderPubKey, 21);
+    return { ciphertext: new Uint8Array([...header, ...encrypted]) };
 }
 
 // Generate VAPID JWT
@@ -228,9 +226,7 @@ export async function sendWebPush(subscription, payload, vapidKeys) {
         const encrypted = await encryptPushPayload(payload, p256dh, auth);
         body = encrypted.ciphertext;
         headers['Content-Type'] = 'application/octet-stream';
-        headers['Content-Encoding'] = 'aesgcm';
-        headers['Encryption'] = `salt=${encrypted.salt}`;
-        headers['Crypto-Key'] = `dh=${encrypted.publicKey}`;
+        headers['Content-Encoding'] = 'aes128gcm';
     } else {
         headers['Content-Type'] = 'application/octet-stream';
         headers['Content-Length'] = '0';
