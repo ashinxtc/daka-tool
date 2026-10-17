@@ -1764,6 +1764,7 @@ const CopyIcon = (props) => (
 
                                 {(() => {
                                     const saveLimitsToServer = () => {
+                                        if(protectedFamily){showToast('warning','请在设备配对管理页使用管理员身份修改兑换汇率与限额。');return;}
                                         const effectiveCode = syncCode || 'local_' + activeChild;
                                         const limits = {
                                             minGold: (() => { try { return parseInt(storage.getItem('app_exchange_min_gold') || '500'); } catch(e) { return 500; } })(),
@@ -1783,6 +1784,7 @@ const CopyIcon = (props) => (
                                             else showToast('error', d.error || '限额同步失败');
                                         }).catch(() => showToast('error', '网络错误，限额未同步到服务端'));
                                     };
+                                    if(protectedFamily)return <a href={securityUrl(syncCode)} className="block p-3 text-indigo-700 underline">打开家庭管理员页面，读取或修改服务端兑换汇率与限额</a>;
                                     return (
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                             <div className="bg-slate-50/70 p-3 rounded-xl border border-slate-200/60">

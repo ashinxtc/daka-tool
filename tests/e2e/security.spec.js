@@ -35,9 +35,10 @@ async function route(page,control={}){
         const options={method:req.method(),headers:req.headers()};
         if(options.method==='POST')options.body=req.postData();
         const response=await mf.dispatchFetch(req.url(),options);
+        const reply={status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()};
         if(control.pauseCheck&&url.pathname==='/auth/check'){control.checkReceived=true;await new Promise(resolve=>{control.releaseCheck=resolve;});}
         if(control.dropRedeem&&url.pathname==='/auth/redeem')return r.abort();
-        await r.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
+        await r.fulfill(reply);
     });
 }
 async function pair(page,f,role){

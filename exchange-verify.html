@@ -150,6 +150,7 @@
     <script>
         (function() {
             var params = new URLSearchParams(window.location.search);
+            if(params.has('family')||params.get('secure')==='1'||(params.get('id')||'').startsWith('exs_'))return;
             var applyId = params.get('id') || '';
             var childName = params.get('child') ? decodeURIComponent(params.get('child')) : '—';
             var goldAmount = params.get('gold') || '—';
@@ -233,5 +234,6 @@
             });
         })();
     </script>
+    <script type="module" src="/src/exchangeVerify.js"></script>
 </body>
 </html>

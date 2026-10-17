@@ -15,6 +15,7 @@ test('actual direct-verification handler accepts correct passwords and rejects w
     for(const [stored,input,success] of [['"1234"','1234',true],['1234','1234',true],['"1234"','wrong',false],['""','4567',true],[null,'4567',true],['""','1234',false]]) {
         const toasts=[];let history={};
         vm.runInNewContext(handler+'handleParentDirectVerify();',{
+            deviceAccess:{required:()=>false},syncCode:'legacy-family',
             readStoredString,storage:{getItem:()=>stored,setItem(){},removeItem(){}},
             applyResult:{applyId:'test',cnyAmount:5,goldAmount:500,verifyCode:'4567',isOffline:true},
             activeChild:'孩子',targetCny:5,neededGold:500,window:{prompt:()=>input},
@@ -24,4 +25,11 @@ test('actual direct-verification handler accepts correct passwords and rejects w
         assert.equal(toasts.at(-1)[0],success?'success':'error');
         assert.equal(Object.keys(history).length,success?1:0);
     }
+});
+test('protected direct verification never prompts for a local password or debits before server confirmation',()=>{
+    const source=fs.readFileSync(new URL('../src/components/modals/ExchangePanel.jsx',import.meta.url),'utf8');
+    const handler=source.slice(source.indexOf('const handleParentDirectVerify = () => {'),source.indexOf('// 撤销待核销申请'));
+    let target;
+    vm.runInNewContext(handler+'handleParentDirectVerify();',{deviceAccess:{required:()=>true},syncCode:'family',applyResult:{applyId:'exs_test'},location:{assign:url=>target=url},window:{prompt:()=>assert.fail('must not use local password')},setWheelHistory:()=>assert.fail('must not debit locally')});
+    assert.match(target,/family=family&id=exs_test&secure=1/);
 });

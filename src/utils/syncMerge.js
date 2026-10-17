@@ -1,4 +1,5 @@
 import {isSecretKey} from '../../shared/access-policy.js';
+import {pinExchangeHistory} from '../../shared/gold-balance.js';
 // Baselines belong to the snapshot actually read; wall clocks never pick a winner.
 export const protectedSnapshot = snapshot => {
     try{return JSON.parse(snapshot?.app_authorized_parents_v1||'null')?.securityVersion===1;}catch{return false;}
@@ -57,7 +58,11 @@ export function mergeSyncSnapshots(base, local, remote, { resolve = {}, mergeKey
         if (!key.startsWith('app_') || localKeys.has(key)) continue;
         if(protectedRemote&&isSecretKey(key))continue;
         if(protectedRemote&&key==='app_authorized_parents_v1'){data[key]=remote[key];continue;}
-        const b = own(base || {}, key), l = own(local || {}, key), r = own(remote || {}, key);
+        let b = own(base || {}, key), l = own(local || {}, key);const r = own(remote || {}, key);
+        if(protectedRemote&&key==='app_wheel_history'){
+            const cloud=decode(r),pin=raw=>{const value=decode(raw);return (value===missing||object(value))&&(cloud===missing||object(cloud))?JSON.stringify(pinExchangeHistory(value===missing?{}:value,cloud===missing?{}:cloud)):raw;};
+            b=pin(b);l=pin(l);
+        }
         let v;
         if (mergeKey && !equal(l, b) && !equal(r, b) && l !== missing && r !== missing) v = mergeKey(key, l, r);
         if (v !== undefined) { data[key] = v; continue; }

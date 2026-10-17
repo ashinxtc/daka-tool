@@ -14,6 +14,7 @@ import { WECOM_API_URL, EXCHANGE_WORKER_URL, PUSH_WORKER_URL } from './constants
 import { SettingsModal, LowPerfToggle } from './components/modals/SettingsModal';
 import {syncFetch,deviceAccess,securityUrl} from './utils/deviceAccess';
 import {stripSecrets} from '../shared/access-policy';
+import {calculateGold,pinExchangeHistory} from '../shared/gold-balance';
 import { ExchangePanel } from './components/modals/ExchangePanel';
 
 import { StatsModal } from './components/stats/StatsModal';
@@ -53,7 +54,7 @@ import { storage, commitDurable, canSyncStorage, getStorageState, flushPendingSt
 import StorageGate from './components/common/StorageGate';
 import { selectAndRestoreBackup } from './utils/backup';
 import { readSyncSnapshot, writeSyncSnapshot, syncMetadata, checkedSyncJson, SyncRequestError } from './utils/syncTransport';
-import { mergeSyncSnapshots, syncValues } from './utils/syncMerge';
+import { mergeSyncSnapshots, syncValues,protectedSnapshot } from './utils/syncMerge';
 import { createSyncCoordinator, SYNC_CHECKPOINT_KEY } from './utils/syncCoordinator';
 import SyncConflictDialog from './components/common/SyncConflictDialog';
 import { useNightMode } from './hooks/useNightMode';
@@ -1628,55 +1629,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             }, [tasks, deferredActiveChild, sortBy, checkins]);
 
             // --- 辅助函数：计算总资产 (独立于 state 用于成就检查) ---
-            const calculateTotalGold = (cCheckins, cWheelHistory, child, cBuffs, cTasks) => {
-                let total = 0;
-                const childBuffs = cBuffs?.[child] || {};
-
-                if ((cTasks || tasks)[child]) {
-                    (cTasks || tasks)[child].forEach(task => {
-                        const record = cCheckins[child]?.[task.id] || {};
-                        const currentCount = Object.keys(record).length;
-                        
-                        Object.keys(record).forEach(date => {
-                            const val = record[date];
-                            // 多次打卡数组
-                            if (Array.isArray(val)) {
-                                val.forEach(entry => {
-                                    const t = entry.t || 0;
-                                    const histKey = t ? `${child}-TASK-${task.id}-${date}_${t}` : `${child}-TASK-${task.id}-${date}`;
-                                    if (cWheelHistory[histKey]) return;
-                                    let multiplier = 1;
-                                    const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
-                                    if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
-                                        multiplier = childBuffs.investMultiplier;
-                                    }
-                                    total += task.reward * multiplier;
-                                });
-                                return;
-                            }
-                            // 旧格式：数字
-                            const historyKey = `${child}-TASK-${task.id}-${date}`;
-                            if (cWheelHistory[historyKey]) return;
-                            let multiplier = 1;
-                            const effectiveStart = childBuffs.investStart || (childBuffs.investExpire ? dateKeySubtractDays(childBuffs.investExpire, 30) : getLocalDateKey(0));
-                            if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && date <= childBuffs.investExpire && date >= effectiveStart) {
-                                multiplier = childBuffs.investMultiplier;
-                            }
-                            total += task.reward * multiplier;
-                        })
-
-                        // 每日必做/每周选做：仅 earlyCompleted 时计入完成奖励（已从周结算移除）
-                        const freq = task.frequencyType || 'count';
-                        if (freq === 'count' && currentCount >= (task.targetCount || 0)) total += (task.completedReward || 0);
-						if ((freq === 'daily_must' || freq === 'weekly_optional') && task.earlyCompleted) total += (task.completedReward || 0);
-                    });
-                }
-                Object.keys(cWheelHistory).forEach(key => {
-                    // 扣除商店消费
-                    if (key.startsWith(`${child}-`)) total += cWheelHistory[key];
-                });
-                return Math.max(0, total);
-            };
+            const calculateTotalGold = (cCheckins, cWheelHistory, child, cBuffs, cTasks) => calculateGold(cCheckins,cWheelHistory,child,cBuffs,cTasks||tasks);
 
             const totalGold = useMemo(() => {
                 // 【修改】传入 activeBuffs
@@ -5045,7 +4998,8 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 window._syncActiveCloudEvilLogKeys = null;
                 const mergedValue = key => JSON.parse(writes[key] ?? localSnapshot[key] ?? storage.getItem(key) ?? '{}');
                 const receipts = mergedValue(RECEIPTS_KEY), escrows = mergedValue(ESCROWS_KEY);
-                const projectedHistory = projectAccounting(mergedValue('app_wheel_history'), receipts, escrows);
+                const projected = projectAccounting(mergedValue('app_wheel_history'), receipts, escrows);
+                const projectedHistory=protectedSnapshot(cloudData)?pinExchangeHistory(projected,JSON.parse(cloudData.app_wheel_history||'{}')):projected;
                 const projectedStats = reconcileDeductionStats(mergedValue('app_stats_v1'), receipts);
                 for (const [key, value] of [['app_wheel_history', projectedHistory], ['app_stats_v1', projectedStats]]) {
                     if (JSON.stringify(value) !== JSON.stringify(mergedValue(key))) {
@@ -5140,6 +5094,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     isCurrent:() => canSyncStorage() && getStorageState().epoch === epoch && currentSyncCodeRef.current === syncCode,
                     mergeKey:mergeAccountingKey,
                     firstMerge:(local, remote) => {
+                        if(protectedSnapshot(remote))return mergeSyncSnapshots({},local,remote,{mergeKey:mergeAccountingKey});
                         if (!remote.app_profiles_v1) return { data:syncValues(local), conflicts:[] };
                         if (storage.getItem('_sync_has_pulled_v1') !== '1' || !Number(storage.getItem('_sync_local_ts'))) {
                             const { snapshot, versions } = buildLocalSnapshot(remote);

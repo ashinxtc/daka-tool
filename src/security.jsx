@@ -14,12 +14,13 @@ function SecurityApp(){
     const [invite,setInvite]=useState(initialInvite),[owner,setOwner]=useState(''),[candidate,setCandidate]=useState('');
     const [voucher,setVoucher]=useState(''),[saved,setSaved]=useState(false),[label,setLabel]=useState('爸爸');
     const [devices,setDevices]=useState([]),[link,setLink]=useState(''),[qr,setQr]=useState('');
+    const [limits,setLimits]=useState(null);
     const [message,setMessage]=useState(''),[busy,setBusy]=useState(false),[paired,setPaired]=useState(null);
     const managementEpoch=useRef(0);
     const request=async(...args)=>{const epoch=managementEpoch.current;const result=await deviceAccess.request(...args);if(epoch!==managementEpoch.current)throw new Error('管理页面已锁定，请重新解锁。');return result;};
     const validCode=()=>{if(!/^[\w一-鿿-]{4,32}$/.test(code))throw new Error('家庭同步码需为 4–32 位字母、数字、中文、连字符或下划线。');};
     const run=async fn=>{if(busy)return;setBusy(true);setMessage('');try{validCode();await fn();}catch(error){setMessage(error.message);}finally{setBusy(false);}};
-    const lock=()=>{managementEpoch.current++;setOwner('');setCandidate('');setVoucher('');setSaved(false);setDevices([]);setLink('');};
+    const lock=()=>{managementEpoch.current++;setOwner('');setCandidate('');setVoucher('');setSaved(false);setDevices([]);setLink('');setLimits(null);};
     useEffect(()=>{const restore=e=>{if(e.persisted)lock();};window.addEventListener('pagehide',lock);window.addEventListener('pageshow',restore);return()=>{window.removeEventListener('pagehide',lock);window.removeEventListener('pageshow',restore);};},[]);
     useEffect(()=>{let active=true;setQr('');if(link)QRCode.toDataURL(link,{width:240,margin:1}).then(value=>{if(active)setQr(value);}).catch(()=>{});return()=>{active=false;};},[link]);
     const list=async token=>{const data=await request(code,'/auth/devices',{token});setDevices(data.devices);};
@@ -67,6 +68,12 @@ function SecurityApp(){
                 <p>上方“设备用途”决定邀请主程序还是家长手机。</p>
                 <button disabled={busy} onClick={()=>run(async()=>{const grant=await request(code,'/auth/invite',{token:owner,body:{role,label}});setLink(`${location.origin}/security.html?code=${encodeURIComponent(code)}#invite=${grant.invite}&role=${grant.role}`);setMessage('邀请十分钟内有效，只能连接一台设备。不要公开转发。');})}>生成限时邀请</button>
                 {link&&<div>{qr&&<img alt="限时设备配对二维码" src={qr}/>}<label>邀请链接<textarea readOnly value={link}/></label></div>}
+                <details><summary>兑换汇率与限额</summary>
+                    <p>安全兑换按这里确认的家庭汇率结算；市场图表仅作财商参考。设置变更不改变已提交订单。</p>
+                    <button disabled={busy} onClick={()=>run(async()=>{const data=await request(code,'/exchange/limits',{token:owner});setLimits(data.limits);})}>读取兑换设置</button>
+                    {limits&&<>{[['minGold','最低兑换元宝'],['maxSingle','单笔上限（0 不限）'],['maxWeekly','每周上限（0 不限）'],['rateMicros','每个元宝兑换人民币（元）']].map(([key,title])=><label key={key}>{title}<input type="number" min="0" step={key==='rateMicros'?'0.000001':'1'} value={key==='rateMicros'?limits[key]/1e6:limits[key]} onChange={e=>setLimits({...limits,[key]:key==='rateMicros'?Math.round(Number(e.target.value)*1e6):Number(e.target.value)})}/></label>)}
+                    <button disabled={busy} onClick={()=>run(async()=>{const data=await request(code,'/exchange/limits',{token:owner,body:{limits}});setLimits(data.limits);setMessage('兑换设置已由服务端确认。');})}>保存兑换设置</button></>}
+                </details>
                 <button disabled={busy} onClick={()=>run(()=>list(owner))}>刷新设备列表</button>
                 <ul>{devices.map(d=><li key={d.id}>{d.label} · {d.role} · {d.revokedAt?'已撤销':d.expiresAt&&d.expiresAt<=Date.now()?'已到期':'有效'}
                     {d.role!=='owner'&&!d.revokedAt&&<button disabled={busy} onClick={()=>{if(confirm(`撤销 ${d.label} 的设备授权？`))run(async()=>{await request(code,'/auth/revoke',{token:owner,body:{id:d.id}});await list(owner);setMessage('设备已撤销，不能再同步。');});}}>撤销设备</button>}</li>)}</ul>

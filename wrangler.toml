@@ -8,6 +8,8 @@ SYNC_MODE = "readonly"
 # Security foundation only: keep legacy until all clients and service bindings
 # complete the migration checklist in docs/service-authorization.md.
 AUTH_MODE = "legacy"
+# Isolated migration preview only. No production exchange cutover yet.
+EXCHANGE_MODE = "off"
 
 [[durable_objects.bindings]]
 name = "SYNC_FAMILIES"

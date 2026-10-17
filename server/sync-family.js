@@ -1,4 +1,5 @@
 import {FamilyAccess,AccessError} from './family-access.js';
+import {FamilyExchange} from './family-exchange.js';
 const MAX_BYTES = 8 * 1024 * 1024, PART_SIZE = 64 * 1024;
 const encoder = new TextEncoder(), decoder = new TextDecoder();
 export class SyncError extends Error {
@@ -121,9 +122,17 @@ export class SyncFamily {
         try{response.headers.set('X-Family-Auth',await this.access.required()?'required':'legacy');}catch{}
         return response;
     }
+    async exchangeSnapshot(tx){const head=await tx.get('head');return head.exists?await readSnapshot(tx,head.revision):{};}
+    async commitExchangeSnapshot(tx,data){
+        const head=await tx.get('head'),revision=head.revision+1,ts=Math.max(Date.now(),head.ts+1);
+        await writeSnapshot(tx,revision,{...data,_syncTs:ts});
+        if(head.backupRevision!==undefined)await deleteSnapshot(tx,head.backupRevision);
+        await tx.put('head',{...head,revision,ts,exists:true,backupRevision:head.revision,...await this.access.snapshotVersion(tx)});
+    }
     async handleRequest(request) {
         try {
             const url = new URL(request.url);
+            if(url.pathname.startsWith('/exchange/'))return json(await new FamilyExchange(this).handle(request,url.searchParams.get('code')));
             const authResponse=await this.access.handle(request,url.searchParams.get('code'));
             if(authResponse)return authResponse;
             await this.access.authorize(request,['main','parent']);

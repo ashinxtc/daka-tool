@@ -64,7 +64,7 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         if(result.ok!==true)throw new DeviceAccessError('服务端尚未确认解绑。','INVALID_RECEIPT',502);
         storage.removeItem(key(code,role));return result;
     };
-    return {credential,required,request,syncFetch,pair,revokeSelf,
+    return {credential,required,request,syncFetch,pair,revokeSelf,rememberRequired:markRequired,
         pending:(code,role)=>parse(storage?.getItem(pendingKey(code,role))),
         discardPending:(code,role)=>storage?.removeItem(pendingKey(code,role))};
 }

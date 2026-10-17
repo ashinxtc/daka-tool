@@ -33,7 +33,7 @@ async function verifyActivation(secret,voucher,code) {
         ||grant.expiresAt<=Date.now()||grant.expiresAt<=grant.issuedAt||grant.expiresAt-grant.issuedAt>3600000)forbidden();
     return grant;
 }
-async function readSmallJson(request) {
+export async function readSmallJson(request) {
     const reader=request.body?.getReader(),chunks=[];let size=0;
     if(reader)while(true){
         const {done,value}=await reader.read();if(done)break;
@@ -158,6 +158,11 @@ export class FamilyAccess {
         if(!user)return next;
         if(Object.keys(next).some(isSecretKey))throw new AccessError(403,'PRIVATE_SETTING','密码和 API 密钥只能保存在本机，不能上传到家庭快照。');
         const visible=await this.publicSnapshot(previous||{},store);
+        // Exchange debits are written only by the order transaction, never by a snapshot upload.
+        const beforeHistory=JSON.parse(previous?.app_wheel_history||'{}'),afterHistory=JSON.parse(next.app_wheel_history||'{}');
+        for(const key of new Set([...Object.keys(beforeHistory),...Object.keys(afterHistory)])){
+            if(key.includes('-EXCHANGE-')&&beforeHistory[key]!==afterHistory[key])forbidden();
+        }
         if('app_authorized_parents_v1' in next&&!sameStoredValue(next.app_authorized_parents_v1,visible.app_authorized_parents_v1))forbidden();
         if(user.role==='parent'){
             const allowed=new Set(['app_parent_actions_v1','app_global_messages_v2','app_authorized_parents_v1']);
