@@ -3,13 +3,12 @@ main = "cloudflare-worker.js"
 compatibility_date = "2024-01-01"
 
 [vars]
-# Deploy read-only first; follow docs/sync-consistency.md before switching to active.
-SYNC_MODE = "readonly"
-# Security foundation only: keep legacy until all clients and service bindings
-# complete the migration checklist in docs/service-authorization.md.
-AUTH_MODE = "legacy"
-# Isolated migration preview only. No production exchange cutover yet.
-EXCHANGE_MODE = "off"
+# Production migration completed: preserve the authoritative DO and device gate.
+# Emergency maintenance uses SYNC_MODE="paused", never legacy KV writes.
+SYNC_MODE = "active"
+AUTH_MODE = "enforced"
+# The protected exchange protocol retains the historical "preview" enum value.
+EXCHANGE_MODE = "preview"
 # PUSH_SERVICE_SECRET must be injected as a Worker secret, matching daka-push.
 
 [[durable_objects.bindings]]
