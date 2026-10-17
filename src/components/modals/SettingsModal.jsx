@@ -1339,7 +1339,7 @@ const CopyIcon = (props) => (
 
                             {/* 同步码输入与生成卡片 */}
                             <section className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-3.5">
-                                <a className="block text-indigo-700 underline" href={securityUrl(syncCode)}>设备配对 / 重新授权（安全迁移预览）</a>
+                                <a className="block text-indigo-700 underline" href={securityUrl(syncCode)}>设备配对 / 重新授权</a>
                                 <label className="text-xs font-bold text-slate-700 block">家庭私密同步码 (Sync Code)</label>
                                 <div className="flex gap-2 items-center">
                                     <input 

@@ -44,7 +44,7 @@ function SecurityApp(){
     };
     return <main className="security-page"><h1>家庭设备配对</h1>
         <p>主程序与家长手机分别授权。Safari、微信及桌面独立 App 的存储可能相互独立，请在实际使用的环境打开邀请。</p>
-        <p className="caution">安全迁移预览：只有管理员已开启迁移的测试家庭才能激活。兑换与推送配套完成前，不要用于生产迁移。</p>
+        <p className="caution">家庭已启用设备授权。请通过家庭管理员签发的限时邀请连接设备；管理员密钥请单独安全保存。</p>
         <label>家庭同步码<input value={code} disabled={busy||!!owner||!!paired} onChange={e=>{setCode(e.target.value.trim());setDevices([]);setLink('');}} autoComplete="off"/></label>
         <section><h2>连接这台设备</h2>
             <label>设备用途<select value={role} disabled={busy||!!paired} onChange={e=>setRole(e.target.value)}><option value="main">主程序（孩子的平板/家庭电脑）</option><option value="parent">家长手机</option></select></label>
