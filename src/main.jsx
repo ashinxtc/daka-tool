@@ -9904,7 +9904,9 @@ ${context}
                                         onClick={() => isMissed ? handleMissedDayClick(date) : null}
                                         className={`relative p-2 min-w-[50px] text-center font-bold text-xs transition-colors overflow-visible rounded-t-lg
                                           ${isToday 
-                                            ? (gamificationConfig?.comboEnabled !== false && comboInfo.columnBg ? comboInfo.columnBg : (hasActiveBg ? 'bg-amber-400/25 text-white rounded-t-lg shadow-sm border-t-2 border-amber-300 backdrop-blur-xs ring-1 ring-amber-300/40' : `${theme.primary} bg-white rounded-t-lg shadow-sm border-t-2 border-current ring-1 ring-amber-400/30`)) 
+                                            ? (gamificationConfig?.comboEnabled !== false 
+                                                ? (comboInfo.columnBg || (hasActiveBg ? 'combo-beam-charging text-white rounded-t-lg' : 'combo-beam-charging text-slate-800 rounded-t-lg')) 
+                                                : (hasActiveBg ? 'bg-amber-400/25 text-white rounded-t-lg shadow-sm border-t-2 border-amber-300 backdrop-blur-xs' : `${theme.primary} bg-white rounded-t-lg shadow-sm border-t-2 border-current`)) 
                                             : isWeekend 
                                               ? (hasActiveBg ? 'bg-rose-500/20 text-rose-200 border-t-2 border-rose-400/80 rounded-t-lg shadow-inner' : 'bg-rose-50 text-rose-600 border-t-2 border-rose-400 rounded-t-lg') 
                                               : (hasActiveBg ? 'text-white/70 hover:bg-white/5' : 'text-gray-500 hover:bg-gray-50')} 
@@ -10056,7 +10058,13 @@ ${context}
                                       const needBreathe = freq === 'daily_must' && isToday && !isChecked && !isBeforeStart && !isAfterEnd;
                                       const isRepaired = !!(repairedCheckins[activeChild]?.[task.id]?.[date]);
                                       return (
-                                        <td key={date} className={`p-2 text-center transition-colors ${isToday ? (gamificationConfig?.comboEnabled !== false && todayComboInfo.cellAuraCls ? todayComboInfo.cellAuraCls : (hasActiveBg ? 'bg-white/10' : 'bg-white shadow-y')) : (isWeekend ? (hasActiveBg ? 'bg-rose-500/[0.05]' : 'bg-rose-50/40') : '')}`}>
+                                        <td key={date} className={`p-2 text-center transition-colors relative overflow-visible ${
+                                          isToday 
+                                            ? (gamificationConfig?.comboEnabled !== false 
+                                                ? (todayComboInfo.cellAuraCls || 'combo-beam-charging') 
+                                                : (hasActiveBg ? 'bg-white/10' : 'bg-white shadow-y')) 
+                                            : (isWeekend ? (hasActiveBg ? 'bg-rose-500/[0.05]' : 'bg-rose-50/40') : '')
+                                        }`}>
                                           <div className="relative w-8 h-8 mx-auto">
                                             {/* 连胜暴击浮动纯文字（无背景无框，高级金色高光流光） */}
                                             {comboFloatingBursts.filter(b => b.taskId === task.id && b.date === date).map(burst => (

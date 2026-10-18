@@ -268,8 +268,8 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             textColor: 'text-amber-200',
             textShadow: '0 0 14px rgba(251,191,36,1), 0 0 22px rgba(245,158,11,0.85)',
             auraType: 'gold',
-            columnBg: 'bg-gradient-to-b from-amber-400/35 via-yellow-400/25 to-amber-500/35 border-x-2 border-yellow-300/80 shadow-[inset_0_0_24px_rgba(234,179,8,0.45)] ring-1 ring-yellow-300/50',
-            cellAuraCls: 'bg-gradient-to-b from-amber-400/20 to-yellow-500/20 border-x border-amber-300/50 shadow-[inset_0_0_15px_rgba(251,191,36,0.25)]'
+            columnBg: 'combo-beam-gold bg-gradient-to-b from-amber-400/35 via-yellow-400/25 to-amber-500/35 rounded-t-lg',
+            cellAuraCls: 'combo-beam-gold bg-gradient-to-b from-amber-400/20 to-yellow-500/20'
         };
     }
     if (comboCount >= 5) {
@@ -281,8 +281,8 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             textColor: 'text-yellow-300',
             textShadow: '0 0 12px rgba(234,179,8,1), 0 0 18px rgba(249,115,22,0.8)',
             auraType: 'gold',
-            columnBg: 'bg-gradient-to-b from-amber-400/30 via-yellow-400/20 to-orange-500/30 border-x-2 border-amber-300/70 shadow-[inset_0_0_20px_rgba(234,179,8,0.4)]',
-            cellAuraCls: 'bg-amber-400/15 border-x border-amber-300/40 shadow-[inset_0_0_12px_rgba(234,179,8,0.2)]'
+            columnBg: 'combo-beam-gold bg-gradient-to-b from-amber-400/30 via-yellow-400/20 to-orange-500/30 rounded-t-lg',
+            cellAuraCls: 'combo-beam-gold bg-amber-400/15'
         };
     }
     if (comboCount >= 3) {
@@ -294,8 +294,8 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             textColor: 'text-amber-300',
             textShadow: '0 0 10px rgba(252,211,77,0.9), 0 0 15px rgba(245,158,11,0.6)',
             auraType: 'yellow',
-            columnBg: 'bg-amber-400/25 border-x border-amber-300/50 shadow-[inset_0_0_16px_rgba(251,191,36,0.3)]',
-            cellAuraCls: 'bg-amber-400/10 border-x border-amber-300/30 shadow-[inset_0_0_10px_rgba(251,191,36,0.15)]'
+            columnBg: 'combo-beam-yellow bg-amber-400/25 rounded-t-lg',
+            cellAuraCls: 'combo-beam-yellow bg-amber-400/10'
         };
     }
     if (comboCount >= 2) {
@@ -307,8 +307,8 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             textColor: 'text-yellow-200',
             textShadow: '0 0 8px rgba(254,240,138,0.85), 0 0 12px rgba(251,191,36,0.5)',
             auraType: 'yellow',
-            columnBg: 'bg-amber-300/20 border-x border-amber-200/40 shadow-[inset_0_0_12px_rgba(252,211,77,0.25)]',
-            cellAuraCls: 'bg-amber-300/10 border-x border-amber-200/25 shadow-[inset_0_0_8px_rgba(252,211,77,0.12)]'
+            columnBg: 'combo-beam-yellow bg-amber-300/20 rounded-t-lg',
+            cellAuraCls: 'combo-beam-yellow bg-amber-300/10'
         };
     }
     return {
@@ -319,8 +319,8 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
         textColor: 'text-white',
         textShadow: '0 0 8px rgba(255,255,255,0.9), 0 0 14px rgba(224,242,254,0.7)',
         auraType: 'white',
-        columnBg: 'bg-white/20 border-x border-white/30 shadow-[inset_0_0_12px_rgba(255,255,255,0.25)]',
-        cellAuraCls: 'bg-white/10 border-x border-white/20 shadow-[inset_0_0_8px_rgba(255,255,255,0.15)]'
+        columnBg: 'combo-beam-white bg-white/20 rounded-t-lg',
+        cellAuraCls: 'combo-beam-white bg-white/10'
     };
 };
 

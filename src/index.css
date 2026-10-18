@@ -103,28 +103,116 @@
   animation: combo-burst 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* 当日连胜能量光柱呼吸光晕（整列贯穿上下） */
-@keyframes combo-aura-pulse-white {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 1; }
+/* =========================================================
+   当日连胜能量光柱 · 街机呼吸灯与向外扩散光晕系统 (Combo Rush Aura)
+   1. 彻底移除限制在列内的硬框 (No rigid box borders/insets)
+   2. 多层大半径 box-shadow 向外弥散扩散，覆盖到相邻日期列边缘
+   3. 呼吸灯节律律动（显著明暗涨落，犹如强力能量柱充能）
+   ========================================================= */
+
+@keyframes combo-beam-breathe-charging {
+  0%, 100% {
+    background-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 
+      -4px 0 14px 2px rgba(255, 255, 255, 0.20),
+      4px 0 14px 2px rgba(255, 255, 255, 0.20),
+      0 0 10px 2px rgba(224, 242, 254, 0.15);
+  }
+  50% {
+    background-color: rgba(255, 255, 255, 0.22);
+    box-shadow: 
+      -10px 0 24px 6px rgba(255, 255, 255, 0.55),
+      10px 0 24px 6px rgba(255, 255, 255, 0.55),
+      0 0 28px 8px rgba(224, 242, 254, 0.40);
+  }
 }
-@keyframes combo-aura-pulse-yellow {
-  0%, 100% { opacity: 0.88; }
-  50% { opacity: 1; }
+
+@keyframes combo-beam-breathe-white {
+  0%, 100% {
+    background-color: rgba(255, 255, 255, 0.14);
+    box-shadow: 
+      -6px 0 16px 3px rgba(255, 255, 255, 0.30),
+      6px 0 16px 3px rgba(255, 255, 255, 0.30),
+      0 0 14px 4px rgba(224, 242, 254, 0.25);
+  }
+  50% {
+    background-color: rgba(255, 255, 255, 0.38);
+    box-shadow: 
+      -14px 0 32px 8px rgba(255, 255, 255, 0.90),
+      14px 0 32px 8px rgba(255, 255, 255, 0.90),
+      0 0 42px 14px rgba(224, 242, 254, 0.70),
+      0 0 60px 20px rgba(186, 230, 253, 0.45);
+  }
 }
-@keyframes combo-aura-pulse-gold {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 1; }
+
+@keyframes combo-beam-breathe-yellow {
+  0%, 100% {
+    background-color: rgba(251, 191, 36, 0.15);
+    box-shadow: 
+      -8px 0 18px 4px rgba(251, 191, 36, 0.35),
+      8px 0 18px 4px rgba(251, 191, 36, 0.35),
+      0 0 16px 4px rgba(245, 158, 11, 0.25);
+  }
+  50% {
+    background-color: rgba(251, 191, 36, 0.40);
+    box-shadow: 
+      -16px 0 36px 10px rgba(251, 191, 36, 0.90),
+      16px 0 36px 10px rgba(251, 191, 36, 0.90),
+      0 0 48px 16px rgba(245, 158, 11, 0.75),
+      0 0 70px 24px rgba(234, 88, 12, 0.45);
+  }
 }
-.animate-aura-white {
-  animation: combo-aura-pulse-white 2.4s ease-in-out infinite;
+
+@keyframes combo-beam-breathe-gold {
+  0%, 100% {
+    background-color: rgba(245, 158, 11, 0.18);
+    box-shadow: 
+      -10px 0 20px 5px rgba(251, 191, 36, 0.45),
+      10px 0 20px 5px rgba(251, 191, 36, 0.45),
+      0 0 20px 5px rgba(245, 158, 11, 0.30);
+  }
+  50% {
+    background-color: rgba(245, 158, 11, 0.48);
+    box-shadow: 
+      -20px 0 42px 14px rgba(251, 191, 36, 1.0),
+      20px 0 42px 14px rgba(251, 191, 36, 1.0),
+      0 0 55px 20px rgba(245, 158, 11, 0.85),
+      0 0 85px 30px rgba(234, 88, 12, 0.55);
+  }
 }
-.animate-aura-yellow {
-  animation: combo-aura-pulse-yellow 2.0s ease-in-out infinite;
+
+.combo-beam-charging {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  animation: combo-beam-breathe-charging 2.4s ease-in-out infinite !important;
 }
-.animate-aura-gold {
-  animation: combo-aura-pulse-gold 1.6s ease-in-out infinite;
+
+.combo-beam-white {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  animation: combo-beam-breathe-white 2.1s ease-in-out infinite !important;
 }
+
+.combo-beam-yellow {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  animation: combo-beam-breathe-yellow 1.8s ease-in-out infinite !important;
+}
+
+.combo-beam-gold {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  animation: combo-beam-breathe-gold 1.5s ease-in-out infinite !important;
+}
+
+/* 兼容别名 */
+.animate-aura-white { animation: combo-beam-breathe-white 2.1s ease-in-out infinite; }
+.animate-aura-yellow { animation: combo-beam-breathe-yellow 1.8s ease-in-out infinite; }
+.animate-aura-gold { animation: combo-beam-breathe-gold 1.5s ease-in-out infinite; }
 
 /* --- 新春限定·火树银花背景特效 --- */
 .bg-lunar-night {
