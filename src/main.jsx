@@ -63,7 +63,7 @@ import { PerformanceContext, PerformanceProvider } from './context/PerformanceCo
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
 import { initLoadingScreen } from './utils/loadingScreen';
 import { QRCodeView } from './utils/qrcode';
-import { getValidDeviceIdsSet } from './utils/deviceFingerprint';
+import { getValidDeviceIdsSet, consolidateLegacyDevices } from './utils/deviceFingerprint';
 import confetti from 'canvas-confetti';
 if (typeof window !== 'undefined' && !window.confetti) {
     window.confetti = confetti;
@@ -1164,14 +1164,25 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [authorizedParents, setAuthorizedParents] = useStickyState({ pairToken: '', devices: [] }, 'app_authorized_parents_v1');
             const [parentActions, setParentActions] = useStickyState([], 'app_parent_actions_v1');
 
-            // 自动确保生成家庭专属配对密钥
+            // 自动确保生成家庭专属配对密钥，并自动无缝融合存量多入口绑定记录
             React.useEffect(() => {
                 if(authorizedParents?.securityVersion===1||deviceAccess.required(syncCode))return;
-                if (!authorizedParents || !authorizedParents.pairToken) {
-                    const token = 'token_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+                let needsUpdate = false;
+                let token = authorizedParents?.pairToken;
+                if (!token) {
+                    token = 'token_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+                    needsUpdate = true;
+                }
+                const currentDevs = (authorizedParents && Array.isArray(authorizedParents.devices)) ? authorizedParents.devices : [];
+                const consolidatedDevs = consolidateLegacyDevices(currentDevs);
+                if (consolidatedDevs.length !== currentDevs.length || JSON.stringify(consolidatedDevs) !== JSON.stringify(currentDevs)) {
+                    needsUpdate = true;
+                }
+                if (needsUpdate) {
                     setAuthorizedParents(prev => ({
+                        ...(prev || {}),
                         pairToken: token,
-                        devices: (prev && Array.isArray(prev.devices)) ? prev.devices : []
+                        devices: consolidatedDevs
                     }));
                 }
             }, [authorizedParents]);
@@ -4768,7 +4779,12 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         cloudChanged = true;
                     }
 
-                    const merged = { pairToken, devices: [...devMap.values()], revokedDevices: mergedRevoked };
+                    const consolidatedDevs = consolidateLegacyDevices([...devMap.values()]);
+                    if (consolidatedDevs.length !== devMap.size) {
+                        cloudChanged = true;
+                    }
+
+                    const merged = { pairToken, devices: consolidatedDevs, revokedDevices: mergedRevoked };
                     const localChanged = JSON.stringify(merged) !== JSON.stringify(l);
                     return { merged, localChanged, cloudChanged };
                 },

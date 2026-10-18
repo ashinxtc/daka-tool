@@ -216,3 +216,83 @@ export function mergeParentDevices(existingDevices = [], incoming) {
     devices.push(newDevice);
     return { devices, currentDevice: newDevice, merged: false };
 }
+
+/**
+ * 对已有存量设备列表进行智能聚合去重（用于平滑迁移老数据）
+ * 如果列表中已存在同角色、同机型的设备（例如一个为微信内置，另一个为系统浏览器），
+ * 自动合并为一条，并将各自的 deviceId 汇总到 authorizedDeviceIds 中，保证历史所有互动记录完全有效。
+ */
+export function consolidateLegacyDevices(devices = []) {
+    if (!Array.isArray(devices) || devices.length <= 1) return devices;
+
+    const consolidated = [];
+    for (const dev of devices) {
+        if (!dev || !dev.deviceId) continue;
+
+        // 查找已有合并项
+        const existingIndex = consolidated.findIndex(item => {
+            // 1. 硬件指纹相同
+            if (dev.fingerprint && item.fingerprint && dev.fingerprint === item.fingerprint) return true;
+            // 2. 凭据互相包含
+            if (item.deviceId === dev.deviceId) return true;
+            if (Array.isArray(item.authorizedDeviceIds) && item.authorizedDeviceIds.includes(dev.deviceId)) return true;
+            if (Array.isArray(dev.authorizedDeviceIds) && dev.authorizedDeviceIds.includes(item.deviceId)) return true;
+            // 3. 存量兼容：同角色、同机型大类（如都是爸爸的 iPhone）
+            const itemOs = (item.deviceName || '').replace(/\s*\(.*\)/, '').trim();
+            const devOs = (dev.deviceName || '').replace(/\s*\(.*\)/, '').trim();
+            if (item.role && dev.role && item.role === dev.role && itemOs && devOs && itemOs === devOs) {
+                return true;
+            }
+            return false;
+        });
+
+        if (existingIndex >= 0) {
+            const existing = consolidated[existingIndex];
+            const allIds = Array.from(new Set([
+                ...(existing.authorizedDeviceIds || [existing.deviceId]),
+                ...(dev.authorizedDeviceIds || [dev.deviceId])
+            ].filter(Boolean)));
+
+            const existingPlatforms = Array.isArray(existing.platforms) ? existing.platforms :
+                (existing.deviceName?.includes('微信') ? ['wechat'] : ['browser']);
+            const devPlatforms = Array.isArray(dev.platforms) ? dev.platforms :
+                (dev.deviceName?.includes('微信') ? ['wechat'] : ['browser']);
+            const mergedPlatforms = Array.from(new Set([...existingPlatforms, ...devPlatforms]));
+
+            let platformDesc = '系统浏览器';
+            if (mergedPlatforms.includes('wechat') && mergedPlatforms.includes('browser')) {
+                platformDesc = '微信 + 系统浏览器';
+            } else if (mergedPlatforms.includes('wechat')) {
+                platformDesc = '微信内置';
+            }
+
+            const cleanOs = (existing.deviceName || dev.deviceName || '手机设备').replace(/\s*\(.*\)/, '').trim();
+
+            consolidated[existingIndex] = {
+                ...existing,
+                authorizedDeviceIds: allIds,
+                fingerprint: existing.fingerprint || dev.fingerprint || undefined,
+                role: existing.role || dev.role,
+                deviceName: `${cleanOs} (${platformDesc})`,
+                platforms: mergedPlatforms,
+                boundAt: Math.min(existing.boundAt || Date.now(), dev.boundAt || Date.now()),
+                lastActive: Math.max(existing.lastActive || 0, dev.lastActive || 0) || Date.now()
+            };
+        } else {
+            const platforms = Array.isArray(dev.platforms) ? dev.platforms :
+                (dev.deviceName?.includes('微信') ? ['wechat'] : ['browser']);
+            const allIds = Array.from(new Set([
+                ...(dev.authorizedDeviceIds || [dev.deviceId])
+            ].filter(Boolean)));
+
+            consolidated.push({
+                ...dev,
+                authorizedDeviceIds: allIds,
+                platforms
+            });
+        }
+    }
+
+    return consolidated;
+}
+

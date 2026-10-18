@@ -5,7 +5,7 @@ import { updateSyncKeys, appendParentAction } from './utils/syncCoordinator';
 import { syncMetadata, SyncRequestError, newSyncOperationId } from './utils/syncTransport';
 import SyncConflictDialog from './components/common/SyncConflictDialog';
 import {deviceAccess,parentFetch,securityUrl} from './utils/deviceAccess';
-import { getDeviceFingerprint, getDevicePlatformInfo, mergeParentDevices } from './utils/deviceFingerprint';
+import { getDeviceFingerprint, getDevicePlatformInfo, mergeParentDevices, consolidateLegacyDevices } from './utils/deviceFingerprint';
 
 // 保证必须在 HTTPS 协议下运行，避免因 Origin 隔离导致 localStorage 丢失
 if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -388,6 +388,9 @@ export const ParentApp = () => {
             if (authConfigStr) {
                 try { authConfig = JSON.parse(authConfigStr); } catch (e) {}
             }
+            if (authConfig && Array.isArray(authConfig.devices)) {
+                authConfig.devices = consolidateLegacyDevices(authConfig.devices);
+            }
 
             const currentDevId = secureIdentity?.id||deviceId;
             const currentFp = fingerprint || getDeviceFingerprint();
@@ -576,6 +579,9 @@ export const ParentApp = () => {
 
             let authConfig = { pairToken: '', devices: [] };
             try { authConfig = JSON.parse(data.app_authorized_parents_v1 || '{}'); } catch(err) {}
+            if (authConfig && Array.isArray(authConfig.devices)) {
+                authConfig.devices = consolidateLegacyDevices(authConfig.devices);
+            }
             const confirmed=await registerCurrentDevice(data, trimmedCode, authConfig, deviceId, inputRole);
             setSyncCode(trimmedCode);setOperatorRole(inputRole);setIsBound(true);
             setCloudData(confirmed);

@@ -6,6 +6,7 @@ import { getLocalDateKey, dateObjToLocalKey } from '../../utils/date';
 import { getTaskTotalSessions } from '../../utils/checkin';
 import { isIOSSafari, isPWAStandalone } from '../../utils/platform';
 import { storage } from '../../utils/storage';
+import { consolidateLegacyDevices } from '../../utils/deviceFingerprint';
 import { WECOM_API_URL, EXCHANGE_WORKER_URL } from '../../constants/api';
 import {
     Beaker, CalendarIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Coins, Gift, Key, Play, Plus,
@@ -156,6 +157,10 @@ const CopyIcon = (props) => (
                 }
                 return `${baseOrigin}/parent.html?code=${encodeURIComponent(syncCode || '')}&token=${encodeURIComponent(pairToken)}&role=${encodeURIComponent(selectedParentRole)}`;
             }, [authorizedParents, isLocalhost, networkMode, lanHost, syncCode, selectedParentRole]);
+
+            const consolidatedParentDevices = React.useMemo(() => {
+                return consolidateLegacyDevices(authorizedParents?.devices || []);
+            }, [authorizedParents?.devices]);
 
             // 动态生成配对二维码
             React.useEffect(() => {
@@ -481,11 +486,11 @@ const CopyIcon = (props) => (
                                 {/* 已授权家长手机设备列表 */}
                                 <div className="space-y-2">
                                     <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                                        <span>已绑定的家长设备 ({authorizedParents?.devices?.length || 0})</span>
+                                        <span>已绑定的家长设备 ({consolidatedParentDevices.length})</span>
                                         <span className="text-[10px] text-slate-400 font-normal">未绑定的手机无法发起赏罚或改动数据</span>
                                     </div>
 
-                                    {(!authorizedParents?.devices || authorizedParents.devices.length === 0) ? (
+                                    {(consolidatedParentDevices.length === 0) ? (
                                         <div className="bg-slate-50/70 p-4 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400 space-y-1">
                                             <div>暂无已绑定的家长手机。</div>
                                             <div className="text-[11px] text-indigo-600 font-bold cursor-pointer hover:underline" onClick={() => setShowParentQrModal(true)}>
@@ -494,7 +499,7 @@ const CopyIcon = (props) => (
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
-                                            {authorizedParents.devices.map(dev => (
+                                            {consolidatedParentDevices.map(dev => (
                                                 <div key={dev.deviceId} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
                                                     <div className="flex items-center gap-2.5 min-w-0">
                                                         <span className="text-xl shrink-0">

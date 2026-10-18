@@ -127,3 +127,73 @@ test('device fingerprinting and multi-platform merging aggregates WeChat and Saf
     assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_wechat_101' }), false);
 });
 
+test('consolidateLegacyDevices automatically fuses existing duplicate bindings and preserves historical interactions', async () => {
+    const { consolidateLegacyDevices, getValidDeviceIdsSet, isAuthorizedParentDevice } = await import('../src/utils/deviceFingerprint.js');
+
+    // Simulate existing legacy data where the parent bound via WeChat first, then via Safari on the same iPhone
+    const legacyDevices = [
+        {
+            deviceId: 'dev_legacy_wechat',
+            role: '妈妈',
+            deviceName: 'iPhone (微信内置)',
+            boundAt: 1000,
+            lastActive: 2000
+        },
+        {
+            deviceId: 'dev_legacy_safari',
+            role: '妈妈',
+            deviceName: 'iPhone (系统浏览器)',
+            boundAt: 1500,
+            lastActive: 3000
+        },
+        {
+            deviceId: 'dev_dad_phone',
+            role: '爸爸',
+            deviceName: 'Android (微信内置)',
+            boundAt: 1100,
+            lastActive: 2500
+        }
+    ];
+
+    const consolidated = consolidateLegacyDevices(legacyDevices);
+    assert.equal(consolidated.length, 2); // Mama's two records fused into 1; Dad's kept as 1
+
+    const mamaDevice = consolidated.find(d => d.role === '妈妈');
+    assert.ok(mamaDevice);
+    assert.equal(mamaDevice.deviceName, 'iPhone (微信 + 系统浏览器)');
+    assert.deepEqual(mamaDevice.platforms.sort(), ['browser', 'wechat'].sort());
+    assert.deepEqual(mamaDevice.authorizedDeviceIds.sort(), ['dev_legacy_safari', 'dev_legacy_wechat'].sort());
+
+    // Both old deviceIds remain fully authorized in valid set
+    const validIds = getValidDeviceIdsSet(consolidated);
+    assert.equal(validIds.has('dev_legacy_wechat'), true);
+    assert.equal(validIds.has('dev_legacy_safari'), true);
+    assert.equal(validIds.has('dev_dad_phone'), true);
+
+    // Historical interactions (red packets, deductions, etc.) signed by either deviceId remain valid
+    const safariDeductionAction = {
+        id: 'deduct_1',
+        type: 'deduction',
+        targetChild: '孩子',
+        operatorDeviceId: 'dev_legacy_safari',
+        amount: 20,
+        status: 'pending',
+        timestamp: 2100
+    };
+
+    const deductionResult = applyDeductions({
+        actions: [safariDeductionAction],
+        child: '孩子',
+        devices: consolidated,
+        strictAuthorization: true,
+        balance: () => 100
+    });
+    assert.equal(deductionResult.actions[0].status, 'claimed');
+
+    // And isAuthorizedParentDevice returns true for both IDs
+    const authConfig = { devices: consolidated, revokedDevices: {} };
+    assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_legacy_wechat' }), true);
+    assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_legacy_safari' }), true);
+});
+
+
