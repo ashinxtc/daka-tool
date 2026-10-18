@@ -5,6 +5,7 @@ import { updateSyncKeys, appendParentAction } from './utils/syncCoordinator';
 import { syncMetadata, SyncRequestError, newSyncOperationId } from './utils/syncTransport';
 import SyncConflictDialog from './components/common/SyncConflictDialog';
 import {deviceAccess,parentFetch,securityUrl} from './utils/deviceAccess';
+import { getDeviceFingerprint, getDevicePlatformInfo, mergeParentDevices } from './utils/deviceFingerprint';
 
 // 保证必须在 HTTPS 协议下运行，避免因 Origin 隔离导致 localStorage 丢失
 if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -228,6 +229,11 @@ export const ParentApp = () => {
         }
         return id;
     });
+    const [fingerprint] = useState(() => {
+        const fp = getDeviceFingerprint();
+        try { localStorage.setItem('parent_fingerprint', fp); } catch(e) {}
+        return fp;
+    });
     const [pairToken, setPairToken] = useState(() => localStorage.getItem('parent_pair_token') || '');
     const [operatorRole, setOperatorRole] = useState(() => localStorage.getItem('parent_role') || '爸爸');
     const [isBound, setIsBound] = useState(() => {
@@ -384,8 +390,9 @@ export const ParentApp = () => {
             }
 
             const currentDevId = secureIdentity?.id||deviceId;
+            const currentFp = fingerprint || getDeviceFingerprint();
             const revokedMap = (authConfig && typeof authConfig.revokedDevices === 'object') ? authConfig.revokedDevices : {};
-            const isRevoked = Boolean(revokedMap[currentDevId]);
+            const isRevoked = Boolean(revokedMap[currentDevId] || (currentFp && revokedMap[currentFp]));
 
             // 核心防护：若电脑主程序已将本设备解除绑定，立即清空本地授权并退出，绝不自愈重登
             if (isRevoked) {
@@ -398,7 +405,14 @@ export const ParentApp = () => {
                 return data;
             }
 
-            const existingDev = (authConfig.devices || []).find(d => d.deviceId === currentDevId);
+            // 查找当前设备是否已在已绑定列表中（支持 deviceId、authorizedDeviceIds 数组、或硬件 fingerprint 匹配）
+            const existingDev = (authConfig.devices || []).find(d => {
+                if (!d) return false;
+                if (d.deviceId === currentDevId) return true;
+                if (Array.isArray(d.authorizedDeviceIds) && d.authorizedDeviceIds.includes(currentDevId)) return true;
+                if (currentFp && d.fingerprint && d.fingerprint === currentFp) return true;
+                return false;
+            });
             const activeRole = roleOverride || operatorRole;
             const localToken = tokenOverride || pairToken || localStorage.getItem('parent_pair_token');
             const hasLocalBound = (localStorage.getItem('parent_is_bound') === 'true') || Boolean(localStorage.getItem('parent_sync_code'));
@@ -410,6 +424,12 @@ export const ParentApp = () => {
                 if (existingDev.role && existingDev.role !== activeRole) {
                     setOperatorRole(existingDev.role);
                     localStorage.setItem('parent_role', existingDev.role);
+                }
+                // 智能凭据同步：若当前沙盒的 deviceId 尚未记录在该设备的 authorizedDeviceIds 中，触发一次智能聚合
+                const isIdRecorded = existingDev.deviceId === currentDevId ||
+                    (Array.isArray(existingDev.authorizedDeviceIds) && existingDev.authorizedDeviceIds.includes(currentDevId));
+                if (!isIdRecorded) {
+                    data = await registerCurrentDevice(data, codeToUse, authConfig, currentDevId, existingDev.role || activeRole);
                 }
             } else if (hasLocalBound || (localToken && authConfig.pairToken && localToken === authConfig.pairToken) || (!authConfig.pairToken && localToken)) {
                 // 本机此前已在本地绑定，或持有配对 token：自动自愈登记本设备并保持登入
@@ -452,29 +472,29 @@ export const ParentApp = () => {
         }
     };
 
-    // 辅助：向云端注册本设备信息并持久化本地凭证
+    // 辅助：向云端注册本设备信息并持久化本地凭证（智能聚合微信与系统浏览器等多入口）
     const registerCurrentDevice = async (currentCloudData, code, authConfig, devId, roleToUse = operatorRole) => {
         try {
-            const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
-            const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-            const isAndroid = /Android/i.test(navigator.userAgent);
-            let osName = isIOS ? (navigator.userAgent.includes('iPad') ? 'iPad' : 'iPhone') :
-                         isAndroid ? '安卓手机' : '移动设备';
-            let envName = isWeChat ? '微信内置' : '系统浏览器';
-            const devName = `${osName} (${envName})`;
+            const { osName, platformKey } = getDevicePlatformInfo();
+            const currentFp = fingerprint || getDeviceFingerprint();
 
-            const newDevice = {
+            const { devices: updatedDevices, currentDevice } = mergeParentDevices(authConfig.devices || [], {
                 deviceId: devId,
+                fingerprint: currentFp,
                 role: roleToUse,
-                deviceName: devName,
-                boundAt: Date.now(),
-                lastActive: Date.now()
-            };
-            const updatedDevices = [...(authConfig.devices || []).filter(d => d.deviceId !== devId), newDevice];
+                osName,
+                platform: platformKey,
+                boundAt: Date.now()
+            });
+
             const updatedPairToken = authConfig.pairToken || pairToken || localStorage.getItem('parent_pair_token') || ('token_' + Math.random().toString(36).slice(2, 10));
-            // 重新绑定时从解绑黑名单中移出
+            // 重新绑定时从解绑黑名单中移出当前设备及其所有关联沙盒凭据
             const updatedRevoked = { ...(authConfig.revokedDevices || {}) };
             delete updatedRevoked[devId];
+            if (currentFp) delete updatedRevoked[currentFp];
+            if (Array.isArray(currentDevice.authorizedDeviceIds)) {
+                currentDevice.authorizedDeviceIds.forEach(id => delete updatedRevoked[id]);
+            }
 
             const updatedAuthConfig = {
                 pairToken: updatedPairToken,
@@ -490,6 +510,8 @@ export const ParentApp = () => {
             localStorage.setItem('parent_is_bound', 'true');
             localStorage.setItem('parent_sync_code', code);
             localStorage.setItem('parent_role', roleToUse);
+            localStorage.setItem('parent_device_id', devId);
+            localStorage.setItem('parent_fingerprint', currentFp);
             if (updatedPairToken) {
                 localStorage.setItem('parent_pair_token', updatedPairToken);
                 setPairToken(updatedPairToken);

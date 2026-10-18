@@ -63,6 +63,7 @@ import { PerformanceContext, PerformanceProvider } from './context/PerformanceCo
 import { AppErrorBoundary } from './components/common/AppErrorBoundary';
 import { initLoadingScreen } from './utils/loadingScreen';
 import { QRCodeView } from './utils/qrcode';
+import { getValidDeviceIdsSet } from './utils/deviceFingerprint';
 import confetti from 'canvas-confetti';
 if (typeof window !== 'undefined' && !window.confetti) {
     window.confetti = confetti;
@@ -8251,7 +8252,7 @@ ${context}
             const unclaimedGifts = useMemo(() => {
                 if (!parentActions || !Array.isArray(parentActions)) return [];
                 if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return [];
-                const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
+                const validDeviceIds = getValidDeviceIdsSet(authorizedParents?.devices);
                 const hasRegisteredDevices = authorizedParents?.securityVersion===1||(authorizedParents?.devices || []).length > 0;
                 return parentActions.filter(a =>
                     a && a.status === 'pending' &&
@@ -8275,7 +8276,7 @@ ${context}
                 );
                 if (pendingActions.length === 0) return;
 
-                const validDeviceIds = new Set((authorizedParents?.devices || []).map(d => d.deviceId));
+                const validDeviceIds = getValidDeviceIdsSet(authorizedParents?.devices);
                 const hasRegisteredDevices = authorizedParents?.securityVersion===1||(authorizedParents?.devices || []).length > 0;
                 let hasUpdates = false;
 
@@ -10345,6 +10346,7 @@ ${context}
 					  holidayForecast={apiHolidayForecast}
 					  setShowTributeModal={setShowTributeModal}
 					  shieldTriggeredToday={!!evilPenaltyLog[`${activeChild}-SHIELD_TRIGGER-${getLocalDateKey(0)}`]}
+                      syncCode={syncCode}
                   />
 				  
 				  <WheelChoiceModal 
@@ -10383,7 +10385,7 @@ ${context}
                   {/* 断签豁免弹窗 */}
                   {exemptionModal && (() => {
                       const verifyBase = verificationPageUrl('exemption-verify.html');
-                      const verifyPageUrl = verifyBase + '?code=' + exemptionModal.exemptionCode + '&account=' + encodeURIComponent(activeChild) + '&date=' + encodeURIComponent(exemptionModal.date);
+                      const verifyPageUrl = verifyBase + '?code=' + exemptionModal.exemptionCode + '&account=' + encodeURIComponent(activeChild) + '&date=' + encodeURIComponent(exemptionModal.date) + (syncCode ? '&family=' + encodeURIComponent(syncCode) : '');
                       return (
                       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => { setExemptionModal(null); setExemptionInputCode(''); }}>
                           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>

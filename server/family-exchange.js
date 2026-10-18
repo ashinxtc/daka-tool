@@ -110,7 +110,18 @@ export class FamilyExchange{
             }
             const record=records.find(r=>r.id===body.applyId);if(!record)fail(404,'NOT_FOUND','找不到此家庭的订单。');
             const target=op==='verify'?'verified':'cancelled';
-            if(op==='verify'&&String(body.verifyCode)!==record.verifyCode)fail(403,'VERIFY_CODE','核销码不正确。');
+            if(op==='verify'){
+                if(String(body.verifyCode)!==record.verifyCode)fail(403,'VERIFY_CODE','核销码不正确。');
+                const authConfig=parse(snapshot,'app_authorized_parents_v1',{devices:[],revokedDevices:{}});
+                const boundDevices=authConfig.devices||[];
+                if(boundDevices.length>0){
+                    const callerDevId=user.id,reqFp=request.headers.get('X-Device-Fingerprint');
+                    const revoked=authConfig.revokedDevices||{};
+                    if(revoked[callerDevId]||(reqFp&&revoked[reqFp]))fail(403,'REVOKED','该家长手机已被解除绑定，无权核销。');
+                    const isAuthorized=boundDevices.some(d=>d.deviceId===callerDevId||(Array.isArray(d.authorizedDeviceIds)&&d.authorizedDeviceIds.includes(callerDevId))||(reqFp&&d.fingerprint===reqFp));
+                    if(!isAuthorized)fail(403,'PARENT_DEVICE_UNAUTHORIZED','只有已绑定的家长手机才能核销兑换，请先在主程序完成绑定。');
+                }
+            }
             if(record.status===target)return {ok:true,record,replayed:true};
             if(record.status!=='pending')fail(409,'ORDER_FINAL','订单已处理或过期，请刷新状态。');
             if(target==='verified'){

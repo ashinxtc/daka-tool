@@ -26,7 +26,13 @@ export function applyDeductions({ actions, child, devices = [], strictAuthorizat
     let nextHistory = { ...history }, nextReceipts = { ...receipts }, nextStats = { ...stats };
     if (!Array.isArray(actions)) return { changed: false };
     const processed = new Map();
-    const validDevices = new Set(devices.map(d => d.deviceId));
+    const validDevices = new Set();
+    devices.forEach(d => {
+        if (!d) return;
+        if (d.deviceId) validDevices.add(d.deviceId);
+        if (Array.isArray(d.authorizedDeviceIds)) d.authorizedDeviceIds.forEach(id => id && validDevices.add(id));
+        if (d.fingerprint) validDevices.add(d.fingerprint);
+    });
     for (const action of [...actions].filter(Boolean).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))) {
         if (!['deduction', 'parent_deduct'].includes(action.type) || action.status !== 'pending' ||
             (action.targetChild && action.targetChild !== child) || !child) continue;

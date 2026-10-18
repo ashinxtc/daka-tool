@@ -146,12 +146,16 @@
         </div>
     </div>
 
-    <script>
-        (function() {
+    <script type="module">
+        import { SYNC_WORKER_URL } from "/src/constants/api.js";
+        import { getDeviceFingerprint } from "/src/utils/deviceFingerprint.js";
+
+        (async function() {
             var params = new URLSearchParams(window.location.search);
             var code = params.get('code') || '';
             var account = params.get('account') ? decodeURIComponent(params.get('account')) : '—';
             var product = params.get('product') ? decodeURIComponent(params.get('product')) : '—';
+            var family = params.get('family') || '';
 
             document.getElementById('account').textContent = account;
             document.getElementById('product').textContent = product;
@@ -161,7 +165,91 @@
             var card = document.getElementById('card');
             var confirmBtn = document.getElementById('confirmBtn');
 
+            // 权限状态提示容器
+            var authNotice = document.createElement('div');
+            authNotice.style.margin = '0 0 1rem 0';
+            authNotice.style.padding = '0.75rem 1rem';
+            authNotice.style.borderRadius = '0.75rem';
+            authNotice.style.fontSize = '0.75rem';
+            authNotice.style.lineHeight = '1.4';
+            confirmBtn.before(authNotice);
+
+            let isAuthorized = true;
+            let authorizedRole = '家长';
+
+            if (family) {
+                authNotice.style.background = 'rgba(255,255,255,0.08)';
+                authNotice.style.color = '#94a3b8';
+                authNotice.innerHTML = '⏳ 正在核验家长手机绑定权限...';
+                confirmBtn.disabled = true;
+
+                try {
+                    const localDevId = localStorage.getItem('parent_device_id') || '';
+                    const localFp = getDeviceFingerprint();
+
+                    // 从同步服务读取家庭快照
+                    const endpoint = SYNC_WORKER_URL || '';
+                    const res = await fetch(`${endpoint}?code=${encodeURIComponent(family)}`, { cache: 'no-store' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        let authConfig = { devices: [], revokedDevices: {} };
+                        try {
+                            if (data.app_authorized_parents_v1) {
+                                authConfig = JSON.parse(data.app_authorized_parents_v1);
+                            }
+                        } catch (e) {}
+
+                        const devices = authConfig.devices || [];
+                        if (devices.length > 0) {
+                            // 检查当前设备是否在绑定列表中（支持多沙盒聚合凭据与指纹）
+                            const matched = devices.find(d => {
+                                if (!d) return false;
+                                if (localDevId && (d.deviceId === localDevId || (Array.isArray(d.authorizedDeviceIds) && d.authorizedDeviceIds.includes(localDevId)))) return true;
+                                if (localFp && d.fingerprint === localFp) return true;
+                                return false;
+                            });
+
+                            const revoked = authConfig.revokedDevices || {};
+                            const isRevoked = Boolean((localDevId && revoked[localDevId]) || (localFp && revoked[localFp]));
+
+                            if (!matched || isRevoked) {
+                                isAuthorized = false;
+                                authNotice.style.background = 'rgba(239, 68, 68, 0.15)';
+                                authNotice.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                                authNotice.style.color = '#fca5a5';
+                                authNotice.innerHTML = '🔒 <b>未受信任的家长设备</b><br>为保障契约与金币安全，扫码核销仅限已绑定的家长手机。当前手机尚未绑定为该家庭的家长手机，无法核销。<br><br>💡 请使用电脑主程序【设置】→【家长专属手机看板】扫描绑定本手机后再试。';
+                                confirmBtn.style.display = 'none';
+                                return;
+                            } else {
+                                authorizedRole = matched.role || '家长';
+                                authNotice.style.background = 'rgba(16, 185, 129, 0.15)';
+                                authNotice.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+                                authNotice.style.color = '#6ee7b7';
+                                authNotice.innerHTML = `✅ <b>已核验家长身份：【${authorizedRole}】</b>（专属授权手机）`;
+                                confirmBtn.disabled = false;
+                            }
+                        } else {
+                            // 未配置家长绑定设备（单机/未绑定状态）
+                            authNotice.style.background = 'rgba(245, 158, 11, 0.15)';
+                            authNotice.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+                            authNotice.style.color = '#fcd34d';
+                            authNotice.innerHTML = '⚠️ 该家庭尚未绑定家长专属手机，建议在主程序设置中扫码绑定以开启防篡改护航。';
+                            confirmBtn.disabled = false;
+                        }
+                    } else {
+                        confirmBtn.disabled = false;
+                    }
+                } catch (e) {
+                    // 网络不可用时允许降级
+                    confirmBtn.disabled = false;
+                }
+            }
+
             confirmBtn.addEventListener('click', function() {
+                if (!isAuthorized) {
+                    alert('未受信任的家长设备，无权核销。请先在主程序中绑定本手机。');
+                    return;
+                }
                 if (!code) {
                     alert('缺少核销参数，请从主程序重新打开扫码页。');
                     return;
@@ -172,7 +260,7 @@
 
                 document.getElementById('displayCode').textContent = code;
                 var now = new Date();
-                document.getElementById('verifyTime').textContent = '核销时间：' + now.toLocaleString('zh-CN');
+                document.getElementById('verifyTime').textContent = `核销人：${authorizedRole} · 时间：${now.toLocaleString('zh-CN')}`;
                 var ua = navigator.userAgent || '';
                 if (ua) document.getElementById('deviceInfo').textContent = '设备信息：' + ua.substring(0, 80) + (ua.length > 80 ? '…' : '');
             });

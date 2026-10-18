@@ -506,6 +506,11 @@ const CopyIcon = (props) => (
                                                                 <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.5 rounded-md">
                                                                     {dev.deviceName || '手机设备'}
                                                                 </span>
+                                                                {(dev.platforms?.length > 1 || (dev.authorizedDeviceIds && dev.authorizedDeviceIds.length > 1)) && (
+                                                                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-1.5 py-0.5 rounded-md">
+                                                                        ✨ 微信/浏览器已聚合
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
                                                                 <span>绑定于 {new Date(dev.boundAt || Date.now()).toLocaleDateString('zh-CN')}</span>
@@ -520,14 +525,20 @@ const CopyIcon = (props) => (
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            if (window.confirm(`确定要解除【${dev.role}】的设备绑定吗？解绑后该手机将失去操作权限。`)) {
+                                                            if (window.confirm(`确定要解除【${dev.role}】的设备绑定吗？解绑后该手机的所有入口将失去操作权限。`)) {
+                                                                const devIds = dev.authorizedDeviceIds || [dev.deviceId];
                                                                 const updatedRevoked = {
-                                                                    ...(authorizedParents?.revokedDevices || {}),
-                                                                    [dev.deviceId]: Date.now()
+                                                                    ...(authorizedParents?.revokedDevices || {})
                                                                 };
+                                                                devIds.forEach(id => {
+                                                                    if (id) updatedRevoked[id] = Date.now();
+                                                                });
+                                                                if (dev.fingerprint) {
+                                                                    updatedRevoked[dev.fingerprint] = Date.now();
+                                                                }
                                                                 const updated = {
                                                                     ...authorizedParents,
-                                                                    devices: (authorizedParents?.devices || []).filter(d => d.deviceId !== dev.deviceId),
+                                                                    devices: (authorizedParents?.devices || []).filter(d => d.deviceId !== dev.deviceId && (!d.fingerprint || d.fingerprint !== dev.fingerprint)),
                                                                     revokedDevices: updatedRevoked
                                                                 };
                                                                 setAuthorizedParents(updated);
@@ -550,12 +561,12 @@ const CopyIcon = (props) => (
                                                 </div>
                                             ))}
 
-                                            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 text-[11px] text-slate-500 leading-relaxed space-y-1 mt-2">
-                                                <div className="font-bold text-slate-600 flex items-center gap-1">
-                                                    <span>💡</span> 关于同一部手机出现两条绑定的说明：
+                                            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 text-[11px] text-emerald-800 leading-relaxed space-y-1 mt-2">
+                                                <div className="font-bold text-emerald-900 flex items-center gap-1">
+                                                    <span>✨</span> 智能多入口识别与设备聚合：
                                                 </div>
-                                                <div className="text-slate-400 text-[10px]">
-                                                    手机操作系统的「微信内置浏览器」与「系统自带浏览器 (如 Safari / Chrome)」属于完全隔离的独立应用沙盒，存储彼此不互通。微信扫码与手机浏览器分别占用一个专属授权凭据（两处均可正常护航）。若您只想保留其中一个，随时点击对应项的【解除绑定】即可。
+                                                <div className="text-emerald-700/90 text-[10px]">
+                                                    同一部手机无论从「微信内置浏览器扫码」还是「系统相机/Safari 扫码」进入，系统均通过专属设备硬件识别码自动聚合并同步授权，无需担心重复绑定，双端均可实时安全护航。
                                                 </div>
                                             </div>
                                         </div>

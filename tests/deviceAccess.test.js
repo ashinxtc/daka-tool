@@ -66,3 +66,64 @@ test('strict empty registry rejects pending deductions; protected history cap pr
     const old=Array.from({length:120},(_,i)=>({id:String(i),status:'done',operatorDeviceId:'other'}));
     assert.equal(appendParentAction(old,action,true).length,121);assert.equal(appendParentAction(old,action).length,100);
 });
+
+test('device fingerprinting and multi-platform merging aggregates WeChat and Safari into a single parent device',async()=>{
+    const {mergeParentDevices,isAuthorizedParentDevice,getValidDeviceIdsSet,getDeviceFingerprint}=await import('../src/utils/deviceFingerprint.js');
+    
+    // 1. Initial scan from WeChat
+    const wechatScan = {
+        deviceId: 'dev_wechat_101',
+        fingerprint: 'fp_phone_hardware_aaa',
+        role: '爸爸',
+        osName: 'iPhone',
+        platform: 'wechat',
+        boundAt: 1000
+    };
+    const step1 = mergeParentDevices([], wechatScan);
+    assert.equal(step1.devices.length, 1);
+    assert.equal(step1.merged, false);
+    assert.equal(step1.currentDevice.deviceName, 'iPhone (微信内置)');
+    assert.deepEqual(step1.currentDevice.platforms, ['wechat']);
+    assert.deepEqual(step1.currentDevice.authorizedDeviceIds, ['dev_wechat_101']);
+
+    // 2. Subsequent scan from System Safari on the same phone (same fingerprint)
+    const safariScan = {
+        deviceId: 'dev_safari_202',
+        fingerprint: 'fp_phone_hardware_aaa',
+        role: '爸爸',
+        osName: 'iPhone',
+        platform: 'browser',
+        boundAt: 2000
+    };
+    const step2 = mergeParentDevices(step1.devices, safariScan);
+    assert.equal(step2.devices.length, 1); // Crucial: still 1 entry in the list!
+    assert.equal(step2.merged, true);
+    assert.equal(step2.currentDevice.deviceName, 'iPhone (微信 + 系统浏览器)');
+    assert.deepEqual(step2.currentDevice.platforms.sort(), ['browser', 'wechat'].sort());
+    assert.deepEqual(step2.currentDevice.authorizedDeviceIds.sort(), ['dev_wechat_101', 'dev_safari_202'].sort());
+
+    // 3. Verification checks: both entry point tokens are authorized
+    const authConfig = {
+        devices: step2.devices,
+        revokedDevices: {}
+    };
+    assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_wechat_101' }), true);
+    assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_safari_202' }), true);
+    assert.equal(isAuthorizedParentDevice(authConfig, { fingerprint: 'fp_phone_hardware_aaa' }), true);
+    assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_unauthorized_999' }), false);
+
+    // 4. Accounting deductions accept actions from both entry points
+    const validSet = getValidDeviceIdsSet(step2.devices);
+    assert.equal(validSet.has('dev_wechat_101'), true);
+    assert.equal(validSet.has('dev_safari_202'), true);
+    assert.equal(validSet.has('fp_phone_hardware_aaa'), true);
+
+    const safariAction = { id: 'act_safari', type: 'deduction', targetChild: '孩子', operatorDeviceId: 'dev_safari_202', amount: 5, status: 'pending', timestamp: 10 };
+    const deductionResult = applyDeductions({ actions: [safariAction], child: '孩子', devices: step2.devices, strictAuthorization: true, balance: () => 100 });
+    assert.equal(deductionResult.actions[0].status, 'claimed');
+
+    // 5. Revocation checks: revoking device revokes both entry points
+    authConfig.revokedDevices['dev_wechat_101'] = Date.now();
+    assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_wechat_101' }), false);
+});
+

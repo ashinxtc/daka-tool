@@ -48,7 +48,8 @@ export const ShopModal = ({
     holidayData, 
     holidayForecast, 
     setShowTributeModal,
-    shieldTriggeredToday = false
+    shieldTriggeredToday = false,
+    syncCode = ''
 }) => {
     // 保证 React Hooks 恒定在顶部声明
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -707,7 +708,7 @@ export const ShopModal = ({
                 {/* ======================= 子弹窗 2: 家长扫码核销弹窗 ======================= */}
                 {verifyModal && setRedeemedCoupons && (() => {
                     const verifyBase = verificationPageUrl('redemption-verify.html');
-                    const verifyPageUrl = verifyBase + '?code=' + verifyModal.coupon.verifyCode + '&account=' + encodeURIComponent(verifyModal.account) + '&product=' + encodeURIComponent(verifyModal.coupon.name);
+                    const verifyPageUrl = verifyBase + '?code=' + verifyModal.coupon.verifyCode + '&account=' + encodeURIComponent(verifyModal.account) + '&product=' + encodeURIComponent(verifyModal.coupon.name) + (syncCode ? '&family=' + encodeURIComponent(syncCode) : '');
 
                     return (
                         <div 

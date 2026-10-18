@@ -1,4 +1,5 @@
 import {SYNC_WORKER_URL} from '../constants/api.js';
+import {getDeviceFingerprint} from './deviceFingerprint.js';
 export const ACCESS_ENDPOINT=SYNC_WORKER_URL;
 export class DeviceAccessError extends Error {
     constructor(message,code='AUTH_REQUIRED',status=401){super(message);Object.assign(this,{code,status});}
@@ -11,7 +12,11 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
     const credential=(code,role='main')=>{
         let id=storage?.getItem(deviceIdKey(code,role));
         if(!id){
-            id=`dev_${role}_${newDeviceToken().slice(0,16)}`;
+            if(role==='parent'){
+                id=storage?.getItem('parent_device_id')||`dev_${role}_${newDeviceToken().slice(0,16)}`;
+            }else{
+                id=`dev_${role}_${newDeviceToken().slice(0,16)}`;
+            }
             try{storage?.setItem(deviceIdKey(code,role),id);}catch{}
         }
         return {id,role,token:id,label:role==='parent'?'家长手机':'主程序'};
@@ -42,6 +47,10 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         headers.set('X-Device-Id',saved.id);
         headers.set('X-Device-Role',role);
         headers.set('Authorization',`Bearer ${saved.id}`);
+        try {
+            const fp = getDeviceFingerprint();
+            if (fp) headers.set('X-Device-Fingerprint', fp);
+        } catch(e) {}
         return await fetchImpl(url,{...options,headers,redirect:'error'});
     };
     const pair=async(code,role)=>credential(code,role);
