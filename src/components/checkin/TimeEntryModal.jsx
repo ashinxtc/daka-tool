@@ -32,7 +32,8 @@ export const TimeEntryModal = ({
     inventory, 
     useRepairCard: onUseRepairCard, 
     checkins, 
-    activeBuffs 
+    activeBuffs,
+    gamificationConfig
 }) => {
     // 保证所有 React Hooks 在组件顶部无条件按恒定顺序声明
     const task = editingEntry ? (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId) : null;
@@ -95,6 +96,22 @@ export const TimeEntryModal = ({
         }
         return [`🎯 本次是今天第 ${todaySessionCount + 1} 次打卡 · 基础奖励 ×${todaySessionCount + 1} → 预计入账 +${previewGold} 💰`];
     }, [isMulti, task, todayTotalUnits, todaySessionCount, units, previewGold, investMul]);
+
+    // 当日连击加成预演
+    const todayKey = getLocalDateKey(0);
+    const isTodayNew = editingEntry?.isNew && editingEntry?.date === todayKey;
+    const comboPreview = useMemo(() => {
+        if (!isTodayNew || gamificationConfig?.comboEnabled === false) return null;
+        const childTasks = tasks[activeChild] || [];
+        const childRecords = checkins?.[activeChild] || {};
+        const scheduled = childTasks.filter(t => (!t.startDate || todayKey >= t.startDate) && (!t.deadline || todayKey <= t.deadline));
+        const prevDone = scheduled.filter(t => t.id !== editingEntry?.taskId && childRecords[t.id]?.[todayKey] !== undefined).length;
+        const comboCount = prevDone + 1;
+        const step = Math.max(1, parseInt(gamificationConfig?.comboStep, 10) || 1);
+        const cap = Math.max(1, parseInt(gamificationConfig?.comboCap, 10) || 10);
+        const bonus = comboCount <= 1 ? 0 : Math.min(cap, (comboCount - 1) * step);
+        return { comboCount, bonus, totalTasks: scheduled.length };
+    }, [isTodayNew, gamificationConfig, tasks, activeChild, checkins, editingEntry]);
 
     useEffect(() => {
         if (!editingEntry) return;
@@ -492,6 +509,27 @@ export const TimeEntryModal = ({
                                         {rewardsPreviewText.map((line, idx) => (
                                             <div key={idx}>{line}</div>
                                         ))}
+                                    </div>
+                                )}
+
+                                {comboPreview && (
+                                    <div className="mt-1.5 text-[11px] text-amber-900 bg-gradient-to-r from-amber-100/90 to-orange-100/90 border border-amber-300/60 px-2.5 py-1.5 rounded-xl font-bold flex items-center justify-between shadow-xs">
+                                        <div className="flex items-center gap-1.5">
+                                            <span>{comboPreview.comboCount >= 3 ? '⚡' : '🔥'}</span>
+                                            <span>今日第 {comboPreview.comboCount} 项打卡</span>
+                                            {comboPreview.comboCount >= 2 && (
+                                                <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black">
+                                                    {comboPreview.comboCount} 连击
+                                                </span>
+                                            )}
+                                        </div>
+                                        {comboPreview.bonus > 0 ? (
+                                            <span className="text-amber-800 font-black">
+                                                连胜额外送 <span className="text-xs text-rose-600 font-extrabold">+{comboPreview.bonus}</span> 💰
+                                            </span>
+                                        ) : (
+                                            <span className="text-amber-700 text-[10px] font-medium">下一项激活连击加成</span>
+                                        )}
                                     </div>
                                 )}
                             </div>

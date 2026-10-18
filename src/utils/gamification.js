@@ -24,7 +24,13 @@ export const DEFAULT_GAMIFICATION_CONFIG = {
     firstBloodGoldMin: 2,
     firstBloodGoldMax: 5,
     earlyBirdBonus: true,        // 上午 11:00 前完成首胜额外赠送
-    earlyBirdExtraGold: 2
+    earlyBirdExtraGold: 2,
+
+    // 4. 当日连击激励机制 (Combo Rush)
+    comboEnabled: true,          // 是否开启连击加成
+    comboStep: 1,                // 递增步长：完成第2项额外+1，第3项+2以此类推
+    comboCap: 10,                // 单项连击最高加成上限封顶
+    comboSoundEnabled: true      // 连击升调音效
 };
 
 // 辅助日期增加天数
@@ -215,3 +221,116 @@ export const getComebackSafeDates = (escrow) => {
     }
     return Array.from(dates);
 };
+
+/**
+ * 计算当日连击额外加成元宝数
+ * 规则：第1项常规奖励 (+0)，第2项+1，第3项+2，第4项+3...（乘以step，受cap封顶）
+ * @param {number} comboCount 当前是今日第几项打卡完成
+ * @param {Object} config 游戏化配置
+ * @returns {number} 额外加成元宝数
+ */
+export const calculateComboBonus = (comboCount = 1, config = DEFAULT_GAMIFICATION_CONFIG) => {
+    if (config?.comboEnabled === false) return 0;
+    if (comboCount <= 1) return 0;
+    const step = Math.max(1, parseInt(config?.comboStep, 10) || 1);
+    const cap = Math.max(1, parseInt(config?.comboCap, 10) || 10);
+    const bonus = (comboCount - 1) * step;
+    return Math.min(cap, Math.max(0, bonus));
+};
+
+/**
+ * 获取连击称号与段位视觉配置
+ * @param {number} comboCount 连击数
+ * @param {number} totalTasks 今日总任务数
+ * @returns {Object} 包含称号、图标与渐变色方案
+ */
+export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
+    if (comboCount <= 0) {
+        return {
+            title: '蓄力中',
+            icon: '🔥',
+            tier: 'none',
+            badgeBg: 'bg-slate-700/60 text-slate-300 border-slate-600',
+            textColor: 'text-slate-400'
+        };
+    }
+    if (comboCount >= totalTasks && totalTasks > 0) {
+        return {
+            title: '大满贯全勤',
+            icon: '👑',
+            tier: 'perfect',
+            badgeBg: 'bg-gradient-to-r from-amber-400 via-rose-400 to-amber-300 text-slate-900 border-amber-200 shadow-md shadow-amber-400/40',
+            textColor: 'text-amber-300'
+        };
+    }
+    if (comboCount >= 5) {
+        return {
+            title: '超神连击',
+            icon: '💥',
+            tier: 'god',
+            badgeBg: 'bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 text-white border-pink-300 shadow-md shadow-purple-500/40',
+            textColor: 'text-purple-300'
+        };
+    }
+    if (comboCount >= 3) {
+        return {
+            title: '势不可挡',
+            icon: '⚡',
+            tier: 'epic',
+            badgeBg: 'bg-gradient-to-r from-rose-500 to-amber-500 text-white border-amber-300/60 shadow-md shadow-rose-500/30',
+            textColor: 'text-rose-300'
+        };
+    }
+    if (comboCount >= 2) {
+        return {
+            title: '渐入佳境',
+            icon: '🔥',
+            tier: 'rare',
+            badgeBg: 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-900 border-amber-200 shadow-sm shadow-amber-500/20',
+            textColor: 'text-amber-300'
+        };
+    }
+    return {
+        title: '旗开得胜',
+        icon: '✨',
+        tier: 'start',
+        badgeBg: 'bg-emerald-600 text-white border-emerald-400/50 shadow-xs shadow-emerald-500/20',
+        textColor: 'text-emerald-300'
+    };
+};
+
+/**
+ * 纯 Web Audio API 合成连击升调音效（零外部音频文件，极轻量顺滑）
+ * 连击越高，音调越激昂升调
+ * @param {number} comboCount 连击数
+ */
+export const playComboSound = (comboCount = 1) => {
+    try {
+        if (typeof window === 'undefined') return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        // 升调阶梯：C5 (523), D5 (587), E5 (659), F5 (698), G5 (784), A5 (880), C6 (1046)
+        const notes = [523.25, 587.33, 659.25, 698.46, 783.99, 880.00, 1046.50];
+        const pitch = notes[Math.min(notes.length - 1, Math.max(0, comboCount - 1))];
+        
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(pitch, now);
+        osc.frequency.exponentialRampToValueAtTime(pitch * 1.28, now + 0.12);
+
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+        osc.start(now);
+        osc.stop(now + 0.28);
+    } catch (e) {
+        // 音频上下文受限时不影响正常逻辑
+    }
+};
+

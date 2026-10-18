@@ -28,7 +28,7 @@ import { TimeEntryModal } from './components/checkin/TimeEntryModal';
 import { TaskCard } from './components/checkin/TaskCard';
 import { TaskDashboardTrack } from './components/checkin/TaskDashboardTrack';
 import { HomeworkExamRecordModal, GRADE_OPTIONS } from './components/homework/HomeworkExamRecordModal';
-import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates } from './utils/gamification';
+import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates, calculateComboBonus, getComboInfo, playComboSound } from './utils/gamification';
 import { StarRatingBadge } from './components/gamification/StarRatingBadge';
 import { ComebackModal, ComebackBanner } from './components/gamification/ComebackModal';
 import { FirstBloodModal } from './components/gamification/FirstBloodModal';
@@ -522,6 +522,8 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [showSettings, setShowSettings] = useState(false);
             const [settingsInitialTab, setSettingsInitialTab] = useState('parent');
             const [editingEntry, setEditingEntry] = useState(null);
+            const [comboFloatingBursts, setComboFloatingBursts] = useState([]); // [{ id, taskId, date, comboCount, bonusGold }]
+            const [showComboTip, setShowComboTip] = useState(false); // 悬浮提示框开关
             const [exemptionModal, setExemptionModal] = useState(null); // { date, exemptionCode }
             const [exemptionInputCode, setExemptionInputCode] = useState('');
             const [sortBy, setSortBy] = useState('default'); 
@@ -7063,6 +7065,57 @@ ${context}
                     setStarHistory(prev => ({ ...prev, [starKey]: STAR_PER_CHECKIN }));
                 }
 
+                // --- 当日任务连击激励机制 (Combo Rush) ---
+                if (editingEntry.isNew && editingEntry.date === today && gamificationConfig?.comboEnabled !== false) {
+                    const childCheckinRecords = checkins[activeChild] || {};
+                    const childTaskList = tasks[activeChild] || [];
+                    const todayScheduled = childTaskList.filter(t => {
+                        if (t.startDate && today < t.startDate) return false;
+                        if (t.deadline && today > t.deadline) return false;
+                        return true;
+                    });
+                    // 计算除本次打卡外，今日已完成的任务项数
+                    const prevDoneCount = todayScheduled.filter(t => t.id !== editingEntry.taskId && childCheckinRecords[t.id]?.[today] !== undefined).length;
+                    const comboCount = prevDoneCount + 1;
+                    const comboBonus = calculateComboBonus(comboCount, gamificationConfig);
+
+                    if (comboBonus > 0) {
+                        const comboKey = isMulti
+                            ? `${activeChild}-COMBO_BONUS-${editingEntry.taskId}-${editingEntry.date}_${sessionTimestamp}`
+                            : `${activeChild}-COMBO_BONUS-${editingEntry.taskId}-${editingEntry.date}`;
+                        setWheelHistory(prev => ({ ...prev, [comboKey]: comboBonus }));
+                        updateStats(activeChild, 'gold_earn', comboBonus, { source: 'combo_bonus', dateKey: statDateKey });
+                    }
+
+                    // 触发漂浮暴击弹跳字效
+                    const burstId = `burst_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                    setComboFloatingBursts(prev => [...prev, {
+                        id: burstId,
+                        taskId: editingEntry.taskId,
+                        date: editingEntry.date,
+                        comboCount,
+                        bonusGold: comboBonus
+                    }]);
+                    setTimeout(() => {
+                        setComboFloatingBursts(prev => prev.filter(b => b.id !== burstId));
+                    }, 1600);
+
+                    // 播放连击升调音效
+                    if (gamificationConfig?.comboSoundEnabled !== false) {
+                        playComboSound(comboCount);
+                    }
+
+                    // 全勤大满贯彩蛋
+                    if (todayScheduled.length > 0 && comboCount >= todayScheduled.length) {
+                        if (typeof window !== 'undefined' && window.confetti) {
+                            try { window.confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } }); } catch(e){}
+                        }
+                        showToast('success', `👑 太棒了！达成今日【大满贯全勤】！全部 ${todayScheduled.length} 项任务已通关！${comboBonus > 0 ? `（连胜加成 +${comboBonus} 💰）` : ''}`);
+                    } else if (comboBonus > 0) {
+                        showToast('success', `🔥 ${comboCount}连击！额外获得 +${comboBonus} 连击元宝！`);
+                    }
+                }
+
                 // --- 多次打卡奖励触发器 (Phase 5.5) ---
                 if (isMulti && editingEntry.isNew && currentTask.bonusThreshold > 0) {
                     const taskRecord = checkins[activeChild]?.[currentTask.id] || {};
@@ -8618,6 +8671,24 @@ ${context}
                     }
                     return next;
                 });
+                // 同步删除 COMBO_BONUS 连击奖励记录
+                setWheelHistory(prev => {
+                    const next = { ...prev };
+                    const comboPrefix = `${activeChild}-COMBO_BONUS-${editingEntry.taskId}-${editingEntry.date}`;
+                    if (isSingleDelete) {
+                        const taskRecord = checkins[activeChild]?.[task.id];
+                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
+                        if (entries[sessionIndex]) {
+                            const ts = entries[sessionIndex].t;
+                            const key = `${comboPrefix}_${ts}`;
+                            delete next[key];
+                            delete next[comboPrefix];
+                        }
+                    } else {
+                        Object.keys(next).forEach(k => { if (k.startsWith(comboPrefix)) delete next[k]; });
+                    }
+                    return next;
+                });
 
                 // 删除 checkins 数据
                 setCheckins(prev => {
@@ -9798,6 +9869,15 @@ ${context}
                                     const isExempted = exemptedDays[activeChild]?.includes(date);
                                     const isMissed = isPast && date >= joinDate && !hasAnyCheckin && !isExempted;
 
+                                    const childTasks = tasks[activeChild] || [];
+                                    const todayScheduled = childTasks.filter(t => (!t.startDate || date >= t.startDate) && (!t.deadline || date <= t.deadline));
+                                    const todayCompleted = todayScheduled.filter(t => checkins[activeChild]?.[t.id]?.[date] !== undefined).length;
+                                    const todayTotal = todayScheduled.length;
+                                    const comboProgressPct = todayTotal > 0 ? Math.min(100, Math.round((todayCompleted / todayTotal) * 100)) : 0;
+                                    const comboInfo = getComboInfo(todayCompleted, todayTotal);
+                                    const nextComboBonus = calculateComboBonus(todayCompleted + 1, gamificationConfig);
+                                    const currentComboBonus = calculateComboBonus(todayCompleted, gamificationConfig);
+
                                     return (
                                       <th 
                                         key={date} 
@@ -9813,6 +9893,68 @@ ${context}
                                           ${isExempted ? (hasActiveBg ? 'bg-sky-500/20 border-b-2 border-sky-400/40 text-sky-200 opacity-90' : 'bg-blue-50/60 border-b-2 border-blue-200 opacity-90') : ''}
                                         `}
                                       >
+                                        {/* 连击浮动胶囊徽章（纯浮动，不新增格子） */}
+                                        {isToday && gamificationConfig?.comboEnabled !== false && (
+                                          <div 
+                                            className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setShowComboTip(prev => !prev);
+                                            }}
+                                            onMouseEnter={() => setShowComboTip(true)}
+                                            onMouseLeave={() => setShowComboTip(false)}
+                                            title="点击或悬浮查看今日连胜加成详情"
+                                          >
+                                            <div className={`px-1.5 py-0.5 rounded-full text-[9px] font-black border flex items-center gap-0.5 shadow-sm transition-transform hover:scale-110 whitespace-nowrap ${comboInfo.badgeBg} ${todayCompleted >= 2 ? 'animate-pulse' : ''}`}>
+                                              <span>{comboInfo.icon}</span>
+                                              <span>{todayCompleted > 0 ? `${todayCompleted}连击` : '连胜'}</span>
+                                              {currentComboBonus > 0 && <span className="opacity-90 font-extrabold text-[8px]">+{currentComboBonus}</span>}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* 连胜详情浮层卡片 */}
+                                        {isToday && showComboTip && gamificationConfig?.comboEnabled !== false && (
+                                          <div 
+                                            className={`absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 w-52 p-2.5 rounded-xl text-left shadow-2xl border text-xs backdrop-blur-md transition-all ${
+                                              hasActiveBg ? 'bg-slate-900/95 border-amber-400/40 text-slate-100 shadow-black/60' : 'bg-white/98 border-amber-200 text-slate-800 shadow-amber-900/20'
+                                            }`}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
+                                              <div className="flex items-center gap-1 font-black text-amber-400 text-xs">
+                                                <span>{comboInfo.icon}</span>
+                                                <span>今日连击 · {comboInfo.title}</span>
+                                              </div>
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                                                {todayCompleted}/{todayTotal} 项
+                                              </span>
+                                            </div>
+                                            
+                                            <div className="space-y-1 text-[11px]">
+                                              <div className="flex justify-between items-center text-slate-400">
+                                                <span>已获连击奖励：</span>
+                                                <span className="font-bold text-amber-400">+{currentComboBonus} 元宝</span>
+                                              </div>
+                                              <div className="flex justify-between items-center text-slate-400">
+                                                <span>下一项打卡加成：</span>
+                                                <span className="font-bold text-emerald-400">+{nextComboBonus} 元宝</span>
+                                              </div>
+                                              <div className="text-[10px] text-slate-500 pt-1 leading-tight">
+                                                连胜机制：今日每完成一项，下一项额外加成递增，封顶 +{gamificationConfig?.comboCap ?? 10}！
+                                              </div>
+                                            </div>
+
+                                            {/* 连击进度条 */}
+                                            <div className="mt-2 w-full bg-black/20 rounded-full h-1.5 overflow-hidden">
+                                              <div 
+                                                className="h-full bg-gradient-to-r from-amber-400 to-rose-500 rounded-full transition-all duration-300"
+                                                style={{ width: `${comboProgressPct}%` }}
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+
                                         <div className="flex flex-col items-center justify-center">
                                           <span className={`text-[10px] leading-tight font-extrabold ${
                                             isToday 
@@ -9833,6 +9975,16 @@ ${context}
                                             {d.getMonth() + 1}/{d.getDate()}
                                           </span>
                                         </div>
+
+                                        {/* 底部悬浮连击进度线 */}
+                                        {isToday && gamificationConfig?.comboEnabled !== false && (
+                                          <div className="absolute inset-x-0 bottom-0 h-1 bg-amber-200/30 overflow-hidden rounded-b pointer-events-none">
+                                            <div 
+                                              className="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-500 transition-all duration-500" 
+                                              style={{ width: `${comboProgressPct}%` }} 
+                                            />
+                                          </div>
+                                        )}
                                         {/* 断签(红)/豁免(蓝)：角标 */}
                                         {isMissed && (
                                         <span className="absolute -bottom-1 -right-1 w-5 h-5 flex items-center justify-center text-base animate-flame-flicker pointer-events-none" style={{ zIndex: 1, textShadow: '0 0 4px rgba(239,68,68,0.9)' }} title="断签">💔</span>
@@ -9901,6 +10053,17 @@ ${context}
                                       return (
                                         <td key={date} className={`p-2 text-center transition-colors ${isToday ? (hasActiveBg ? 'bg-white/10' : 'bg-white shadow-y') : (isWeekend ? (hasActiveBg ? 'bg-rose-500/[0.05]' : 'bg-rose-50/40') : '')}`}>
                                           <div className="relative w-8 h-8 mx-auto">
+                                            {/* 连胜暴击浮动爆字 */}
+                                            {comboFloatingBursts.filter(b => b.taskId === task.id && b.date === date).map(burst => (
+                                              <div 
+                                                key={burst.id} 
+                                                className="absolute -top-7 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-combo-burst whitespace-nowrap"
+                                              >
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black text-amber-900 bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 border border-amber-400 shadow-lg shadow-amber-500/40">
+                                                  🔥 {burst.bonusGold > 0 ? `+${burst.bonusGold}` : `连击x${burst.comboCount}`}
+                                                </span>
+                                              </div>
+                                            ))}
                                             {isRepaired && <RepairedFlameBadge size="sm" className="absolute -bottom-1 -right-1 z-20" />}
                                             <button 
                                               onClick={() => handleCellClick(task.id, date)} 
@@ -9972,6 +10135,17 @@ ${context}
                                               ? (isChecked ? 'bg-white/20 border-white/30 backdrop-blur-md shadow-lg shadow-black/10' : 'bg-white/10 border-white/15 backdrop-blur-md hover:bg-white/15 hover:border-white/25')
                                               : (isChecked ? `bg-white border-${theme.id}-200 shadow-md` : 'border-gray-100 hover:bg-white hover:shadow-sm')
                                           }`}>
+                                              {/* 连胜暴击浮动爆字 */}
+                                              {comboFloatingBursts.filter(b => b.taskId === task.id && b.date === today).map(burst => (
+                                                <div 
+                                                  key={burst.id} 
+                                                  className="absolute -top-3 right-16 z-50 pointer-events-none animate-combo-burst whitespace-nowrap"
+                                                >
+                                                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-black text-amber-900 bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 border border-amber-400 shadow-lg shadow-amber-500/40">
+                                                    🔥 连击x{burst.comboCount} {burst.bonusGold > 0 ? `+${burst.bonusGold}元宝` : ''}
+                                                  </span>
+                                                </div>
+                                              ))}
                                               {isRepairedToday && <RepairedFlameBadge size="md" className="absolute -bottom-1 -right-1 z-20" />}
                                               <span className={`absolute -top-1 z-20 min-w-[18px] h-4 px-1.5 rounded-full text-[9px] font-bold border-2 border-white shadow-sm flex items-center justify-center ${bubbleCls}`} style={{ right: '-0.25rem' }}>{bubbleContent}</span>
                                               <div className="flex items-center gap-4 pr-16">
@@ -10412,7 +10586,7 @@ ${context}
 					  currentGold={parentDeductionNotice?.balanceAfter ?? totalGold}
 				  />
 
-                  {editingEntry && <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} />}
+                  {editingEntry && <TimeEntryModal editingEntry={editingEntry} tasks={tasks} activeChild={activeChild} removeCheckin={removeCheckin} setEditingEntry={setEditingEntry} saveCheckin={saveCheckin} theme={theme} inventory={inventory[activeChild]||{}} useRepairCard={useRepairCard} checkins={checkins} activeBuffs={activeBuffs} gamificationConfig={gamificationConfig} />}
 
                   {/* 断签豁免弹窗 */}
                   {exemptionModal && (() => {

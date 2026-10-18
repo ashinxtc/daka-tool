@@ -4644,6 +4644,111 @@ const CopyIcon = (props) => (
                                        </div>
                                    )}
                                </section>
+
+                               {/* 4. 当日连击激励机制 (Combo Rush) */}
+                               <section className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-700/80 shadow-md space-y-4">
+                                   <div className="flex items-center justify-between gap-3">
+                                       <div className="space-y-1">
+                                           <div className="flex items-center gap-2">
+                                               <span className="text-lg">🔥</span>
+                                               <h4 className="text-sm font-black text-amber-300">当日任务连击机制 (Combo Rush 连胜激励)</h4>
+                                               <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
+                                                   街机爽感
+                                               </span>
+                                           </div>
+                                           <p className="text-xs text-slate-300 leading-relaxed">
+                                               当日连续打卡激发游戏街机连胜感。完成第 1 项正常奖励，完成第 2 项额外奖励 +1，第 3 项 +2 以此类推！在日历表头上纯悬浮展示火苗徽章与充能进度条，不占任何额外格子。
+                                           </p>
+                                       </div>
+                                       <ToggleSwitch 
+                                           checked={gamificationConfig?.comboEnabled !== false}
+                                           onChange={() => setGamificationConfig(prev => ({
+                                               ...(prev || {}),
+                                               comboEnabled: !(prev?.comboEnabled !== false)
+                                           }))}
+                                           activeColor="bg-amber-500"
+                                       />
+                                   </div>
+
+                                   {gamificationConfig?.comboEnabled !== false && (
+                                       <div className="mt-2 pt-3 border-t border-slate-800 space-y-3.5 text-xs">
+                                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                               {/* 连击奖励步长 */}
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                                                   <label className="text-slate-300 font-bold block">连击递增步长 (每连续完成一项额外多送)</label>
+                                                   <div className="flex items-center gap-2">
+                                                       {[
+                                                           { step: 1, label: '+1 元宝 (默认等差)' },
+                                                           { step: 2, label: '+2 元宝 (进阶鼓励)' },
+                                                           { step: 3, label: '+3 元宝 (高燃冲刺)' }
+                                                       ].map(opt => (
+                                                           <button
+                                                               key={opt.step}
+                                                               type="button"
+                                                               onClick={() => setGamificationConfig(prev => ({
+                                                                   ...(prev || {}),
+                                                                   comboStep: opt.step
+                                                               }))}
+                                                               className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
+                                                                   (gamificationConfig?.comboStep || 1) === opt.step
+                                                                       ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                               }`}
+                                                           >
+                                                               {opt.label}
+                                                           </button>
+                                                       ))}
+                                                   </div>
+                                               </div>
+
+                                               {/* 单项连击最高加成上限 */}
+                                               <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                                                   <label className="text-slate-300 font-bold block">单项连击奖励上限 (防止金币通胀)</label>
+                                                   <div className="flex items-center gap-2">
+                                                       {[
+                                                           { cap: 5, label: '最多 +5 币' },
+                                                           { cap: 10, label: '最多 +10 币 (推荐)' },
+                                                           { cap: 20, label: '最多 +20 币' }
+                                                       ].map(opt => (
+                                                           <button
+                                                               key={opt.cap}
+                                                               type="button"
+                                                               onClick={() => setGamificationConfig(prev => ({
+                                                                   ...(prev || {}),
+                                                                   comboCap: opt.cap
+                                                               }))}
+                                                               className={`flex-1 py-1.5 rounded-lg font-bold border transition-colors ${
+                                                                   (gamificationConfig?.comboCap || 10) === opt.cap
+                                                                       ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                                       : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                               }`}
+                                                           >
+                                                               {opt.label}
+                                                           </button>
+                                                       ))}
+                                                   </div>
+                                               </div>
+                                           </div>
+
+                                           {/* 音效开关 */}
+                                           <div className="p-3 rounded-xl bg-slate-800/70 border border-slate-700/70 flex items-center justify-between">
+                                               <div>
+                                                   <span className="text-slate-200 font-bold block">连击升调音效反馈</span>
+                                                   <span className="text-[11px] text-slate-400 block mt-0.5">每增加 1 次连击，触发激昂递增的清脆升调音阶（合成音效，零流量）</span>
+                                               </div>
+                                               <ToggleSwitch 
+                                                   checked={gamificationConfig?.comboSoundEnabled !== false}
+                                                   onChange={() => setGamificationConfig(prev => ({
+                                                       ...(prev || {}),
+                                                       comboSoundEnabled: !(prev?.comboSoundEnabled !== false)
+                                                   }))}
+                                                   activeColor="bg-amber-500"
+                                                   size="sm"
+                                               />
+                                           </div>
+                                       </div>
+                                   )}
+                               </section>
                            </div>
                        )}
                     </div>

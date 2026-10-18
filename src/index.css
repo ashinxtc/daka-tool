@@ -72,6 +72,37 @@
   animation: flame-badge-glow 1.8s ease-in-out infinite;
 }
 
+/* 连击爆发弹跳漂浮动效（0占位，击中瞬间斜上方跳出并渐隐） */
+@keyframes combo-burst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.6) rotate(-4deg);
+    filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.6));
+  }
+  16% {
+    opacity: 1;
+    transform: translate(-50%, -10px) scale(1.18) rotate(2deg);
+    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.95));
+  }
+  32% {
+    transform: translate(-50%, -15px) scale(1.0) rotate(0deg);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -26px) scale(0.98);
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.75));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -42px) scale(0.85);
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0));
+  }
+}
+
+.animate-combo-burst {
+  animation: combo-burst 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 /* --- 新春限定·火树银花背景特效 --- */
 .bg-lunar-night {
   background: linear-gradient(to bottom, #1e3a8a 0%, #0f172a 60%, #4c0519 100%);
