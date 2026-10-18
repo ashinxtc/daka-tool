@@ -16,6 +16,7 @@ export const ReadingFloatingButton = ({
   todayStr,
   onOpenQuickCheckin,
   onOpenPavilion,
+  onOpenTransitionModal,
   readingHistory = []
 }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -28,7 +29,9 @@ export const ReadingFloatingButton = ({
       const cur = cfg.currentProgress || 0;
       const total = cfg.totalPages || cfg.totalChapters || cfg.dailyTargetMinutes || cfg.targetCount || 100;
       const pct = Math.min(100, Math.max(0, Math.round((cur / total) * 100)));
-      const isChecked = !!(checkins[activeChild]?.[t.id]?.[todayStr]) || t.earlyCompleted;
+      const isPendingNextBook = pct >= 100 || !!cfg.needsNextBook;
+      // 若已达成100%全本读完或待换新书，不属于“今日未读催打卡”，自动视为今日无需打卡
+      const isChecked = !!(checkins[activeChild]?.[t.id]?.[todayStr]) || t.earlyCompleted || isPendingNextBook;
       const unit = cfg.mode === 'chapters' ? '章' : cfg.mode === 'duration' ? '分' : cfg.mode === 'count' ? '本' : '页';
       const period = cfg.period === 'monthly' ? '月必读' : cfg.period === 'custom' ? '自选' : '周必读';
       const title = cfg.bookTitle || t.name || '必读书目';
@@ -41,6 +44,7 @@ export const ReadingFloatingButton = ({
         total,
         pct,
         isChecked,
+        isPendingNextBook,
         unit,
         period,
         title,
@@ -48,16 +52,21 @@ export const ReadingFloatingButton = ({
       };
     });
 
-  // 未读优先排在前列
+  // 未读在读优先排在前列，待选新书次之，今日已读最后
   const sortedBooks = [...activeBooks].sort((a, b) => {
-    if (a.isChecked === b.isChecked) return 0;
+    if (a.isChecked === b.isChecked) {
+      if (a.isPendingNextBook === b.isPendingNextBook) return 0;
+      return a.isPendingNextBook ? -1 : 1;
+    }
     return a.isChecked ? 1 : -1;
   });
 
   const totalCount = activeBooks.length;
-  const unreadBooks = sortedBooks.filter(b => !b.isChecked);
+  const unreadBooks = sortedBooks.filter(b => !b.isChecked && !b.isPendingNextBook);
   const unreadCount = unreadBooks.length;
   const hasUnread = unreadCount > 0;
+  const pendingNextBooks = sortedBooks.filter(b => b.isPendingNextBook);
+  const allPendingNext = totalCount > 0 && activeBooks.every(b => b.isPendingNextBook);
   const allCheckedToday = totalCount > 0 && !hasUnread;
 
   // 综合总进度百分比
@@ -65,13 +74,13 @@ export const ReadingFloatingButton = ({
     ? Math.round(activeBooks.reduce((sum, b) => sum + b.pct, 0) / totalCount)
     : 0;
 
-  // 优先聚焦的书目 (未读优先，全读完则取第一本)
-  const primaryBook = unreadBooks[0] || sortedBooks[0] || null;
+  // 优先聚焦的书目 (未读优先，全通关待选新书次之，全部已读则取第一本)
+  const primaryBook = unreadBooks[0] || pendingNextBooks[0] || sortedBooks[0] || null;
 
-  // 中心 Emoji 抉择：单本展示书名 Emoji，多本未读展示待读书 Emoji，全读完展示 📚
+  // 中心 Emoji 抉择
   const displayEmoji = totalCount <= 1
     ? (primaryBook?.cover || '📖')
-    : (hasUnread ? (primaryBook?.cover || '📖') : '📚');
+    : (hasUnread ? (primaryBook?.cover || '📖') : (allPendingNext ? '🚀' : '📚'));
 
   // SVG 环形进度条参数
   const size = 56;
@@ -87,6 +96,10 @@ export const ReadingFloatingButton = ({
     if (hasUnread && primaryBook) {
       // 未读优先快速记
       if (onOpenQuickCheckin) onOpenQuickCheckin(primaryBook.task);
+    } else if (primaryBook?.isPendingNextBook) {
+      // 全本已通关，优先开启下一本
+      if (onOpenTransitionModal) onOpenTransitionModal(primaryBook.task);
+      else if (onOpenPavilion) onOpenPavilion();
     } else {
       // 全部已读或暂无在读书时，进入藏书阁
       if (onOpenPavilion) onOpenPavilion();
@@ -106,9 +119,9 @@ export const ReadingFloatingButton = ({
         className="relative w-11 h-11 lg:w-14 lg:h-14 rounded-full bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-400 border-2 border-white shadow-xl flex items-center justify-center transform transition-all duration-300 hover:scale-110 active:scale-95 npc-float"
         title={
           totalCount > 1
-            ? `伴读小书案 (${totalCount}本在读，综合${displayProgressPct}%) · 点击${hasUnread ? `登记《${primaryBook.title}》` : '进入天工书阁'}`
+            ? `伴读小书案 (${totalCount}本在读，综合${displayProgressPct}%) · 点击${hasUnread ? `登记《${primaryBook?.title}》` : (primaryBook?.isPendingNextBook ? '选定新书接力' : '进入天工书阁')}`
             : primaryBook
-            ? `${primaryBook.title} (${primaryBook.pct}%) · 点击${primaryBook.isChecked ? '进入书阁' : '快速打卡'}`
+            ? `${primaryBook.title} (${primaryBook.pct}%) · 点击${primaryBook.isPendingNextBook ? '选定下一本' : (primaryBook.isChecked ? '进入书阁' : '快速打卡')}`
             : '天工书阁 · 阅读伴读'
         }
       >
@@ -148,7 +161,14 @@ export const ReadingFloatingButton = ({
 
         {/* 右上角状态徽章 */}
         {totalCount > 0 ? (
-          allCheckedToday ? (
+          allPendingNext ? (
+            <span 
+              className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white shadow-sm"
+              title="全本书目已读完通关，点击选定下一本新书接力"
+            >
+              🚀
+            </span>
+          ) : allCheckedToday ? (
             <span 
               className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full flex items-center justify-center text-[9px] font-black text-white shadow-sm"
               title="今日所有在读书目已全部打卡"
@@ -175,7 +195,7 @@ export const ReadingFloatingButton = ({
         {/* 底部微小数值/在读数量指示 */}
         {totalCount > 0 && (
           <div className="absolute -bottom-1.5 px-1 py-0.2 rounded-full bg-slate-900/85 text-amber-200 text-[8px] font-bold border border-white/40 shadow-xs pointer-events-none scale-90 whitespace-nowrap">
-            {totalCount > 1 ? `${totalCount}本·${displayProgressPct}%` : `${displayProgressPct}%`}
+            {allPendingNext ? '待换新书' : (totalCount > 1 ? `${totalCount}本·${displayProgressPct}%` : `${displayProgressPct}%`)}
           </div>
         )}
       </button>
@@ -212,7 +232,9 @@ export const ReadingFloatingButton = ({
             <div 
               onClick={(e) => {
                 e.stopPropagation();
-                if (primaryBook.isChecked) {
+                if (primaryBook.isPendingNextBook) {
+                  onOpenTransitionModal ? onOpenTransitionModal(primaryBook.task) : onOpenPavilion?.();
+                } else if (primaryBook.isChecked) {
                   onOpenPavilion?.();
                 } else {
                   onOpenQuickCheckin?.(primaryBook.task);
@@ -227,20 +249,24 @@ export const ReadingFloatingButton = ({
                   <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-800 font-bold shrink-0">{primaryBook.period}</span>
                 </div>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                  primaryBook.isChecked ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
+                  primaryBook.isPendingNextBook
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : primaryBook.isChecked 
+                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                      : 'bg-amber-50 text-amber-600 border border-amber-200 animate-pulse'
                 }`}>
-                  {primaryBook.isChecked ? '今日已读' : '今日待读'}
+                  {primaryBook.isPendingNextBook ? '待选新书 🚀' : (primaryBook.isChecked ? '今日已读' : '今日待读')}
                 </span>
               </div>
               <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span>进度: {primaryBook.cur} / {primaryBook.total} {primaryBook.unit}</span>
+                <span>{primaryBook.isPendingNextBook ? '全本已满贯通关' : `进度: ${primaryBook.cur} / ${primaryBook.total} ${primaryBook.unit}`}</span>
                 <span className="font-black text-amber-600">{primaryBook.pct}%</span>
               </div>
               <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full" style={{ width: `${primaryBook.pct}%` }} />
               </div>
               <div className="text-[9px] text-slate-400 pt-1 border-t border-slate-100 flex items-center justify-between">
-                <span>{primaryBook.isChecked ? '点击翻看「天工书阁」' : '点击快速记录今日阅读'}</span>
+                <span>{primaryBook.isPendingNextBook ? '已满贯通关！点击选定下一本' : (primaryBook.isChecked ? '点击翻看「天工书阁」' : '点击快速记录今日阅读')}</span>
                 <span className="text-amber-600 font-bold">➔</span>
               </div>
             </div>
@@ -259,15 +285,15 @@ export const ReadingFloatingButton = ({
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     hasUnread 
                       ? 'bg-amber-100 text-amber-800 border border-amber-200' 
-                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : (allPendingNext ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200')
                   }`}>
-                    {hasUnread ? `${unreadCount}本待打卡` : '全部已读 ✓'}
+                    {hasUnread ? `${unreadCount}本待打卡` : (allPendingNext ? '全部通关 🚀' : '全部已读 ✓')}
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">综合 {overallProgressPct}%</span>
                 </div>
               </div>
 
-              {/* 多书流：未读优先展示，支持单书直达打卡 */}
+              {/* 多书流：未读优先展示，支持单书直达打卡或选新书 */}
               <div className="max-h-60 overflow-y-auto space-y-1.5 pr-0.5">
                 {sortedBooks.map(b => (
                   <div
@@ -276,10 +302,16 @@ export const ReadingFloatingButton = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       setIsHovered(false);
-                      onOpenQuickCheckin?.(b.task);
+                      if (b.isPendingNextBook) {
+                        onOpenTransitionModal ? onOpenTransitionModal(b.task) : onOpenPavilion?.();
+                      } else {
+                        onOpenQuickCheckin?.(b.task);
+                      }
                     }}
                     className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                      b.isChecked
+                      b.isPendingNextBook
+                        ? 'bg-gradient-to-r from-blue-50/90 to-indigo-50/70 border-blue-200 hover:border-blue-400 shadow-2xs'
+                        : b.isChecked
                         ? 'bg-slate-50/80 border-slate-200/80 hover:bg-slate-100'
                         : 'bg-gradient-to-r from-amber-50/90 to-orange-50/70 border-amber-200 hover:border-amber-400 shadow-2xs hover:shadow-xs'
                     }`}
@@ -296,22 +328,33 @@ export const ReadingFloatingButton = ({
                             <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full" style={{ width: `${b.pct}%` }} />
                           </div>
                           <span className="text-[10px] text-slate-500 tabular-nums truncate">
-                            {b.cur}/{b.total} {b.unit} ({b.pct}%)
+                            {b.isPendingNextBook ? '全本已通关' : `${b.cur}/${b.total} ${b.unit} (${b.pct}%)`}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* 单书直达打卡胶囊 */}
+                    {/* 单书直达操作胶囊 */}
                     <button
                       type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsHovered(false);
+                        if (b.isPendingNextBook) {
+                          onOpenTransitionModal ? onOpenTransitionModal(b.task) : onOpenPavilion?.();
+                        } else {
+                          onOpenQuickCheckin?.(b.task);
+                        }
+                      }}
                       className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-95 ${
-                        b.isChecked
+                        b.isPendingNextBook
+                          ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-xs hover:brightness-105'
+                          : b.isChecked
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
                           : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs hover:brightness-105'
                       }`}
                     >
-                      {b.isChecked ? '已读 ✓' : '打卡 ⚡'}
+                      {b.isPendingNextBook ? '选新书 🚀' : (b.isChecked ? '已读 ✓' : '打卡 ⚡')}
                     </button>
                   </div>
                 ))}

@@ -13,6 +13,7 @@ export const ReadingCheckinModal = ({
   onSaveProgress,
   onOpenPavilion,
   onShelveBook,
+  onOpenTransitionModal,
   theme
 }) => {
   const cfg = task?.readingConfig || {};
@@ -120,6 +121,28 @@ export const ReadingCheckinModal = ({
 
         {/* 表单内容 */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* 已通关提示横幅 */}
+          {(currentBefore >= total || cfg.needsNextBook) && (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-900 rounded-2xl p-3 flex items-center justify-between gap-2.5">
+              <div className="text-xs">
+                <span className="font-bold block text-blue-950">🎉 本书已满贯通关！</span>
+                <span className="text-[11px] text-blue-700">若开启下一本新书请点击右侧；若需修正打卡进度，可直接在下方修改页数并保存。</span>
+              </div>
+              {onOpenTransitionModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenTransitionModal(task);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 shadow-xs active:scale-95 transition"
+                >
+                  换新书 🚀
+                </button>
+              )}
+            </div>
+          )}
+
           {/* 进度预览卡 */}
           <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/50 rounded-2xl p-4 border border-amber-200/80">
             <div className="flex justify-between items-center text-xs text-slate-600 mb-2 font-bold">

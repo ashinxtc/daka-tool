@@ -3856,6 +3856,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_pet_cooldowns_v1',       // 宠物冷却 { child: { ... } }
                 'app_pet_skill_cd_v1',        // 宠物技能CD { child: { ... } }
                 'app_deleted_tasks_v1',       // 任务删除墓碑 { child: { taskId: timestamp } }
+                'app_deleted_reading_books_v1', // 阅读藏书与待续书目删除墓碑 { child: { bookIdOrTitle: timestamp } }
             ]);
             // checkins 是三层嵌套 { child: { taskId: { date: value } } }，需要深合并
             const MERGEABLE_NESTED_KEYS = new Set([
@@ -3871,6 +3872,39 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 } catch (e) {
                     return {};
                 }
+            };
+
+            // 读取已删除阅读藏书/待续书目墓碑集合 { child: { bookIdOrTitle: timestamp } }
+            const getDeletedReadingBookTombstones = () => {
+                try {
+                    const raw = storage.getItem('app_deleted_reading_books_v1');
+                    return raw ? JSON.parse(raw) : {};
+                } catch (e) {
+                    return {};
+                }
+            };
+
+            const recordDeletedReadingBook = (child, bookIdOrTitle) => {
+                if (!child || !bookIdOrTitle) return;
+                try {
+                    const tombstones = getDeletedReadingBookTombstones();
+                    if (!tombstones[child]) tombstones[child] = {};
+                    tombstones[child][String(bookIdOrTitle)] = Date.now();
+                    storage.setItem('app_deleted_reading_books_v1', JSON.stringify(tombstones));
+                    storage.markKeyVersion('app_deleted_reading_books_v1');
+                } catch (e) {}
+            };
+
+            const removeDeletedReadingBookTombstone = (child, bookIdOrTitle) => {
+                if (!child || !bookIdOrTitle) return;
+                try {
+                    const tombstones = getDeletedReadingBookTombstones();
+                    if (tombstones[child] && tombstones[child][String(bookIdOrTitle)]) {
+                        delete tombstones[child][String(bookIdOrTitle)];
+                        storage.setItem('app_deleted_reading_books_v1', JSON.stringify(tombstones));
+                        storage.markKeyVersion('app_deleted_reading_books_v1');
+                    }
+                } catch (e) {}
             };
 
             const isChildOrProfileDeleted = (nameOrId, tombstones) => {
@@ -3943,6 +3977,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     'app_pet_notif_v1',
                     'app_reading_history_v1',
                     'app_reading_shelved_v1',
+                    'app_deleted_reading_books_v1',
                     'app_deleted_tasks_v1',
                     'app_ai_chat_history',
                     'app_coupons_v1',
@@ -4484,7 +4519,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         taskMap.set(idStr, { ...ct });
                     });
 
-                    // 2. 本地任务合入（新增任务加入，同 id 任务属性融合，本地字段优先）
+                    // 2. 本地任务合入（新增任务加入，同 id 任务基于修改时间与阅读进度深度融合）
                     (lTasks || []).forEach(lt => {
                         if (!lt || !lt.id) return;
                         const idStr = String(lt.id);
@@ -4492,8 +4527,65 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                             taskMap.set(idStr, { ...lt });
                             cloudChanged = true;
                         } else {
-                            const existing = taskMap.get(idStr);
-                            const mergedItem = { ...existing, ...lt };
+                            const existing = taskMap.get(idStr); // 来自云端 cTasks
+                            const ltTime = lt.updatedAt || lt.readingConfig?.updatedAt || 0;
+                            const ctTime = existing.updatedAt || existing.readingConfig?.updatedAt || 0;
+
+                            let mergedItem;
+                            if (ctTime > ltTime) {
+                                // 云端修改时间更新，以云端任务为基准
+                                mergedItem = { ...lt, ...existing };
+                            } else if (ltTime > ctTime) {
+                                // 本地修改时间更新，以本地任务为基准
+                                mergedItem = { ...existing, ...lt };
+                            } else {
+                                // 时间戳相同或均缺失时（历史数据兼容）：针对伴读任务做阅读进度对比
+                                const isReading = !!(lt.readingConfig?.isReading || lt.frequencyType === 'reading' || existing.readingConfig?.isReading || existing.frequencyType === 'reading');
+                                if (isReading) {
+                                    const lProg = lt.readingConfig?.currentProgress || 0;
+                                    const cProg = existing.readingConfig?.currentProgress || 0;
+                                    const lDone = !!lt.readingConfig?.needsNextBook || lProg >= (lt.readingConfig?.totalPages || 100);
+                                    const cDone = !!existing.readingConfig?.needsNextBook || cProg >= (existing.readingConfig?.totalPages || 100);
+                                    const lNotesLen = Array.isArray(lt.readingConfig?.notes) ? lt.readingConfig.notes.length : 0;
+                                    const cNotesLen = Array.isArray(existing.readingConfig?.notes) ? existing.readingConfig.notes.length : 0;
+
+                                    if (cDone && !lDone) {
+                                        mergedItem = { ...lt, ...existing };
+                                    } else if (lDone && !cDone) {
+                                        mergedItem = { ...existing, ...lt };
+                                    } else if (cProg > lProg || cNotesLen > lNotesLen) {
+                                        mergedItem = { ...lt, ...existing };
+                                    } else if (lProg > cProg || lNotesLen > cNotesLen) {
+                                        mergedItem = { ...existing, ...lt };
+                                    } else {
+                                        mergedItem = { ...existing, ...lt };
+                                    }
+                                } else {
+                                    mergedItem = { ...existing, ...lt };
+                                }
+                            }
+
+                            // 伴读书阁：合并心得感悟金句 notes，避免任一端的心得丢失
+                            if (mergedItem.readingConfig) {
+                                const lNotesArr = Array.isArray(lt.readingConfig?.notes) ? lt.readingConfig.notes : [];
+                                const cNotesArr = Array.isArray(existing.readingConfig?.notes) ? existing.readingConfig.notes : [];
+                                if (lNotesArr.length > 0 && cNotesArr.length > 0) {
+                                    const seenNotes = new Set();
+                                    const combinedNotes = [];
+                                    [...cNotesArr, ...lNotesArr].forEach(n => {
+                                        const qKey = typeof n === 'string' ? n : `${n.date || ''}_${n.progress || ''}_${(n.text || '').trim()}`;
+                                        if (!seenNotes.has(qKey)) {
+                                            seenNotes.add(qKey);
+                                            combinedNotes.push(n);
+                                        }
+                                    });
+                                    mergedItem.readingConfig = {
+                                        ...mergedItem.readingConfig,
+                                        notes: combinedNotes
+                                    };
+                                }
+                            }
+
                             if (JSON.stringify(mergedItem) !== JSON.stringify(existing)) {
                                 cloudChanged = true;
                             }
@@ -4506,6 +4598,172 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                     if (JSON.stringify(mergedArr) !== JSON.stringify(lTasks)) localChanged = true;
                     if (JSON.stringify(mergedArr) !== JSON.stringify(cTasks)) cloudChanged = true;
+                });
+
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 天工书阁已读完藏书历史深度合并：{ child: [book] }
+            // 1. 支持删除墓碑（app_deleted_reading_books_v1），被删除的书目不从云端复活
+            // 2. 按书名与 taskId 深度去重，合并金句心得与进度数据
+            const mergeReadingHistory = (localObj, cloudObj) => {
+                if (!localObj || typeof localObj !== 'object' || !cloudObj || typeof cloudObj !== 'object') return null;
+                const merged = {};
+                const allChildren = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedReadingBookTombstones();
+                const deletedProfileTombstones = getDeletedProfileTombstones();
+                const now = Date.now();
+
+                allChildren.forEach(child => {
+                    if (child === '0' || child === 'undefined' || child === 'null' || !child) return;
+                    if (child === '测试员' || child === 'TESTER') {
+                        merged[child] = Array.isArray(localObj[child]) ? localObj[child] : [];
+                        return;
+                    }
+                    if (isChildOrProfileDeleted(child, deletedProfileTombstones)) {
+                        if (cloudObj[child] && cloudObj[child].length > 0) cloudChanged = true;
+                        return;
+                    }
+
+                    const lList = Array.isArray(localObj[child]) ? localObj[child] : [];
+                    const cList = Array.isArray(cloudObj[child]) ? cloudObj[child] : [];
+                    const childTombstones = deletedTombstones[child] || {};
+
+                    const isTombstoned = (b) => {
+                        if (!b) return true;
+                        const idKey = b.id ? String(b.id) : null;
+                        const titleKey = (b.bookTitle || b.title) ? String(b.bookTitle || b.title).trim() : null;
+                        if (idKey && childTombstones[idKey] && (now - childTombstones[idKey] < 30 * 86400000)) return true;
+                        if (titleKey && childTombstones[titleKey] && (now - childTombstones[titleKey] < 30 * 86400000)) return true;
+                        return false;
+                    };
+
+                    const validC = cList.filter(b => !isTombstoned(b));
+                    if (validC.length !== cList.length) cloudChanged = true;
+
+                    const validL = lList.filter(b => !isTombstoned(b));
+                    if (validL.length !== lList.length) localChanged = true;
+
+                    const bookMap = new Map();
+                    // 1. 载入云端藏书
+                    validC.forEach(b => {
+                        const key = (b.bookTitle || b.title || b.id || '').trim().toLowerCase();
+                        if (key) bookMap.set(key, b);
+                    });
+
+                    // 2. 合入本地藏书（若同名则合并金句与属性）
+                    validL.forEach(b => {
+                        const key = (b.bookTitle || b.title || b.id || '').trim().toLowerCase();
+                        if (!key) return;
+                        if (!bookMap.has(key)) {
+                            bookMap.set(key, b);
+                            cloudChanged = true;
+                        } else {
+                            const existing = bookMap.get(key);
+                            const existingQuotes = Array.isArray(existing.quotes) ? existing.quotes : [];
+                            const localQuotes = Array.isArray(b.quotes) ? b.quotes : [];
+                            const seenQuotes = new Set();
+                            const combinedQuotes = [];
+                            [...existingQuotes, ...localQuotes].forEach(q => {
+                                const qKey = typeof q === 'string' ? q : `${q.date || ''}_${q.progress || ''}_${(q.text || '').trim()}`;
+                                if (!seenQuotes.has(qKey)) {
+                                    seenQuotes.add(qKey);
+                                    combinedQuotes.push(q);
+                                }
+                            });
+                            const mergedBook = {
+                                ...existing,
+                                ...b,
+                                quotes: combinedQuotes,
+                                totalPages: Math.max(existing.totalPages || 0, b.totalPages || 0),
+                                grandReward: Math.max(existing.grandReward || 0, b.grandReward || 0),
+                                completedDate: b.completedDate || existing.completedDate
+                            };
+                            bookMap.set(key, mergedBook);
+                            if (JSON.stringify(mergedBook) !== JSON.stringify(existing)) {
+                                cloudChanged = true;
+                            }
+                        }
+                    });
+
+                    const mergedArr = Array.from(bookMap.values()).sort((a, b) => (b.completedDate || '').localeCompare(a.completedDate || ''));
+                    merged[child] = mergedArr;
+
+                    if (JSON.stringify(mergedArr) !== JSON.stringify(lList)) localChanged = true;
+                    if (JSON.stringify(mergedArr) !== JSON.stringify(cList)) cloudChanged = true;
+                });
+
+                return { merged, localChanged, cloudChanged };
+            };
+
+            // 待续书架深度合并：{ child: [shelvedBook] }
+            const mergeReadingShelved = (localObj, cloudObj) => {
+                if (!localObj || typeof localObj !== 'object' || !cloudObj || typeof cloudObj !== 'object') return null;
+                const merged = {};
+                const allChildren = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
+                let localChanged = false, cloudChanged = false;
+                const deletedTombstones = getDeletedReadingBookTombstones();
+                const deletedProfileTombstones = getDeletedProfileTombstones();
+                const now = Date.now();
+
+                allChildren.forEach(child => {
+                    if (child === '0' || child === 'undefined' || child === 'null' || !child) return;
+                    if (child === '测试员' || child === 'TESTER') {
+                        merged[child] = Array.isArray(localObj[child]) ? localObj[child] : [];
+                        return;
+                    }
+                    if (isChildOrProfileDeleted(child, deletedProfileTombstones)) {
+                        if (cloudObj[child] && cloudObj[child].length > 0) cloudChanged = true;
+                        return;
+                    }
+
+                    const lList = Array.isArray(localObj[child]) ? localObj[child] : [];
+                    const cList = Array.isArray(cloudObj[child]) ? cloudObj[child] : [];
+                    const childTombstones = deletedTombstones[child] || {};
+
+                    const isTombstoned = (b) => {
+                        if (!b) return true;
+                        const idKey = b.id ? String(b.id) : null;
+                        const titleKey = (b.bookTitle || b.title) ? String(b.bookTitle || b.title).trim() : null;
+                        if (idKey && childTombstones[idKey] && (now - childTombstones[idKey] < 30 * 86400000)) return true;
+                        if (titleKey && childTombstones[titleKey] && (now - childTombstones[titleKey] < 30 * 86400000)) return true;
+                        return false;
+                    };
+
+                    const validC = cList.filter(b => !isTombstoned(b));
+                    if (validC.length !== cList.length) cloudChanged = true;
+
+                    const validL = lList.filter(b => !isTombstoned(b));
+                    if (validL.length !== lList.length) localChanged = true;
+
+                    const shelveMap = new Map();
+                    validC.forEach(b => {
+                        const key = (b.bookTitle || b.title || b.id || '').trim().toLowerCase();
+                        if (key) shelveMap.set(key, b);
+                    });
+
+                    validL.forEach(b => {
+                        const key = (b.bookTitle || b.title || b.id || '').trim().toLowerCase();
+                        if (!key) return;
+                        if (!shelveMap.has(key)) {
+                            shelveMap.set(key, b);
+                            cloudChanged = true;
+                        } else {
+                            const existing = shelveMap.get(key);
+                            const chosen = (b.currentProgress || 0) >= (existing.currentProgress || 0) ? { ...existing, ...b } : { ...b, ...existing };
+                            shelveMap.set(key, chosen);
+                            if (JSON.stringify(chosen) !== JSON.stringify(existing)) {
+                                cloudChanged = true;
+                            }
+                        }
+                    });
+
+                    const mergedArr = Array.from(shelveMap.values());
+                    merged[child] = mergedArr;
+
+                    if (JSON.stringify(mergedArr) !== JSON.stringify(lList)) localChanged = true;
+                    if (JSON.stringify(mergedArr) !== JSON.stringify(cList)) cloudChanged = true;
                 });
 
                 return { merged, localChanged, cloudChanged };
@@ -4813,8 +5071,10 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const localChanged = JSON.stringify(merged) !== JSON.stringify(l);
                     return { merged, localChanged, cloudChanged };
                 },
-                // 天工书阁读完名著历史：{ child: [book] }，按 id 并集
-                'app_reading_history_v1': (l, c) => mergeChildArrays(l, c),
+                // 天工书阁读完名著历史：{ child: [book] }，支持删除墓碑与按书名去重
+                'app_reading_history_v1': (l, c) => mergeReadingHistory(l, c),
+                // 待续书架：{ child: [shelvedBook] }，支持删除墓碑与合并
+                'app_reading_shelved_v1': (l, c) => mergeReadingShelved(l, c),
                 // 作业登记记录：{ child: [record] }，按 id 并集，日期倒序
                 'app_homework_records_v1': (l, c) => mergeChildArrays(l, c, (a, b) => (b.date || '').localeCompare(a.date || '')),
                 // 考试成绩记录：{ child: [record] }，按 id 并集，日期倒序
@@ -6913,7 +7173,22 @@ ${context}
                 }
             };
 
-            
+            // --- 【伴读书阁】直接打开选下一本书窗口 ---
+            const handleOpenReadingTransition = (task) => {
+                const t = task || (tasks[activeChild] || []).find(it => it.readingConfig?.isReading || it.frequencyType === 'reading');
+                if (!t) return;
+                const rCfg = t.readingConfig || {};
+                setReadingTransitionModal({
+                    show: true,
+                    data: {
+                        taskId: t.id,
+                        finishedTitle: rCfg.bookTitle || t.name,
+                        period: rCfg.period || 'weekly',
+                        grandReward: rCfg.grandReward || 30
+                    }
+                });
+            };
+
             const handleCellClick = (taskId, date) => {
                 const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
                 if (!task) return;
@@ -6921,8 +7196,12 @@ ${context}
                 if (task.deadline && date > task.deadline) return;
 
                 const today = getLocalDateKey(0);
-                // 伴读任务专属：若点击的是今天，直接打开专属阅读伴读快速登记小窗
+                // 伴读任务专属：若点击的是今天，若全本已读完则直接引导选新书，否则打开极速记进度小窗
                 if (task.readingConfig?.isReading && date === today) {
+                    if (task.readingConfig?.needsNextBook || (task.readingConfig?.currentProgress >= (task.readingConfig?.totalPages || 100))) {
+                        handleOpenReadingTransition(task);
+                        return;
+                    }
                     setReadingTaskForCheckin(task);
                     setShowReadingQuickCheckin(true);
                     return;
@@ -7489,12 +7768,17 @@ ${context}
                     ? grandReward 
                     : (isOverdue ? (rCfg.overdueGrandReward ?? 20) : (rCfg.grandReward ?? 30));
 
+                const now = Date.now();
+                const targetTitle = (rCfg.bookTitle || task.name || '').trim();
+
                 const updatedTask = {
                     ...task,
+                    updatedAt: now,
                     readingConfig: {
                         ...task.readingConfig,
                         currentProgress: newProgress,
-                        notes: currentNotes
+                        notes: currentNotes,
+                        updatedAt: now
                     }
                 };
 
@@ -7506,17 +7790,19 @@ ${context}
                         ...updatedTask.readingConfig,
                         needsNextBook: true,
                         lastFinishedBook: {
-                            title: rCfg.bookTitle || task.name,
+                            title: targetTitle,
                             completedDate: today,
                             grandReward: finalGrandReward
-                        }
+                        },
+                        updatedAt: now
                     };
 
-                    // 存入孩子的天工藏书阁历史
+                    // 存入孩子的天工藏书阁历史（若已存在该书则更新属性与金句，绝不重复生成多本）
                     const bookEntry = {
                         id: `book_${taskId}_${Date.now()}`,
                         taskId: task.id,
-                        title: rCfg.bookTitle || task.name,
+                        title: targetTitle,
+                        bookTitle: targetTitle,
                         author: rCfg.author || '',
                         coverEmoji: rCfg.coverEmoji || '📖',
                         period: rCfg.period || 'weekly',
@@ -7528,40 +7814,85 @@ ${context}
                         isOverdue
                     };
 
+                    // 清除此前可能存在的同名删除墓碑
+                    removeDeletedReadingBookTombstone(activeChild, targetTitle);
+                    if (task.id) removeDeletedReadingBookTombstone(activeChild, `book_${task.id}`);
+
+                    let alreadyRewarded = !!task.readingConfig?.grandRewardClaimed;
+
                     setReadingHistory(prev => {
                         const childHistory = Array.isArray(prev[activeChild]) ? [...prev[activeChild]] : [];
-                        return {
-                            ...prev,
-                            [activeChild]: [bookEntry, ...childHistory]
-                        };
-                    });
+                        const existingIdx = childHistory.findIndex(b => {
+                            const bTitle = (b.bookTitle || b.title || '').trim().toLowerCase();
+                            return (b.taskId === task.id && bTitle === targetTitle.toLowerCase()) || (bTitle && bTitle === targetTitle.toLowerCase());
+                        });
 
-                    // 发放通关大奖金元宝
-                    if (finalGrandReward > 0) {
+                        if (existingIdx >= 0) {
+                            const existing = childHistory[existingIdx];
+                            alreadyRewarded = true;
+                            const updated = {
+                                ...existing,
+                                ...bookEntry,
+                                id: existing.id,
+                                quotes: currentNotes.length > 0 ? currentNotes : (existing.quotes || [])
+                            };
+                            childHistory[existingIdx] = updated;
+                            return {
+                                ...prev,
+                                [activeChild]: childHistory
+                            };
+                        } else {
+                            return {
+                                ...prev,
+                                [activeChild]: [bookEntry, ...childHistory]
+                            };
+                        }
+                    });
+                    storage.markKeyVersion('app_reading_history_v1');
+
+                    // 发放通关大奖金元宝（防重：同一本书已领过通关大奖则不重复发放）
+                    if (finalGrandReward > 0 && !alreadyRewarded) {
                         const grandRewardKey = `${activeChild}-READING_GRAND-${taskId}-${Date.now()}`;
                         setWheelHistory(prev => ({ ...prev, [grandRewardKey]: finalGrandReward }));
                         updateStats(activeChild, 'gold_earn', finalGrandReward, { source: 'reading_grand', dateKey: today });
+                        updatedTask.readingConfig.grandRewardClaimed = true;
                     }
 
                     confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-                    showToast('success', `🎉 恭喜读完全本《${rCfg.bookTitle || task.name}》！${isOverdue ? '顺延续读' : '按期'}通关大奖 +${finalGrandReward} 金元宝！已入驻天工书阁！`, { duration: 4500 });
+                    showToast('success', `🎉 恭喜读完全本《${targetTitle}》！${isOverdue ? '顺延续读' : '按期'}通关大奖 +${finalGrandReward} 金元宝！已入驻天工书阁！`, { duration: 4500 });
 
                     // 自动弹出无缝接力小窗引导选下一本
                     setReadingTransitionModal({
                         show: true,
                         data: {
                             taskId: task.id,
-                            finishedTitle: rCfg.bookTitle || task.name,
+                            finishedTitle: targetTitle,
                             period: rCfg.period || 'weekly'
                         }
                     });
+                } else {
+                    // 若修改打卡页数改为未读完（如从 100% 改为较小页数）：重置待选新书状态，并从藏书阁清理未读完的书目
+                    if (task.readingConfig?.needsNextBook) {
+                        updatedTask.readingConfig.needsNextBook = false;
+                        updatedTask.readingConfig.lastFinishedBook = null;
+                        setReadingHistory(prev => ({
+                            ...prev,
+                            [activeChild]: (prev[activeChild] || []).filter(b => {
+                                const bTitle = (b.bookTitle || b.title || '').trim().toLowerCase();
+                                return bTitle !== targetTitle.toLowerCase();
+                            })
+                        }));
+                        recordDeletedReadingBook(activeChild, targetTitle);
+                        storage.markKeyVersion('app_reading_history_v1');
+                    }
                 }
 
-                // 保存任务数据
+                // 保存任务数据并标记修改版本
                 setTasks(prev => ({
                     ...prev,
                     [activeChild]: (prev[activeChild] || []).map(t => t.id === taskId ? updatedTask : t)
                 }));
+                storage.markKeyVersion('app_tasks_v2');
 
                 // 3. 登记今日普通打卡记录 (兼容多次打卡、普通打卡与工资/周统计)
                 const readingMinutes = mode === 'duration' ? (increment || 20) : (task.readingConfig?.dailyTargetMinutes || 20);
@@ -7648,6 +7979,7 @@ ${context}
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 const deadlineDate = `${year}-${month}-${day}`;
+                const now = Date.now();
 
                 setTasks(prev => {
                     const list = prev[activeChild] || [];
@@ -7657,6 +7989,7 @@ ${context}
                             if (t.id !== taskId) return t;
                             return {
                                 ...t,
+                                updatedAt: now,
                                 earlyCompleted: false,
                                 frequencyType: 'reading',
                                 readingConfig: {
@@ -7677,12 +8010,15 @@ ${context}
                                     startDate: today,
                                     deadlineDate,
                                     notes: [],
-                                    needsNextBook: false
+                                    needsNextBook: false,
+                                    grandRewardClaimed: false,
+                                    updatedAt: now
                                 }
                             };
                         })
                     };
                 });
+                storage.markKeyVersion('app_tasks_v2');
                 showToast('success', `📖 已为《${bookTitle}》开启新伴读之旅！加油！`);
                 triggerSyncUpload();
             };
@@ -7697,8 +8033,9 @@ ${context}
                 const currentProgress = (typeof customProgress === 'number' && customProgress > 0)
                     ? customProgress
                     : (rCfg.currentProgress || 0);
+                const now = Date.now();
                 const shelvedEntry = {
-                    id: `shelve_${taskId}_${Date.now()}`,
+                    id: `shelve_${taskId}_${now}`,
                     taskId: task.id,
                     bookTitle,
                     author: rCfg.author || '',
@@ -7719,21 +8056,28 @@ ${context}
                     ...prev,
                     [activeChild]: [shelvedEntry, ...(prev[activeChild] || [])]
                 }));
+                storage.markKeyVersion('app_reading_shelved_v1');
+
                 setTasks(prev => ({
                     ...prev,
                     [activeChild]: (prev[activeChild] || []).map(t => {
                         if (t.id !== taskId) return t;
                         return {
                             ...t,
+                            updatedAt: now,
                             readingConfig: {
                                 ...t.readingConfig,
                                 currentProgress: 0,
                                 needsNextBook: true,
-                                lastFinishedBook: null
+                                lastFinishedBook: null,
+                                grandRewardClaimed: false,
+                                updatedAt: now
                             }
                         };
                     })
                 }));
+                storage.markKeyVersion('app_tasks_v2');
+
                 showToast('info', `🔖 已为《${bookTitle}》插上书签暂存入待续书架！`);
                 setReadingTransitionModal({
                     show: true,
@@ -7746,10 +8090,13 @@ ${context}
             const handleResumeShelvedBook = (shelvedEntry) => {
                 if (!shelvedEntry) return;
                 const today = getLocalDateKey(0);
+                const now = Date.now();
                 setShelvedBooks(prev => ({
                     ...prev,
                     [activeChild]: (prev[activeChild] || []).filter(b => b.id !== shelvedEntry.id)
                 }));
+                storage.markKeyVersion('app_reading_shelved_v1');
+
                 const readingTask = (tasks[activeChild] || []).find(t => t.id === shelvedEntry.taskId || t.readingConfig?.isReading || t.frequencyType === 'reading');
                 if (readingTask) {
                     setTasks(prev => ({
@@ -7758,6 +8105,7 @@ ${context}
                             if (t.id !== readingTask.id) return t;
                             return {
                                 ...t,
+                                updatedAt: now,
                                 earlyCompleted: false,
                                 frequencyType: 'reading',
                                 readingConfig: {
@@ -7776,14 +8124,123 @@ ${context}
                                     notes: shelvedEntry.notes || [],
                                     startDate: shelvedEntry.startDate || today,
                                     deadlineDate: shelvedEntry.deadlineDate,
-                                    needsNextBook: false
+                                    needsNextBook: false,
+                                    grandRewardClaimed: false,
+                                    updatedAt: now
                                 }
                             };
                         })
                     }));
+                    storage.markKeyVersion('app_tasks_v2');
                 }
                 showToast('success', `📖 已取回《${shelvedEntry.bookTitle}》，继续伴读！`);
                 setShowReadingPavilion(false);
+                triggerSyncUpload();
+            };
+
+            // --- 【天工书阁】从藏书书架移除/删除藏书 ---
+            const handleDeleteReadingHistoryBook = (bookId, child = activeChild) => {
+                if (!bookId) return;
+                const list = Array.isArray(readingHistory[child]) ? readingHistory[child] : [];
+                const targetBook = list.find(b => b.id === bookId);
+                const title = targetBook?.bookTitle || targetBook?.title || '该书';
+
+                recordDeletedReadingBook(child, bookId);
+                if (targetBook?.title || targetBook?.bookTitle) {
+                    recordDeletedReadingBook(child, (targetBook.bookTitle || targetBook.title).trim());
+                }
+
+                setReadingHistory(prev => ({
+                    ...prev,
+                    [child]: (prev[child] || []).filter(b => b.id !== bookId)
+                }));
+                storage.markKeyVersion('app_reading_history_v1');
+                showToast('success', `🗑️ 已将《${title}》从藏书书架移除`);
+                triggerSyncUpload();
+            };
+
+            // --- 【天工书阁】编辑藏书书架书目信息 ---
+            const handleEditReadingHistoryBook = (updatedBook, child = activeChild) => {
+                if (!updatedBook || !updatedBook.id) return;
+                const title = updatedBook.bookTitle || updatedBook.title || '藏书';
+                setReadingHistory(prev => ({
+                    ...prev,
+                    [child]: (prev[child] || []).map(b => b.id === updatedBook.id ? { ...b, ...updatedBook } : b)
+                }));
+                storage.markKeyVersion('app_reading_history_v1');
+                showToast('success', `✏️ 《${title}》信息已成功保存！`);
+                triggerSyncUpload();
+            };
+
+            // --- 【天工书阁】一键清理/去重藏书书架重复书目 ---
+            const handleDeduplicateReadingHistory = (child = activeChild) => {
+                const list = Array.isArray(readingHistory[child]) ? readingHistory[child] : [];
+                if (list.length <= 1) {
+                    showToast('info', '当前藏书书架暂无重复书目。');
+                    return;
+                }
+                const seen = new Map();
+                const duplicates = [];
+                const unique = [];
+
+                list.forEach(b => {
+                    const key = (b.bookTitle || b.title || '').trim().toLowerCase();
+                    if (!key) {
+                        unique.push(b);
+                        return;
+                    }
+                    if (!seen.has(key)) {
+                        seen.set(key, b);
+                        unique.push(b);
+                    } else {
+                        // 重复项：合并笔记金句后记录删除
+                        const existing = seen.get(key);
+                        const eQuotes = Array.isArray(existing.quotes) ? existing.quotes : [];
+                        const bQuotes = Array.isArray(b.quotes) ? b.quotes : [];
+                        const combined = [...eQuotes];
+                        bQuotes.forEach(q => {
+                            const qText = typeof q === 'string' ? q : q.text;
+                            if (!combined.some(item => (typeof item === 'string' ? item : item.text) === qText)) {
+                                combined.push(q);
+                            }
+                        });
+                        existing.quotes = combined;
+                        duplicates.push(b);
+                    }
+                });
+
+                if (duplicates.length === 0) {
+                    showToast('info', '当前藏书书架暂无重复书目。');
+                    return;
+                }
+
+                duplicates.forEach(d => {
+                    if (d.id) recordDeletedReadingBook(child, d.id);
+                });
+
+                setReadingHistory(prev => ({
+                    ...prev,
+                    [child]: unique
+                }));
+                storage.markKeyVersion('app_reading_history_v1');
+                showToast('success', `🎉 已整理书架，成功合并清理了 ${duplicates.length} 本重复藏书！`);
+                triggerSyncUpload();
+            };
+
+            // --- 【天工书阁】从待续书架移除书目 ---
+            const handleDeleteShelvedBook = (shelvedId, child = activeChild) => {
+                if (!shelvedId) return;
+                const list = Array.isArray(shelvedBooks[child]) ? shelvedBooks[child] : [];
+                const target = list.find(b => b.id === shelvedId);
+                const title = target?.bookTitle || '该书';
+
+                recordDeletedReadingBook(child, shelvedId);
+                setShelvedBooks(prev => ({
+                    ...prev,
+                    [child]: (prev[child] || []).filter(b => b.id !== shelvedId)
+                }));
+                storage.markKeyVersion('app_reading_shelved_v1');
+                showToast('success', `🗑️ 已将《${title}》从待续书架移除`);
                 triggerSyncUpload();
             };
 
@@ -10350,6 +10807,7 @@ ${context}
 								setShowReadingQuickCheckin(true);
 							}}
 							onOpenPavilion={() => setShowReadingPavilion(true)}
+							onOpenTransitionModal={handleOpenReadingTransition}
 						/>
 
 						{/* 伴宠历练与灵宠仙阁悬浮按钮（位于左侧 bottom-20，支持环形探险进度圈与进行中活动悬浮面板） */}
@@ -11053,6 +11511,14 @@ ${context}
 					  readingHistory={readingHistory}
 					  shelvedBooks={shelvedBooks}
 					  onResumeShelvedBook={handleResumeShelvedBook}
+					  onDeleteShelvedBook={handleDeleteShelvedBook}
+					  onDeleteMemorialBook={handleDeleteReadingHistoryBook}
+					  onEditMemorialBook={handleEditReadingHistoryBook}
+					  onDeduplicateMemorialBooks={handleDeduplicateReadingHistory}
+					  onOpenTransitionModal={(task) => {
+						  setShowReadingPavilion(false);
+						  handleOpenReadingTransition(task);
+					  }}
 					  activeChild={activeChild}
 					  checkins={checkins}
 					  todayStr={getLocalDateKey(0)}
@@ -11082,6 +11548,10 @@ ${context}
 					  onOpenPavilion={() => {
 						  setShowReadingQuickCheckin(false);
 						  setShowReadingPavilion(true);
+					  }}
+					  onOpenTransitionModal={(task) => {
+						  setShowReadingQuickCheckin(false);
+						  handleOpenReadingTransition(task);
 					  }}
 					  theme={theme}
 				  />
