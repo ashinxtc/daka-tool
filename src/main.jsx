@@ -3879,9 +3879,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 delete clean['app_sync_code'];
                 delete clean['app_sync_last_time'];
 
-                // 2. 移除任何以 测试员 或 TESTER 命名的 key 及测试员兑换总额
+                // 2. 移除任何以 测试员 或 TESTER 命名的 key 及测试员兑换总额，并移除临时离线兑换单草稿
                 Object.keys(clean).forEach(k => {
-                    if (k.startsWith('测试员') || k.startsWith('TESTER') || k.startsWith('app_exchange_total_测试员') || k.startsWith('app_exchange_total_TESTER')) {
+                    if (k.startsWith('测试员') || k.startsWith('TESTER') || k.startsWith('app_exchange_total_测试员') || k.startsWith('app_exchange_total_TESTER') || k.startsWith('app_offline_exchange_')) {
                         delete clean[k];
                     }
                 });

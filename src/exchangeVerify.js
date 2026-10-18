@@ -1,5 +1,5 @@
 import {exchangeRequest} from './utils/exchangeTransport.js';
-import {SYNC_WORKER_URL} from './constants/api.js';
+import {SYNC_WORKER_URL, EXCHANGE_WORKER_URL} from './constants/api.js';
 import {getDeviceFingerprint} from './utils/deviceFingerprint.js';
 
 const params=new URLSearchParams(location.search),family=params.get('family'),id=params.get('id');
@@ -47,15 +47,51 @@ if(family||params.get('secure')==='1'||id?.startsWith('exs_')){
     };
     const load=async()=>{
         if(!family||!id)throw new Error('缺少家庭或订单信息，请重新扫码。');
-        const data=await exchangeRequest(family,'order',{role:'parent',id});
-        render(data.record);
+        let record;
+        if(id.startsWith('exs_')){
+            const data=await exchangeRequest(family,'order',{role:'parent',id});
+            record=data.record;
+        }else{
+            try{
+                const res=await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/order?id=${encodeURIComponent(id)}`,{cache:'no-store'});
+                if(res.ok){
+                    const data=await res.json();
+                    record=data.record;
+                }
+            }catch(e){}
+            if(!record){
+                record={
+                    childName: decodeURIComponent(params.get('child') || '孩子'),
+                    goldAmount: params.get('gold') || '—',
+                    cnyAmount: params.get('cny') || '—',
+                    rate: params.get('rate') || '—',
+                    status: 'pending'
+                };
+            }
+        }
+        render(record);
         await checkParentDevice();
     };
     load().catch(e=>{message.textContent=e.message;});
     button.addEventListener('click',async()=>{
         const verifyCode=prompt('请输入孩子设备上显示的核销码：');if(!verifyCode)return;
         button.disabled=true;
-        try{const data=await exchangeRequest(family,'verify',{role:'parent',body:{applyId:id,verifyCode:verifyCode.trim()}});render(data.record);}
-        catch(e){message.textContent=`${e.message} 未确认成功，请刷新查询或重试。`;button.disabled=false;}
+        try{
+            let record;
+            if(id.startsWith('exs_')){
+                const data=await exchangeRequest(family,'verify',{role:'parent',body:{applyId:id,verifyCode:verifyCode.trim()}});
+                record=data.record;
+            }else{
+                const res=await fetch(`${EXCHANGE_WORKER_URL}/api/exchange/verify`,{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({applyId:id,verifyCode:verifyCode.trim()})
+                });
+                const data=await res.json();
+                if(!res.ok||!data.ok)throw new Error(data.error||'核销失败，请检查核销码。');
+                record=data.record;
+            }
+            render(record);
+        }catch(e){message.textContent=`${e.message} 未确认成功，请刷新查询或重试。`;button.disabled=false;}
     });
 }

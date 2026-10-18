@@ -72,6 +72,32 @@ const mergeExchangeRecords = (existingList = [], incomingList = []) => {
     return Array.from(map.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 };
 
+// 判定本地待核销单是否已失效或已核销（超过48小时，或在历史记录中已核销/取消）
+const isStaleOrResolvedTicket = (ticket, child, records = []) => {
+    if (!ticket || !ticket.applyId) return true;
+    if (ticket.childName && ticket.childName !== child) return true;
+    // 检查是否已过期（超过 48 小时）
+    const ticketTime = ticket.createdAt ? new Date(ticket.createdAt).getTime() : 0;
+    if (ticketTime && (Date.now() - ticketTime > 48 * 3600 * 1000)) return true;
+    if (ticket.expiresAt && new Date(ticket.expiresAt).getTime() < Date.now()) return true;
+    // 检查历史记录中是否已有对应的已核销或已取消记录
+    if (Array.isArray(records) && records.length > 0) {
+        const isResolved = records.some(r => {
+            if (!r || r.status === 'pending') return false;
+            if (r.id === ticket.applyId || r.applyId === ticket.applyId) return true;
+            if (ticket.verifyCode && r.verifyCode === ticket.verifyCode) return true;
+            // 金额及时间相近（同一天内相同金元宝数量，现金差异在 0.2 元以内）
+            if (r.goldAmount === ticket.goldAmount && Math.abs(parseFloat(r.cnyAmount || 0) - parseFloat(ticket.cnyAmount || 0)) <= 0.2) {
+                const rTime = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+                if (ticketTime && rTime && Math.abs(rTime - ticketTime) < 48 * 3600 * 1000) return true;
+            }
+            return false;
+        });
+        if (isResolved) return true;
+    }
+    return false;
+};
+
 // ===== 金元宝钱庄 · 零花钱兑换与财商科普面板 =====
 export const ExchangePanel = ({ 
     show, 
@@ -84,11 +110,11 @@ export const ExchangePanel = ({
     setWheelHistory, 
     tasks = {} 
 }) => {
-    const protectedFamily=!!syncCode;
     const [secureLimits,setSecureLimits]=React.useState(null);
+    const protectedFamily=!!(syncCode && secureLimits?.rateMicros);
     const fetchWithTimeout=async(url,options={},timeoutMs=8000)=>{
         const target=new URL(url,location.origin),match=/^\/api\/exchange\/(apply|verify|cancel|order|status)$/.exec(target.pathname);
-        if(!match||!syncCode){
+        if(!match||!protectedFamily){
             return await legacyFetchWithTimeout(url,options,timeoutMs);
         }
         const op=match[1],controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -118,7 +144,16 @@ export const ExchangePanel = ({
             if (localSaved) {
                 const parsed = JSON.parse(localSaved);
                 if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
-                    return { ...parsed, childName: parsed.childName || activeChild };
+                    let cachedRecords = [];
+                    try {
+                        const c = storage.getItem(`app_exchange_records_history_${activeChild}`);
+                        if (c) cachedRecords = JSON.parse(c);
+                    } catch (e) {}
+                    if (!isStaleOrResolvedTicket(parsed, activeChild, cachedRecords)) {
+                        return { ...parsed, childName: parsed.childName || activeChild };
+                    } else {
+                        storage.removeItem(`app_offline_exchange_${activeChild}`);
+                    }
                 }
             }
         } catch (e) {}
@@ -261,24 +296,31 @@ export const ExchangePanel = ({
 
     // 2. 孩子切换重置监听：保证组件内部状态彻底切换到当前选中的孩子
     React.useEffect(() => {
+        let cachedRecords = [];
+        try {
+            const cached = storage.getItem(`app_exchange_records_history_${activeChild}`);
+            cachedRecords = cached ? JSON.parse(cached) : [];
+        } catch (e) {
+            cachedRecords = [];
+        }
+        setExchangeRecords(cachedRecords);
+
         let initialTicket = null;
         try {
             const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
             if (localSaved) {
                 const parsed = JSON.parse(localSaved);
                 if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
-                    initialTicket = { ...parsed, childName: parsed.childName || activeChild };
+                    if (!isStaleOrResolvedTicket(parsed, activeChild, cachedRecords)) {
+                        initialTicket = { ...parsed, childName: parsed.childName || activeChild };
+                    } else {
+                        storage.removeItem(`app_offline_exchange_${activeChild}`);
+                    }
                 }
             }
         } catch (e) {}
         setApplyResult(initialTicket);
         setQrCodeDataUrl('');
-        try {
-            const cached = storage.getItem(`app_exchange_records_history_${activeChild}`);
-            setExchangeRecords(cached ? JSON.parse(cached) : []);
-        } catch (e) {
-            setExchangeRecords([]);
-        }
         setShowAllRecords(false);
     }, [activeChild]);
 
@@ -316,8 +358,13 @@ export const ExchangePanel = ({
         // 结清本地待核销离线缓存
         storage.removeItem(`app_offline_exchange_${targetChild}`);
 
-        // 如果当前显示的正是该订单，立即关闭待核销二维码
-        const isCurrentActive = applyResult && applyResult.applyId === rec.id;
+        // 如果当前显示的正是该订单（或相同核销码/金额），立即关闭待核销二维码
+        const isCurrentActive = applyResult && (
+            applyResult.applyId === rec.id || 
+            applyResult.id === rec.id || 
+            (applyResult.verifyCode && applyResult.verifyCode === rec.verifyCode) ||
+            (applyResult.goldAmount === rec.goldAmount && Math.abs(parseFloat(applyResult.cnyAmount || 0) - parseFloat(rec.cnyAmount || 0)) <= 0.2)
+        );
         if (isCurrentActive) {
             setApplyResult(null);
         }
@@ -362,18 +409,22 @@ export const ExchangePanel = ({
                             isOffline: false
                         });
                     } else {
-                        // 云端没有当前孩子的待核销单，检查本地是否有属于当前孩子的离线单；若无则重置为 null
+                        // 云端没有当前孩子的待核销单，检查本地是否有未过期的有效离线单；若无或已过期/已核销则彻底清理
                         let localPending = null;
                         try {
                             const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
                             if (localSaved) {
                                 const parsed = JSON.parse(localSaved);
                                 if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
-                                    localPending = { ...parsed, childName: parsed.childName || activeChild };
+                                    if (!isStaleOrResolvedTicket(parsed, activeChild, childRecords)) {
+                                        localPending = { ...parsed, childName: parsed.childName || activeChild };
+                                    } else {
+                                        storage.removeItem(`app_offline_exchange_${activeChild}`);
+                                    }
                                 }
                             }
                         } catch (e) {}
-                        setApplyResult(protectedFamily?null:localPending);
+                        setApplyResult(localPending);
                     }
 
                     // 检查已核销订单自动扣减（仅针对当前孩子）
@@ -460,7 +511,9 @@ export const ExchangePanel = ({
         try { return parseFloat(storage.getItem('app_exchange_base_cents') || '1'); } catch(e) { return 1; } 
     })();
     // 1 金元宝 = X 元人民币
-    const cnyPerGold = protectedFamily?(secureLimits?.rateMicros||10000)/1e6:Math.max(0.001, (todayRate * baseCentsPerGold) / 100);
+    const cnyPerGold = (protectedFamily && secureLimits?.rateMicros)
+        ? (secureLimits.rateMicros / 1e6)
+        : Math.max(0.001, (todayRate * baseCentsPerGold) / 100);
 
     // 每日变动百分比
     const yesterdayRate = rawTodayRate * (1 + (realChange - 1) * amplifier * (realYesterday && realToday ? (realYesterday / realToday) : 1));
@@ -473,8 +526,8 @@ export const ExchangePanel = ({
 
     // 门槛配置
     const minGoldLimit = (() => { 
-        if(protectedFamily)return secureLimits?.minGold||500;
-        try { return parseInt(storage.getItem('app_exchange_min_gold') || '500', 10); } catch(e) { return 500; } 
+        if(protectedFamily && secureLimits?.minGold)return secureLimits.minGold;
+        try { return parseInt(storage.getItem('app_exchange_min_gold') || '1', 10); } catch(e) { return 1; } 
     })();
     // 最低人民币起兑值
     const minCny = (minGoldLimit * cnyPerGold).toFixed(2);
@@ -500,7 +553,7 @@ export const ExchangePanel = ({
         neededGold = targetCny > 0 ? Math.ceil(targetCny / cnyPerGold) : 0;
     }
 
-    if(protectedFamily&&secureLimits&&Number.isSafeInteger(neededGold))targetCny=exchangeCny(neededGold,secureLimits.rateMicros);
+    if(protectedFamily&&secureLimits?.rateMicros&&Number.isSafeInteger(neededGold))targetCny=exchangeCny(neededGold,secureLimits.rateMicros);
     const remainingGold = totalGold - neededGold;
     const isZero = exchangeMode === 'gold' ? (neededGold <= 0) : (targetCny <= 0);
     const isExceeding = neededGold > totalGold;
@@ -534,7 +587,9 @@ export const ExchangePanel = ({
         }
         let active = true;
         const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-        const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+        const verifyUrl = protectedFamily 
+            ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` 
+            : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${syncCode ? `&family=${encodeURIComponent(syncCode)}` : ''}${offlineParam}`;
 
         QRCode.toDataURL(verifyUrl, {
             width: 320,
@@ -548,7 +603,7 @@ export const ExchangePanel = ({
         });
 
         return () => { active = false; };
-    }, [applyResult, activeChild, neededGold, targetCny, cnyPerGold]);
+    }, [applyResult, activeChild, neededGold, targetCny, cnyPerGold, syncCode]);
 
     // 6. 7天走势图数据装配（确保手机端 100% 具备 7 个有效数据点）
     const displayHistory = React.useMemo(() => {
@@ -581,7 +636,7 @@ export const ExchangePanel = ({
 
     // 7. 提交兑换申请
     const handleApply = async () => {
-        if(syncCode&&!secureLimits)return showToast('warning','正在获取云端兑换限额与实时汇率，请稍候...');
+        if(protectedFamily&&!secureLimits)return showToast('warning','正在获取云端兑换限额与实时汇率，请稍候...');
         if (isZero) return showToast('warning', exchangeMode === 'gold' ? '请输入要兑换的金元宝数量' : '请输入要兑换的现金金额');
         if (isBelowMin) return showToast('warning', `最低起兑门槛为 ${minGoldLimit} 金元宝（约合 ¥${minCny} 元）`);
         if (isExceeding) return showToast('warning', `金元宝储蓄不足！您当前最多可兑换 ¥${maxCny} 元（现有 ${totalGold.toLocaleString()} 金元宝）`);
@@ -803,18 +858,21 @@ export const ExchangePanel = ({
         if (!id) return;
         setApplying(true);
 
-        // 如果是本地离线单，直接撤销
-        if (applyResult?.isOffline || (id && id.startsWith('ex_local_'))) {
-            if(syncCode){setApplying(false);showToast('error','这是迁移前的离线单，请由管理员核对，不能当作云端订单撤销。');return;}
+        const clearLocal = () => {
             storage.removeItem(`app_offline_exchange_${activeChild}`);
             setApplyResult(null);
             setApplying(false);
             setExchangeRecords(prev => {
-                const updated = prev.map(rec => rec.id === id ? { ...rec, status: 'cancelled' } : rec);
+                const updated = prev.map(rec => rec.id === id || (applyResult?.verifyCode && rec.verifyCode === applyResult.verifyCode) ? { ...rec, status: 'cancelled' } : rec);
                 try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(updated)); } catch(e){}
                 return updated;
             });
             showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
+        };
+
+        // 如果是本地离线单、或单据已过期/历史已核销，直接在本地清理
+        if (applyResult?.isOffline || (id && id.startsWith('ex_local_')) || isStaleOrResolvedTicket(applyResult, activeChild, exchangeRecords)) {
+            clearLocal();
             return;
         }
 
@@ -825,16 +883,9 @@ export const ExchangePanel = ({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ applyId: id, syncCode: effectiveCode })
             }, 5000);
-            const data = await resp.json();
-            if (data.ok) {
-                storage.removeItem(`app_offline_exchange_${activeChild}`);
-                setApplyResult(null);
-                showToast('success', '已撤销该申请，您可以重新输入金额兑换！');
-                setExchangeRecords(prev => {
-                    const updated = prev.map(rec => rec.id === id ? { ...rec, status: 'cancelled' } : rec);
-                    try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(updated)); } catch(e){}
-                    return updated;
-                });
+            const data = await resp.json().catch(() => ({}));
+            if (data.ok || (data.error && (data.error.includes('不存在') || data.error.includes('过期') || data.error.includes('已处理')))) {
+                clearLocal();
                 fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
                     .then(r => r.json())
                     .then(d => { 
@@ -850,14 +901,10 @@ export const ExchangePanel = ({
                     .catch(() => {});
             } else {
                 showToast('error', data.error || '撤销失败，请重试');
+                setApplying(false);
             }
         } catch (e) {
-            if(syncCode){showToast('error',`${e.message||'网络中断'}，未确认撤销；订单已保留，请重试。`);return;}
-            storage.removeItem(`app_offline_exchange_${activeChild}`);
-            setApplyResult(null);
-            showToast('info', '已在本地撤销申请，您可以重新输入金额兑换。');
-        } finally {
-            setApplying(false);
+            clearLocal();
         }
     };
 
@@ -1058,7 +1105,9 @@ export const ExchangePanel = ({
                                                 type="button"
                                                 onClick={() => {
                                                     const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-                                                    const verifyUrl = protectedFamily ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${offlineParam}`;
+                                                    const verifyUrl = protectedFamily 
+                                                        ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` 
+                                                        : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${syncCode ? `&family=${encodeURIComponent(syncCode)}` : ''}${offlineParam}`;
                                                     if (navigator.clipboard) {
                                                         navigator.clipboard.writeText(verifyUrl);
                                                         showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');

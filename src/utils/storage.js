@@ -205,12 +205,13 @@ const scheduleDbFlush = () => {
     }, 150);
 };
 
-// 过滤因历史迁移或变量未定义残留的垃圾脏键（如 app_undefined_*, app_2047* 等）
+// 过滤因历史迁移或变量未定义残留的垃圾脏键（如 app_undefined_*, app_2047* 等，并排除仅限本地的临时离线兑换单草稿）
 export const isJunkKey = (k) => {
     if (!k || typeof k !== 'string') return true;
     if (k.includes('undefined') || k.includes('null')) return true;
     if (/^app_\d+_app_/.test(k)) return true;
     if (k === '_sync_last_hash' || k === '_sync_local_ts') return true;
+    if (k.startsWith('app_offline_exchange_')) return true;
     return false;
 };
 
