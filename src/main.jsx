@@ -597,6 +597,8 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
             const scrollContainerRef = useRef(null);
             const todayRef = useRef(null);
+            const tableRef = useRef(null);
+            const [todayColBounds, setTodayColBounds] = useState(null);
             
             const prevLevelRef = useRef(1);
 
@@ -6758,6 +6760,46 @@ ${context}
                 }, 50);
             };
 
+            // 维持当日连胜一体化光柱（Unified Column Halo）的精准像素覆盖与呼吸节奏同步
+            React.useLayoutEffect(() => {
+                const updateBounds = () => {
+                    if (!todayRef.current || !tableRef.current) {
+                        setTodayColBounds(null);
+                        return;
+                    }
+                    const th = todayRef.current;
+                    const table = tableRef.current;
+                    const thRect = th.getBoundingClientRect();
+                    const tableRect = table.getBoundingClientRect();
+
+                    setTodayColBounds({
+                        left: Math.round(thRect.left - tableRect.left),
+                        width: Math.round(thRect.width),
+                        top: Math.round(thRect.top - tableRect.top),
+                        height: Math.round(tableRect.height - Math.max(0, thRect.top - tableRect.top))
+                    });
+                };
+
+                updateBounds();
+                const rafId = requestAnimationFrame(updateBounds);
+                const timer = setTimeout(updateBounds, 120);
+                window.addEventListener('resize', updateBounds);
+
+                let ro = null;
+                if (typeof ResizeObserver !== 'undefined' && tableRef.current) {
+                    ro = new ResizeObserver(updateBounds);
+                    ro.observe(tableRef.current);
+                    if (todayRef.current) ro.observe(todayRef.current);
+                }
+
+                return () => {
+                    cancelAnimationFrame(rafId);
+                    clearTimeout(timer);
+                    window.removeEventListener('resize', updateBounds);
+                    if (ro) ro.disconnect();
+                };
+            }, [calendarDates, activeChild, tasks, checkins, viewMode, calendarViewMonth]);
+
             // 计算今天的碎片完成情况（用于惊喜大转盘）：支持按比例 / 按数量 / 按每日必做
             const todayFragmentStats = useMemo(() => {
                 const today = getLocalDateKey(0);
@@ -10314,9 +10356,30 @@ ${context}
                     </div>
                     </div>
 
-                    {(viewMode === 'calendar' || viewMode === 'week') ? (
+                    {(viewMode === 'calendar' || viewMode === 'week') ? (() => {
+                    const todayDateKey = getLocalDateKey(0);
+                    const childTasks = tasks[activeChild] || [];
+                    const scheduledTodayList = childTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
+                    const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
+                    const globalTodayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
+                    const isTodayInCalendar = calendarDates.includes(todayDateKey);
+
+                    return (
                     <div className="overflow-x-auto pb-2 pt-4" ref={scrollContainerRef}>
-                    <table className="w-full text-sm">
+                    <div className="relative inline-block min-w-full align-middle">
+                    {/* 当日连胜 · 全列一体化闭合霓虹呼吸光晕 (Unified Perimeter Column Halo) */}
+                    {todayColBounds && isTodayInCalendar && gamificationConfig?.comboEnabled !== false && (
+                      <div 
+                        className={`combo-unified-column-halo combo-aura-${globalTodayComboInfo.auraType || 'charging'}`}
+                        style={{
+                          left: `${todayColBounds.left}px`,
+                          top: `${todayColBounds.top}px`,
+                          width: `${todayColBounds.width}px`,
+                          height: `${todayColBounds.height}px`,
+                        }}
+                      />
+                    )}
+                    <table ref={tableRef} className="w-full text-sm border-separate border-spacing-0">
                     <thead className="relative z-40">
                     <tr className={hasActiveBg ? (isLowPerf ? 'bg-slate-800/80 border-b border-slate-700' : 'bg-white/10 border-b border-white/10') : 'bg-gray-50/50'}>
                     <th className={`p-3 text-left w-px whitespace-nowrap sticky left-0 z-10 font-bold pl-6 transition-colors ${
@@ -10345,12 +10408,11 @@ ${context}
                                     const isExempted = exemptedDays[activeChild]?.includes(date);
                                     const isMissed = isPast && date >= joinDate && !hasAnyCheckin && !isExempted;
 
-                                    const childTasks = tasks[activeChild] || [];
                                     const todayScheduled = childTasks.filter(t => (!t.startDate || date >= t.startDate) && (!t.deadline || date <= t.deadline));
                                     const todayCompleted = todayScheduled.filter(t => checkins[activeChild]?.[t.id]?.[date] !== undefined).length;
                                     const todayTotal = todayScheduled.length;
                                     const comboProgressPct = todayTotal > 0 ? Math.min(100, Math.round((todayCompleted / todayTotal) * 100)) : 0;
-                                    const comboInfo = getComboInfo(todayCompleted, todayTotal);
+                                    const comboInfo = isToday ? globalTodayComboInfo : getComboInfo(todayCompleted, todayTotal);
                                     const nextComboBonus = calculateComboBonus(todayCompleted + 1, gamificationConfig);
                                     const currentComboBonus = calculateComboBonus(todayCompleted, gamificationConfig);
 
@@ -10361,9 +10423,7 @@ ${context}
                                         onClick={() => isMissed ? handleMissedDayClick(date) : null}
                                         className={`relative p-2 min-w-[50px] text-center font-bold text-xs transition-colors overflow-visible
                                           ${isToday 
-                                            ? (gamificationConfig?.comboEnabled !== false 
-                                                ? (comboInfo.columnBg || (hasActiveBg ? 'combo-halo-header-charging text-white' : 'combo-halo-header-charging text-slate-800')) 
-                                                : (hasActiveBg ? 'bg-amber-400/25 text-white rounded-t-lg shadow-sm border-t-2 border-amber-300 backdrop-blur-xs' : `${theme.primary} bg-white rounded-t-lg shadow-sm border-t-2 border-current`)) 
+                                            ? (hasActiveBg ? 'text-white' : 'text-slate-800') 
                                             : isWeekend 
                                               ? (hasActiveBg ? 'bg-rose-500/20 text-rose-200 border-t-2 border-rose-400/80 rounded-t-lg shadow-inner' : 'bg-rose-50 text-rose-600 border-t-2 border-rose-400 rounded-t-lg') 
                                               : (hasActiveBg ? 'text-white/70 hover:bg-white/5' : 'text-gray-500 hover:bg-gray-50')} 
@@ -10518,11 +10578,9 @@ ${context}
                                       return (
                                         <td key={date} className={`p-2 text-center transition-colors relative overflow-visible ${
                                           isToday 
-                                            ? (gamificationConfig?.comboEnabled !== false 
-                                                ? (isLastRow 
-                                                    ? (todayComboInfo.bottomAuraCls || 'combo-halo-bottom-charging') 
-                                                    : (todayComboInfo.cellAuraCls || 'combo-halo-cell-charging')) 
-                                                : (hasActiveBg ? 'bg-white/10' : 'bg-white shadow-y')) 
+                                            ? (gamificationConfig?.comboEnabled === false 
+                                                ? (hasActiveBg ? 'bg-white/10' : 'bg-white shadow-y') 
+                                                : '') 
                                             : (isWeekend ? (hasActiveBg ? 'bg-rose-500/[0.05]' : 'bg-rose-50/40') : '')
                                         }`}>
                                           <div className="relative w-8 h-8 mx-auto">
@@ -10579,7 +10637,9 @@ ${context}
                               </tbody>
                             </table>
                           </div>
-                        ) : (
+                        </div>
+                      );
+                    })() : (
                           <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                               {(() => {
                                   const dailyMust = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'daily_must');
