@@ -16,9 +16,21 @@ let mf,kv;
 before(async()=>{mf=new Miniflare(options);kv=await mf.getKVNamespace('DAKA_SYNC');});
 after(async()=>{await mf?.dispose();});
 const payload=extra=>({app_profiles_v1:'[{"id":"child","name":"孩子"}]',app_parent_actions_v1:'[]',app_global_messages_v2:'[]',...extra});
-const call=(runtime,code,path='/',token,body,headers={})=>runtime.dispatchFetch(`https://sync.test${path}?code=${encodeURIComponent(code)}`,{
-    method:body===undefined?'GET':'POST',headers:{...(token?{Authorization:`Bearer ${token}`}:{ }),...headers},
-    ...(body===undefined?{}:{body:JSON.stringify(body)})});
+const call=async (runtime,code,path='/',token,body,headers={})=>{
+    for(let attempt=0;attempt<3;attempt++){
+        try{
+            return await runtime.dispatchFetch(`https://sync.test${path}?code=${encodeURIComponent(code)}`,{
+                method:body===undefined?'GET':'POST',headers:{...(token?{Authorization:`Bearer ${token}`}:{ }),...headers},
+                ...(body===undefined?{}:{body:JSON.stringify(body)})});
+        }catch(err){
+            if((err.cause?.code==='ECONNRESET'||err.message?.includes('ECONNRESET'))&&attempt<2){
+                await new Promise(r=>setTimeout(r,50));
+                continue;
+            }
+            throw err;
+        }
+    }
+};
 async function ok(response,status=200){assert.equal(response.status,status,await response.clone().text());return response.json();}
 const read=(family,path='/')=>call(mf,family.code,path,family.main.token);
 const write=(family,data,revision,device=family.main,id=crypto.randomUUID())=>call(mf,family.code,'/',device?.token,data,{'If-Match':`"${revision}"`,'Idempotency-Key':id});

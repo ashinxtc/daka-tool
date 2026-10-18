@@ -17,12 +17,12 @@ import {SYNC_WORKER_URL,verificationPageUrl} from './constants/api';
 const SYNC_URL = SYNC_WORKER_URL;
 const parentProtocolKey = code => `parent_sync_protocol_v2:${code}`;
 const parentPendingKey = code => `parent_pending_sync_v2:${code}`;
-const parentTransport = code => ({fetchImpl:parentFetch,minProtocol:localStorage.getItem(parentProtocolKey(code))==='2'?2:1});
+const parentTransport = code => ({fetchImpl:parentFetch,minProtocol:1});
 const fetchParentCloud = async code => {
     const response=await parentFetch(`${SYNC_URL}?code=${encodeURIComponent(code)}`,{cache:'no-store'});
     const meta=syncMetadata(response);
     if(meta.protocol===2 && (response.ok||response.status===404))localStorage.setItem(parentProtocolKey(code),'2');
-    if(meta.protocol!==2 && parentTransport(code).minProtocol===2)throw new SyncRequestError('服务器版本回退，已暂停同步并保留操作。',409,'PROTOCOL_DOWNGRADE');
+    else localStorage.removeItem(parentProtocolKey(code));
     return response;
 };
 

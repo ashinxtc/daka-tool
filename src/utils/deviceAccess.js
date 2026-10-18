@@ -44,14 +44,17 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         if(target.origin!==origin)throw new DeviceAccessError('拒绝向其他服务发送家庭凭据。','WRONG_ORIGIN',400);
         const code=target.searchParams.get('code')||'',saved=credential(code,role);
         const headers=new Headers(options.headers);
-        headers.set('X-Device-Id',saved.id);
-        headers.set('X-Device-Role',role);
-        headers.set('Authorization',`Bearer ${saved.id}`);
-        try {
-            const fp = getDeviceFingerprint();
-            if (fp) headers.set('X-Device-Fingerprint', fp);
-        } catch(e) {}
-        return await fetchImpl(url,{...options,headers,redirect:'error'});
+        const isBrowser = typeof window !== 'undefined';
+        if (!isBrowser) {
+            headers.set('X-Device-Id',saved.id);
+            headers.set('X-Device-Role',role);
+            headers.set('Authorization',`Bearer ${saved.id}`);
+            try {
+                const fp = getDeviceFingerprint();
+                if (fp) headers.set('X-Device-Fingerprint', fp);
+            } catch(e) {}
+        }
+        return await fetchImpl(url,{...options,headers,redirect:isBrowser?'follow':'error'});
     };
     const pair=async(code,role)=>credential(code,role);
     const revokeSelf=async()=>({ok:true});

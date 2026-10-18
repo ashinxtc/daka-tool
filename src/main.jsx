@@ -5304,7 +5304,9 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         setTimeout(() => setSyncStatus(''), 3000);
                         return;
                     }
-                    if (loadSyncCheckpoint()?.code === syncCode) throw new SyncRequestError('服务器版本回退，已保留本机数据并暂停同步。',409,'PROTOCOL_DOWNGRADE');
+                    if (loadSyncCheckpoint()?.code === syncCode) {
+                        storage.removeItem(SYNC_CHECKPOINT_KEY);
+                    }
                     if (resp.status === 404) {
                         // 云端无数据，直接上传（不释放锁，内联执行）
                         storage.setItem('_sync_has_pulled_v1', '1');
