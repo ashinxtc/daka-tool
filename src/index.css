@@ -104,115 +104,243 @@
 }
 
 /* =========================================================
-   当日连胜能量光柱 · 街机呼吸灯与向外扩散光晕系统 (Combo Rush Aura)
-   1. 彻底移除限制在列内的硬框 (No rigid box borders/insets)
-   2. 多层大半径 box-shadow 向外弥散扩散，覆盖到相邻日期列边缘
-   3. 呼吸灯节律律动（显著明暗涨落，犹如强力能量柱充能）
+   当日连胜 · 围绕整列边框的光晕呼吸系统 (Combo Rush Column Halo)
+   1. 告别整列实心背景闪烁，内部保持清透通透 (Ultra-clean subtle translucent fill)
+   2. 左右两侧与顶底部形成贯穿整列的闭合霓虹光晕边框 (Continuous perimeter halo)
+   3. 边缘光晕自然向外弥散，覆盖到相邻日期列边缘 (Outward bloom into neighbor columns)
    ========================================================= */
 
-@keyframes combo-beam-breathe-charging {
+@keyframes combo-halo-charging {
   0%, 100% {
+    border-color: rgba(255, 255, 255, 0.35);
+    box-shadow: 
+      -4px 0 12px 1px rgba(255, 255, 255, 0.20),
+       4px 0 12px 1px rgba(255, 255, 255, 0.20);
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+  50% {
+    border-color: rgba(255, 255, 255, 0.80);
+    box-shadow: 
+      -8px 0 20px 3px rgba(255, 255, 255, 0.55),
+       8px 0 20px 3px rgba(255, 255, 255, 0.55),
+      -14px 0 32px 6px rgba(224, 242, 254, 0.35),
+       14px 0 32px 6px rgba(224, 242, 254, 0.35);
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+}
+
+@keyframes combo-halo-white {
+  0%, 100% {
+    border-color: rgba(255, 255, 255, 0.45);
+    box-shadow: 
+      -5px 0 14px 1px rgba(255, 255, 255, 0.30),
+       5px 0 14px 1px rgba(255, 255, 255, 0.30);
+    background-color: rgba(255, 255, 255, 0.04);
+  }
+  50% {
+    border-color: rgba(255, 255, 255, 0.95);
+    box-shadow: 
+      -10px 0 24px 3px rgba(255, 255, 255, 0.85),
+       10px 0 24px 3px rgba(255, 255, 255, 0.85),
+      -18px 0 38px 6px rgba(224, 242, 254, 0.50),
+       18px 0 38px 6px rgba(224, 242, 254, 0.50),
+       0 0 20px 2px rgba(255, 255, 255, 0.50);
     background-color: rgba(255, 255, 255, 0.08);
-    box-shadow: 
-      -4px 0 14px 2px rgba(255, 255, 255, 0.20),
-      4px 0 14px 2px rgba(255, 255, 255, 0.20),
-      0 0 10px 2px rgba(224, 242, 254, 0.15);
-  }
-  50% {
-    background-color: rgba(255, 255, 255, 0.22);
-    box-shadow: 
-      -10px 0 24px 6px rgba(255, 255, 255, 0.55),
-      10px 0 24px 6px rgba(255, 255, 255, 0.55),
-      0 0 28px 8px rgba(224, 242, 254, 0.40);
   }
 }
 
-@keyframes combo-beam-breathe-white {
+@keyframes combo-halo-yellow {
   0%, 100% {
-    background-color: rgba(255, 255, 255, 0.14);
+    border-color: rgba(251, 191, 36, 0.50);
     box-shadow: 
-      -6px 0 16px 3px rgba(255, 255, 255, 0.30),
-      6px 0 16px 3px rgba(255, 255, 255, 0.30),
-      0 0 14px 4px rgba(224, 242, 254, 0.25);
+      -6px 0 16px 2px rgba(251, 191, 36, 0.35),
+       6px 0 16px 2px rgba(251, 191, 36, 0.35);
+    background-color: rgba(251, 191, 36, 0.04);
   }
   50% {
-    background-color: rgba(255, 255, 255, 0.38);
+    border-color: rgba(253, 224, 71, 0.95);
     box-shadow: 
-      -14px 0 32px 8px rgba(255, 255, 255, 0.90),
-      14px 0 32px 8px rgba(255, 255, 255, 0.90),
-      0 0 42px 14px rgba(224, 242, 254, 0.70),
-      0 0 60px 20px rgba(186, 230, 253, 0.45);
+      -12px 0 28px 4px rgba(251, 191, 36, 0.85),
+       12px 0 28px 4px rgba(251, 191, 36, 0.85),
+      -20px 0 42px 7px rgba(245, 158, 11, 0.50),
+       20px 0 42px 7px rgba(245, 158, 11, 0.50),
+       0 0 22px 3px rgba(251, 191, 36, 0.60);
+    background-color: rgba(251, 191, 36, 0.09);
   }
 }
 
-@keyframes combo-beam-breathe-yellow {
+@keyframes combo-halo-gold {
   0%, 100% {
-    background-color: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.60);
     box-shadow: 
-      -8px 0 18px 4px rgba(251, 191, 36, 0.35),
-      8px 0 18px 4px rgba(251, 191, 36, 0.35),
-      0 0 16px 4px rgba(245, 158, 11, 0.25);
+      -7px 0 18px 2px rgba(251, 191, 36, 0.45),
+       7px 0 18px 2px rgba(251, 191, 36, 0.45);
+    background-color: rgba(251, 191, 36, 0.05);
   }
   50% {
-    background-color: rgba(251, 191, 36, 0.40);
+    border-color: rgba(254, 240, 138, 1.0);
     box-shadow: 
-      -16px 0 36px 10px rgba(251, 191, 36, 0.90),
-      16px 0 36px 10px rgba(251, 191, 36, 0.90),
-      0 0 48px 16px rgba(245, 158, 11, 0.75),
-      0 0 70px 24px rgba(234, 88, 12, 0.45);
+      -14px 0 32px 5px rgba(251, 191, 36, 0.95),
+       14px 0 32px 5px rgba(251, 191, 36, 0.95),
+      -24px 0 48px 9px rgba(245, 158, 11, 0.65),
+       24px 0 48px 9px rgba(245, 158, 11, 0.65),
+      -32px 0 65px 14px rgba(234, 88, 12, 0.35),
+       32px 0 65px 14px rgba(234, 88, 12, 0.35),
+       0 0 26px 4px rgba(251, 191, 36, 0.70);
+    background-color: rgba(251, 191, 36, 0.10);
   }
 }
 
-@keyframes combo-beam-breathe-gold {
-  0%, 100% {
-    background-color: rgba(245, 158, 11, 0.18);
-    box-shadow: 
-      -10px 0 20px 5px rgba(251, 191, 36, 0.45),
-      10px 0 20px 5px rgba(251, 191, 36, 0.45),
-      0 0 20px 5px rgba(245, 158, 11, 0.30);
-  }
-  50% {
-    background-color: rgba(245, 158, 11, 0.48);
-    box-shadow: 
-      -20px 0 42px 14px rgba(251, 191, 36, 1.0),
-      20px 0 42px 14px rgba(251, 191, 36, 1.0),
-      0 0 55px 20px rgba(245, 158, 11, 0.85),
-      0 0 85px 30px rgba(234, 88, 12, 0.55);
-  }
-}
-
-.combo-beam-charging {
+/* --- 表头顶部封顶 (Top Cap) --- */
+.combo-halo-header-charging {
   position: relative !important;
   z-index: 20 !important;
   overflow: visible !important;
-  animation: combo-beam-breathe-charging 2.4s ease-in-out infinite !important;
+  border-top: 2px solid transparent !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-bottom: 0 !important;
+  border-top-left-radius: 0.75rem !important;
+  border-top-right-radius: 0.75rem !important;
+  animation: combo-halo-charging 2.4s ease-in-out infinite !important;
 }
-
-.combo-beam-white {
+.combo-halo-header-white {
   position: relative !important;
   z-index: 20 !important;
   overflow: visible !important;
-  animation: combo-beam-breathe-white 2.1s ease-in-out infinite !important;
+  border-top: 2px solid transparent !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-bottom: 0 !important;
+  border-top-left-radius: 0.75rem !important;
+  border-top-right-radius: 0.75rem !important;
+  animation: combo-halo-white 2.1s ease-in-out infinite !important;
 }
-
-.combo-beam-yellow {
+.combo-halo-header-yellow {
   position: relative !important;
   z-index: 20 !important;
   overflow: visible !important;
-  animation: combo-beam-breathe-yellow 1.8s ease-in-out infinite !important;
+  border-top: 2px solid transparent !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-bottom: 0 !important;
+  border-top-left-radius: 0.75rem !important;
+  border-top-right-radius: 0.75rem !important;
+  animation: combo-halo-yellow 1.8s ease-in-out infinite !important;
 }
-
-.combo-beam-gold {
+.combo-halo-header-gold {
   position: relative !important;
   z-index: 20 !important;
   overflow: visible !important;
-  animation: combo-beam-breathe-gold 1.5s ease-in-out infinite !important;
+  border-top: 2px solid transparent !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-bottom: 0 !important;
+  border-top-left-radius: 0.75rem !important;
+  border-top-right-radius: 0.75rem !important;
+  animation: combo-halo-gold 1.5s ease-in-out infinite !important;
+}
+
+/* --- 中间普通单元格 (Middle Rows) --- */
+.combo-halo-cell-charging {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  animation: combo-halo-charging 2.4s ease-in-out infinite !important;
+}
+.combo-halo-cell-white {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  animation: combo-halo-white 2.1s ease-in-out infinite !important;
+}
+.combo-halo-cell-yellow {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  animation: combo-halo-yellow 1.8s ease-in-out infinite !important;
+}
+.combo-halo-cell-gold {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  animation: combo-halo-gold 1.5s ease-in-out infinite !important;
+}
+
+/* --- 最底行单元格封底 (Bottom Cap) --- */
+.combo-halo-bottom-charging {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-bottom-left-radius: 0.75rem !important;
+  border-bottom-right-radius: 0.75rem !important;
+  animation: combo-halo-charging 2.4s ease-in-out infinite !important;
+}
+.combo-halo-bottom-white {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-bottom-left-radius: 0.75rem !important;
+  border-bottom-right-radius: 0.75rem !important;
+  animation: combo-halo-white 2.1s ease-in-out infinite !important;
+}
+.combo-halo-bottom-yellow {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-bottom-left-radius: 0.75rem !important;
+  border-bottom-right-radius: 0.75rem !important;
+  animation: combo-halo-yellow 1.8s ease-in-out infinite !important;
+}
+.combo-halo-bottom-gold {
+  position: relative !important;
+  z-index: 20 !important;
+  overflow: visible !important;
+  border-left: 2px solid transparent !important;
+  border-right: 2px solid transparent !important;
+  border-top: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-bottom-left-radius: 0.75rem !important;
+  border-bottom-right-radius: 0.75rem !important;
+  animation: combo-halo-gold 1.5s ease-in-out infinite !important;
 }
 
 /* 兼容别名 */
-.animate-aura-white { animation: combo-beam-breathe-white 2.1s ease-in-out infinite; }
-.animate-aura-yellow { animation: combo-beam-breathe-yellow 1.8s ease-in-out infinite; }
-.animate-aura-gold { animation: combo-beam-breathe-gold 1.5s ease-in-out infinite; }
+.combo-beam-charging { animation: combo-halo-charging 2.4s ease-in-out infinite !important; }
+.combo-beam-white { animation: combo-halo-white 2.1s ease-in-out infinite !important; }
+.combo-beam-yellow { animation: combo-halo-yellow 1.8s ease-in-out infinite !important; }
+.combo-beam-gold { animation: combo-halo-gold 1.5s ease-in-out infinite !important; }
+.animate-aura-white { animation: combo-halo-white 2.1s ease-in-out infinite; }
+.animate-aura-yellow { animation: combo-halo-yellow 1.8s ease-in-out infinite; }
+.animate-aura-gold { animation: combo-halo-gold 1.5s ease-in-out infinite; }
 
 /* --- 新春限定·火树银花背景特效 --- */
 .bg-lunar-night {

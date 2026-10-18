@@ -9902,10 +9902,10 @@ ${context}
                                         key={date} 
                                         ref={isToday ? todayRef : null} 
                                         onClick={() => isMissed ? handleMissedDayClick(date) : null}
-                                        className={`relative p-2 min-w-[50px] text-center font-bold text-xs transition-colors overflow-visible rounded-t-lg
+                                        className={`relative p-2 min-w-[50px] text-center font-bold text-xs transition-colors overflow-visible
                                           ${isToday 
                                             ? (gamificationConfig?.comboEnabled !== false 
-                                                ? (comboInfo.columnBg || (hasActiveBg ? 'combo-beam-charging text-white rounded-t-lg' : 'combo-beam-charging text-slate-800 rounded-t-lg')) 
+                                                ? (comboInfo.columnBg || (hasActiveBg ? 'combo-halo-header-charging text-white' : 'combo-halo-header-charging text-slate-800')) 
                                                 : (hasActiveBg ? 'bg-amber-400/25 text-white rounded-t-lg shadow-sm border-t-2 border-amber-300 backdrop-blur-xs' : `${theme.primary} bg-white rounded-t-lg shadow-sm border-t-2 border-current`)) 
                                             : isWeekend 
                                               ? (hasActiveBg ? 'bg-rose-500/20 text-rose-200 border-t-2 border-rose-400/80 rounded-t-lg shadow-inner' : 'bg-rose-50 text-rose-600 border-t-2 border-rose-400 rounded-t-lg') 
@@ -10057,11 +10057,14 @@ ${context}
                                       const isAfterEnd = task.deadline && date > task.deadline;
                                       const needBreathe = freq === 'daily_must' && isToday && !isChecked && !isBeforeStart && !isAfterEnd;
                                       const isRepaired = !!(repairedCheckins[activeChild]?.[task.id]?.[date]);
+                                      const isLastRow = idx === calendarOrderedTasks.length - 1;
                                       return (
                                         <td key={date} className={`p-2 text-center transition-colors relative overflow-visible ${
                                           isToday 
                                             ? (gamificationConfig?.comboEnabled !== false 
-                                                ? (todayComboInfo.cellAuraCls || 'combo-beam-charging') 
+                                                ? (isLastRow 
+                                                    ? (todayComboInfo.bottomAuraCls || 'combo-halo-bottom-charging') 
+                                                    : (todayComboInfo.cellAuraCls || 'combo-halo-cell-charging')) 
                                                 : (hasActiveBg ? 'bg-white/10' : 'bg-white shadow-y')) 
                                             : (isWeekend ? (hasActiveBg ? 'bg-rose-500/[0.05]' : 'bg-rose-50/40') : '')
                                         }`}>
