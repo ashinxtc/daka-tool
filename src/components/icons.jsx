@@ -99,3 +99,12 @@ export const MarketShopIcon = ({ className = "text-sm", ...props }) => <span cla
 export const PuzzleRuneIcon = ({ className = "text-xs", ...props }) => <span className={`select-none inline-flex items-center justify-center ${className}`} role="img" aria-label="拼图" {...props}>🧩</span>;
 export const ExchangeCoinIcon = ({ className = "text-sm", ...props }) => <span className={`select-none inline-flex items-center justify-center ${className}`} role="img" aria-label="零花钱兑换" {...props}>💱</span>;
 export const StarAssetIcon = ({ className = "text-xs", ...props }) => <span className={`select-none inline-flex items-center justify-center ${className}`} role="img" aria-label="星星" {...props}>⭐</span>;
+export const RefreshCw = (props) => (
+    <IconBase {...props}>
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+        <path d="M21 3v5h-5" />
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+        <path d="M8 16H3v5" />
+    </IconBase>
+);
+

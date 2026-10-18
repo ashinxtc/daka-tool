@@ -10,7 +10,7 @@ import { consolidateLegacyDevices } from '../../utils/deviceFingerprint';
 import { WECOM_API_URL, EXCHANGE_WORKER_URL } from '../../constants/api';
 import {
     Beaker, CalendarIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Coins, Gift, Key, Play, Plus,
-    SettingsIcon, Shield, ShoppingBag, Skull, Target, Trash2,
+    RefreshCw, SettingsIcon, Shield, ShoppingBag, Skull, Target, Trash2,
     TrendingUp, Trophy, Upload, Users, XIcon
 } from '../icons';
 import { HABIT_ICON_PRESETS } from '../habits/index';
@@ -129,6 +129,36 @@ const CopyIcon = (props) => (
             const [wecomGuideOpen, setWecomGuideOpen] = React.useState(false);
             const [pushIosGuideOpen, setPushIosGuideOpen] = React.useState(false);
             const [syncCopied, setSyncCopied] = React.useState(false);
+
+            // 刷新网页与更新拉取（专为 iPad 引导式操作等全屏/锁定场景优化）
+            const [isPageRefreshing, setIsPageRefreshing] = React.useState(false);
+            const handleReloadApp = async () => {
+                if (isPageRefreshing) return;
+                setIsPageRefreshing(true);
+                showToast('info', '正在检查更新并刷新网页…');
+                try {
+                    // 1. 若支持 Service Worker，主动触发更新检查
+                    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map(r => r.update().catch(() => {})));
+                    }
+                    // 2. 清理 CacheStorage 静态离线缓存（避免命中旧版本构建哈希资源）
+                    if (typeof window !== 'undefined' && 'caches' in window) {
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map(k => caches.delete(k)));
+                    }
+                } catch (err) {
+                    console.warn('刷新清理缓存失败:', err);
+                }
+                // 3. 强制重载当前网页（带时间戳参数以绕过 WebKit 的强内存/磁盘导航缓存）
+                try {
+                    const u = new URL(window.location.href);
+                    u.searchParams.set('t', Date.now().toString());
+                    window.location.replace(u.toString());
+                } catch {
+                    window.location.reload();
+                }
+            };
 
             // 家长手机看板绑定状态
             const [showParentQrModal, setShowParentQrModal] = React.useState(false);
@@ -282,13 +312,25 @@ const CopyIcon = (props) => (
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => { clearNewTaskFlags(); setShowSettings(false); }}
-                        className="p-2 bg-black/15 hover:bg-black/25 rounded-full transition-colors cursor-pointer text-white/90 hover:text-white"
-                        title="关闭"
-                      >
-                        <XIcon className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleReloadApp}
+                          disabled={isPageRefreshing}
+                          className="px-3 py-1.5 bg-black/15 hover:bg-black/25 active:scale-95 rounded-xl transition-all cursor-pointer text-white/95 hover:text-white flex items-center gap-1.5 text-xs sm:text-sm font-bold shadow-xs border border-white/20 disabled:opacity-50"
+                          title="重新加载网页并拉取最新版本（特别适合 iPad 引导式操作或全屏模式下免解除锁定直接更新）"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isPageRefreshing ? 'animate-spin' : ''}`} />
+                          <span>{isPageRefreshing ? '正在刷新…' : '刷新网页'}</span>
+                        </button>
+                        <button
+                          onClick={() => { clearNewTaskFlags(); setShowSettings(false); }}
+                          className="p-2 bg-black/15 hover:bg-black/25 rounded-full transition-colors cursor-pointer text-white/90 hover:text-white"
+                          title="关闭"
+                        >
+                          <XIcon className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* 分页导航长卷 (带方案B数学平滑居中、高质感横向细滚动轴与左右滑动画卷箭头) */}
@@ -1443,6 +1485,35 @@ const CopyIcon = (props) => (
                                     </button>
                                 </div>
                             </section>
+
+                            {/* iPad 引导式操作与版本更新专用刷新卡片 */}
+                            <section className="bg-gradient-to-r from-sky-50 to-indigo-50/60 rounded-2xl border border-sky-200/80 p-4 space-y-2.5 shadow-xs">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-400/30 text-sky-600 flex items-center justify-center text-lg shrink-0">
+                                            🔄
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                                <span>应用版本更新与刷新网页</span>
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">iPad 引导式操作适配</span>
+                                            </h4>
+                                            <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                                                云端推送新功能上线后，开启 iPad「引导式操作」锁定时无需解除密码退出，点击即可清理旧静态缓存并重载到最新版。
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleReloadApp}
+                                        disabled={isPageRefreshing}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50"
+                                    >
+                                        <RefreshCw className={`w-3.5 h-3.5 ${isPageRefreshing ? 'animate-spin' : ''}`} />
+                                        <span>{isPageRefreshing ? '正在刷新…' : '立即刷新网页'}</span>
+                                    </button>
+                                </div>
+                            </section>
                        </div>
                        )}
 
@@ -1938,6 +2009,17 @@ const CopyIcon = (props) => (
                                     >
                                         <TrendingUp className="w-4 h-4 text-violet-600 shrink-0" />
                                         <span>按新等级系统重算升级节点</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleReloadApp}
+                                        disabled={isPageRefreshing}
+                                        className="p-3 bg-sky-50/70 border border-sky-200 rounded-xl text-sky-800 text-xs font-bold hover:bg-sky-100 transition-colors flex items-center gap-2.5 active:scale-95 text-left disabled:opacity-50"
+                                        title="清理缓存并拉取最新版本（iPad 引导式操作友好）"
+                                    >
+                                        <RefreshCw className={`w-4 h-4 text-sky-600 shrink-0 ${isPageRefreshing ? 'animate-spin' : ''}`} />
+                                        <span>{isPageRefreshing ? '正在刷新网页…' : '刷新网页并拉取最新版本 (iPad免解锁)'}</span>
                                     </button>
                                 </div>
                             </section>

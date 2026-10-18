@@ -680,6 +680,20 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [stats, setStats] = useStickyState({}, 'app_stats_v1');
             const [isTestMode, setIsTestMode] = useStickyState(false, 'app_test_mode');
 
+            // 清理 URL 中的重载刷新时间戳参数（如 ?t=...），保持地址栏整洁
+            useEffect(() => {
+                if (typeof window === 'undefined' || !window.location.search) return;
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.has('t')) {
+                        params.delete('t');
+                        const query = params.toString();
+                        const cleanUrl = window.location.pathname + (query ? `?${query}` : '') + window.location.hash;
+                        window.history.replaceState(null, '', cleanUrl);
+                    }
+                } catch {}
+            }, []);
+
             // 自动同步与保全当前活跃孩子（确保 activeChild 始终为 profiles 中有效成员，且优先真实儿童）
             useEffect(() => {
                 if (!profiles || profiles.length === 0) return;

@@ -3,7 +3,8 @@
 export const isIOSSafari = () => {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent;
-    return /iPad|iPhone|iPod/.test(ua) && /WebKit/.test(ua) && !/(CriOS|FxiOS|OPiOS|mercury)/.test(ua);
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return isIOS && /WebKit/.test(ua) && !/(CriOS|FxiOS|OPiOS|mercury)/.test(ua);
 };
 
 export const isPWAStandalone = () => {
