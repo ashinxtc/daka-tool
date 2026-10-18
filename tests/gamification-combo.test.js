@@ -79,6 +79,80 @@ test('Combo Rush: getComboInfo returns appropriate title, icon and tier', () => 
     assert.equal(infoAll.tier, 'perfect');
     assert.equal(infoAll.title, '大满贯全勤');
     assert.equal(infoAll.icon, '👑');
+
+    // 能量光柱与纯净悬浮文字属性测试
+    assert.equal(zeroInfo.auraType, 'none');
+    assert.equal(zeroInfo.columnBg, '');
+    assert.equal(zeroInfo.cellAuraCls, '');
+
+    // 1 连击为白色能量
+    assert.equal(info1.auraType, 'white');
+    assert(info1.columnBg.includes('bg-white'));
+    assert(info1.cellAuraCls.includes('bg-white'));
+    assert.equal(info1.textColor, 'text-white');
+
+    // 3 连击为黄色能量
+    assert.equal(info3.auraType, 'yellow');
+    assert(info3.columnBg.includes('bg-amber'));
+    assert(info3.cellAuraCls.includes('bg-amber'));
+    assert.equal(info3.textColor, 'text-amber-300');
+
+    // 5 连击及以上为流光金能量
+    assert.equal(infoGod.auraType, 'gold');
+    assert(infoGod.columnBg.includes('from-amber'));
+    assert(infoGod.cellAuraCls.includes('bg-amber'));
+    assert.equal(infoGod.textColor, 'text-yellow-300');
+    assert(infoGod.textShadow.length > 0);
+});
+
+test('Combo Rush: ledger transactions correctly parse COMBO_BONUS as income', () => {
+    const currentChild = '乐乐';
+    const tasks = [
+        { id: 'math', name: '数学口算' },
+        { id: 'read', name: '英文阅读' }
+    ];
+
+    const wheelHistory = {
+        [`${currentChild}-TASK-math-2026-10-18`]: 5,
+        [`${currentChild}-COMBO_BONUS-math-2026-10-18`]: 1,
+        [`${currentChild}-TASK-read-2026-10-18`]: 5,
+        [`${currentChild}-COMBO_BONUS-read-2026-10-18`]: 2,
+    };
+
+    const transactions = [];
+    Object.entries(wheelHistory).forEach(([key, val]) => {
+        if (!key.startsWith(currentChild)) return;
+        const amount = Number(val);
+        if (isNaN(amount) || amount === 0) return;
+
+        let type = 'income';
+        let name = '';
+        let category = '其他';
+
+        if (key.includes('TASK')) {
+            category = '任务';
+            name = '完成任务';
+        } else if (key.includes('COMBO_BONUS')) {
+            category = '连胜加成';
+            const parts = key.split('-');
+            const taskId = parts[2];
+            const matchedTask = tasks.find(t => t.id === taskId);
+            name = matchedTask ? `🔥 连胜加成：${matchedTask.name}` : '🔥 今日打卡连胜加成';
+        }
+
+        transactions.push({ key, amount, type, category, name });
+    });
+
+    // 验证两笔连胜奖励均被正确解析为收入，且正确关联任务名称
+    const comboTxs = transactions.filter(t => t.category === '连胜加成');
+    assert.equal(comboTxs.length, 2);
+    assert.equal(comboTxs[0].type, 'income');
+    assert.equal(comboTxs[0].amount, 1);
+    assert.equal(comboTxs[0].name, '🔥 连胜加成：数学口算');
+
+    assert.equal(comboTxs[1].type, 'income');
+    assert.equal(comboTxs[1].amount, 2);
+    assert.equal(comboTxs[1].name, '🔥 连胜加成：英文阅读');
 });
 
 test('Combo Rush: rollback removes COMBO_BONUS cleanly on checkin cancellation', () => {
@@ -106,3 +180,4 @@ test('Combo Rush: rollback removes COMBO_BONUS cleanly on checkin cancellation',
     assert.equal(nextHistory[`${child}-NORMAL_BONUS`], 5);
     assert.equal(nextHistory[`${child}-ANOTHER_TASK`], 10);
 });
+

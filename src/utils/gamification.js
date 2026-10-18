@@ -245,13 +245,18 @@ export const calculateComboBonus = (comboCount = 1, config = DEFAULT_GAMIFICATIO
  * @returns {Object} 包含称号、图标与渐变色方案
  */
 export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
+    // 连击段位、纯文字流光与全列能量光柱主题 (白 -> 黄 -> 炽金 -> 极光至尊)
     if (comboCount <= 0) {
         return {
             title: '蓄力中',
-            icon: '🔥',
+            icon: '⚡',
             tier: 'none',
-            badgeBg: 'bg-slate-700/60 text-slate-300 border-slate-600',
-            textColor: 'text-slate-400'
+            badgeBg: '',
+            textColor: 'text-slate-300',
+            textShadow: '0 0 6px rgba(255,255,255,0.4)',
+            auraType: 'none',
+            columnBg: '',
+            cellAuraCls: ''
         };
     }
     if (comboCount >= totalTasks && totalTasks > 0) {
@@ -259,8 +264,12 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             title: '大满贯全勤',
             icon: '👑',
             tier: 'perfect',
-            badgeBg: 'bg-gradient-to-r from-amber-400 via-rose-400 to-amber-300 text-slate-900 border-amber-200 shadow-md shadow-amber-400/40',
-            textColor: 'text-amber-300'
+            badgeBg: '',
+            textColor: 'text-amber-200',
+            textShadow: '0 0 14px rgba(251,191,36,1), 0 0 22px rgba(245,158,11,0.85)',
+            auraType: 'gold',
+            columnBg: 'bg-gradient-to-b from-amber-400/35 via-yellow-400/25 to-amber-500/35 border-x-2 border-yellow-300/80 shadow-[inset_0_0_24px_rgba(234,179,8,0.45)] ring-1 ring-yellow-300/50',
+            cellAuraCls: 'bg-gradient-to-b from-amber-400/20 to-yellow-500/20 border-x border-amber-300/50 shadow-[inset_0_0_15px_rgba(251,191,36,0.25)]'
         };
     }
     if (comboCount >= 5) {
@@ -268,8 +277,12 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             title: '超神连击',
             icon: '💥',
             tier: 'god',
-            badgeBg: 'bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 text-white border-pink-300 shadow-md shadow-purple-500/40',
-            textColor: 'text-purple-300'
+            badgeBg: '',
+            textColor: 'text-yellow-300',
+            textShadow: '0 0 12px rgba(234,179,8,1), 0 0 18px rgba(249,115,22,0.8)',
+            auraType: 'gold',
+            columnBg: 'bg-gradient-to-b from-amber-400/30 via-yellow-400/20 to-orange-500/30 border-x-2 border-amber-300/70 shadow-[inset_0_0_20px_rgba(234,179,8,0.4)]',
+            cellAuraCls: 'bg-amber-400/15 border-x border-amber-300/40 shadow-[inset_0_0_12px_rgba(234,179,8,0.2)]'
         };
     }
     if (comboCount >= 3) {
@@ -277,8 +290,12 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             title: '势不可挡',
             icon: '⚡',
             tier: 'epic',
-            badgeBg: 'bg-gradient-to-r from-rose-500 to-amber-500 text-white border-amber-300/60 shadow-md shadow-rose-500/30',
-            textColor: 'text-rose-300'
+            badgeBg: '',
+            textColor: 'text-amber-300',
+            textShadow: '0 0 10px rgba(252,211,77,0.9), 0 0 15px rgba(245,158,11,0.6)',
+            auraType: 'yellow',
+            columnBg: 'bg-amber-400/25 border-x border-amber-300/50 shadow-[inset_0_0_16px_rgba(251,191,36,0.3)]',
+            cellAuraCls: 'bg-amber-400/10 border-x border-amber-300/30 shadow-[inset_0_0_10px_rgba(251,191,36,0.15)]'
         };
     }
     if (comboCount >= 2) {
@@ -286,16 +303,24 @@ export const getComboInfo = (comboCount = 0, totalTasks = 1) => {
             title: '渐入佳境',
             icon: '🔥',
             tier: 'rare',
-            badgeBg: 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-900 border-amber-200 shadow-sm shadow-amber-500/20',
-            textColor: 'text-amber-300'
+            badgeBg: '',
+            textColor: 'text-yellow-200',
+            textShadow: '0 0 8px rgba(254,240,138,0.85), 0 0 12px rgba(251,191,36,0.5)',
+            auraType: 'yellow',
+            columnBg: 'bg-amber-300/20 border-x border-amber-200/40 shadow-[inset_0_0_12px_rgba(252,211,77,0.25)]',
+            cellAuraCls: 'bg-amber-300/10 border-x border-amber-200/25 shadow-[inset_0_0_8px_rgba(252,211,77,0.12)]'
         };
     }
     return {
         title: '旗开得胜',
         icon: '✨',
         tier: 'start',
-        badgeBg: 'bg-emerald-600 text-white border-emerald-400/50 shadow-xs shadow-emerald-500/20',
-        textColor: 'text-emerald-300'
+        badgeBg: '',
+        textColor: 'text-white',
+        textShadow: '0 0 8px rgba(255,255,255,0.9), 0 0 14px rgba(224,242,254,0.7)',
+        auraType: 'white',
+        columnBg: 'bg-white/20 border-x border-white/30 shadow-[inset_0_0_12px_rgba(255,255,255,0.25)]',
+        cellAuraCls: 'bg-white/10 border-x border-white/20 shadow-[inset_0_0_8px_rgba(255,255,255,0.15)]'
     };
 };
 
