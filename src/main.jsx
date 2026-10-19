@@ -6967,12 +6967,41 @@ ${context}
                     const table = tableRef.current;
                     const thRect = th.getBoundingClientRect();
                     const tableRect = table.getBoundingClientRect();
+                    const tbody = table.querySelector('tbody');
+                    const tbodyRect = tbody ? tbody.getBoundingClientRect() : null;
+
+                    // 计算已完成下沉行在表格底部的实际像素高度
+                    const todayDateKey = getLocalDateKey(0);
+                    const calendarTasks = (tasks[activeChild] || []).filter(isCalendarTask);
+                    const schedToday = calendarTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
+                    const doneCount = schedToday.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
+                    const totalSched = schedToday.length;
+
+                    let completedRowsHeight = null;
+                    if (tbody && totalSched > 0 && doneCount > 0 && doneCount < totalSched) {
+                        const rows = Array.from(tbody.querySelectorAll('tr'));
+                        if (rows.length > 0) {
+                            const firstDoneRowIdx = Math.max(0, rows.length - doneCount);
+                            const row = rows[firstDoneRowIdx];
+                            if (row) {
+                                const rowRect = row.getBoundingClientRect();
+                                completedRowsHeight = Math.round(tableRect.bottom - rowRect.top);
+                            }
+                        }
+                    }
+
+                    const totalHeight = Math.round(tableRect.height - Math.max(0, thRect.top - tableRect.top));
+                    const headerHeight = Math.round(thRect.height);
+                    const bodyHeight = Math.round(tbodyRect ? tbodyRect.height : (totalHeight - headerHeight));
 
                     setTodayColBounds({
                         left: Math.round(thRect.left - tableRect.left),
                         width: Math.round(thRect.width),
                         top: Math.round(thRect.top - tableRect.top),
-                        height: Math.round(tableRect.height - Math.max(0, thRect.top - tableRect.top))
+                        height: totalHeight,
+                        headerHeight,
+                        bodyHeight,
+                        completedRowsHeight
                     });
                 };
 
@@ -10577,15 +10606,23 @@ ${context}
                     const globalTodayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
                     const isTodayInCalendar = calendarDates.includes(todayDateKey);
 
-                    // 方案 B：精确计算能量液体上升高度百分比（完成项目下沉后，液体从底部相应抬升）
+                    // 方案 B：精确计算能量液体上升高度（每次严格升一格，最后一格完成后连同日期格一起满上）
                     const totalScheduled = scheduledTodayList.length;
-                    const liquidFillHeightPct = totalScheduled > 0
-                      ? (completedTodayCount >= totalScheduled 
-                          ? 100 
-                          : (completedTodayCount > 0 
-                              ? Math.max(14, Math.round((completedTodayCount / totalScheduled) * 100)) 
-                              : 0))
-                      : 0;
+                    let liquidFillHeightStyle = '0%';
+                    if (totalScheduled > 0 && completedTodayCount > 0) {
+                      if (completedTodayCount >= totalScheduled) {
+                        liquidFillHeightStyle = '100%';
+                      } else if (todayColBounds?.bodyHeight && todayColBounds?.height) {
+                        const exactDonePx = (todayColBounds.completedRowsHeight !== null && todayColBounds.completedRowsHeight !== undefined)
+                          ? todayColBounds.completedRowsHeight
+                          : Math.round(todayColBounds.bodyHeight * (completedTodayCount / totalScheduled));
+                        liquidFillHeightStyle = `${Math.min(todayColBounds.bodyHeight, exactDonePx)}px`;
+                      } else {
+                        // 降级兜底：任务区按完成比例上升（扣减约 18% 表头高度）
+                        const approxBodyProgress = (completedTodayCount / totalScheduled) * 82;
+                        liquidFillHeightStyle = `${Math.round(approxBodyProgress)}%`;
+                      }
+                    }
 
                     return (
                     <div className="overflow-x-auto pb-2 pt-4" ref={scrollContainerRef}>
@@ -10607,10 +10644,35 @@ ${context}
                           <div 
                             className={`combo-liquid-fill combo-liquid-${globalTodayComboInfo.auraType || 'none'}`}
                             style={{
-                              height: `${liquidFillHeightPct}%`
+                              height: liquidFillHeightStyle
                             }}
                           >
-                            <div className="combo-liquid-surface" />
+                            {/* 向上涌动的动态能量光波流背景 */}
+                            <div className="combo-liquid-stream-bg" />
+
+                            {/* 向上漂浮的光量子/能量微粒 */}
+                            {!isLowPerf && (
+                              <div className="combo-liquid-particles" aria-hidden="true">
+                                <span className="combo-particle cp-1" />
+                                <span className="combo-particle cp-2" />
+                                <span className="combo-particle cp-3" />
+                                <span className="combo-particle cp-4" />
+                              </div>
+                            )}
+
+                            {/* 顶部流体水波与闪电波纹液面 */}
+                            <div className="combo-liquid-wave-wrapper" aria-hidden="true">
+                              {/* 后层水波 (Back wave: 柔和半透，反向慢速漂移，形成折射深度感) */}
+                              <svg className="combo-liquid-wave combo-liquid-wave-back" viewBox="0 0 1200 30" preserveAspectRatio="none">
+                                <path d="M 0,15 C 150,26 350,4 600,15 C 850,26 1050,4 1200,15 L 1200,30 L 0,30 Z" />
+                              </svg>
+                              {/* 前层水波 (Front wave: 主能量波纹，顺向流动) */}
+                              <svg className="combo-liquid-wave combo-liquid-wave-front" viewBox="0 0 1200 30" preserveAspectRatio="none">
+                                <path d="M 0,15 C 150,4 350,26 600,15 C 850,4 1050,26 1200,15 L 1200,30 L 0,30 Z" />
+                              </svg>
+                              {/* 闪电/激光能量发光波峰光丝 */}
+                              <div className="combo-liquid-crest-glow" />
+                            </div>
                           </div>
                         </div>
                       </div>

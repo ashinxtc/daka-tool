@@ -257,28 +257,141 @@
   left: 0 !important;
   right: 0 !important;
   pointer-events: none !important;
-  transition: height 0.75s cubic-bezier(0.34, 1.25, 0.64, 1), background 0.4s ease !important;
+  transition: height 0.65s cubic-bezier(0.34, 1.25, 0.64, 1), background 0.4s ease !important;
+  will-change: height;
 }
 
-.combo-liquid-surface {
+/* 向上涌动的动态能量光波流背景 */
+.combo-liquid-stream-bg {
   position: absolute !important;
-  top: -2px !important;
-  left: -15% !important;
-  right: -15% !important;
-  height: 5px !important;
-  border-radius: 50% !important;
-  filter: blur(0.5px) !important;
-  animation: combo-liquid-wave 2.2s ease-in-out infinite alternate !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  background-size: 100% 72px !important;
+  animation: comboEnergyRise 2s linear infinite !important;
+  mix-blend-mode: overlay;
+  opacity: 0.9;
 }
 
-@keyframes combo-liquid-wave {
+@keyframes comboEnergyRise {
   0% {
-    transform: scaleX(0.96) translateY(0);
-    opacity: 0.85;
+    background-position: 0 72px;
   }
   100% {
-    transform: scaleX(1.04) translateY(-1px);
+    background-position: 0 0;
+  }
+}
+
+/* 向上漂浮的光量子/能量微粒 */
+.combo-liquid-particles {
+  position: absolute !important;
+  inset: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+.combo-particle {
+  position: absolute !important;
+  bottom: 0 !important;
+  border-radius: 50% !important;
+  pointer-events: none !important;
+  animation: comboParticleFloat linear infinite !important;
+}
+
+.cp-1 { left: 18%; width: 4px; height: 4px; animation-duration: 2.1s; animation-delay: 0.1s; }
+.cp-2 { left: 48%; width: 5px; height: 5px; animation-duration: 2.7s; animation-delay: 0.7s; }
+.cp-3 { left: 78%; width: 3px; height: 3px; animation-duration: 1.8s; animation-delay: 1.3s; }
+.cp-4 { left: 32%; width: 4px; height: 4px; animation-duration: 2.4s; animation-delay: 1.8s; }
+
+@keyframes comboParticleFloat {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.85;
+    transform: translateY(-15px) scale(1);
+  }
+  80% {
+    opacity: 0.85;
+    transform: translateY(-70px) scale(1);
+  }
+  100% {
+    transform: translateY(-110px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* 顶部流体水波与闪电波纹液面容器 */
+.combo-liquid-wave-wrapper {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: -12px !important;
+  height: 14px !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+}
+
+.combo-liquid-wave {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 200% !important;
+  height: 100% !important;
+  will-change: transform;
+}
+
+.combo-liquid-wave-front {
+  animation: comboWaveFlow 3.2s linear infinite !important;
+  z-index: 2 !important;
+}
+
+.combo-liquid-wave-back {
+  animation: comboWaveFlowReverse 4.6s linear infinite !important;
+  z-index: 1 !important;
+  top: -2px !important;
+  opacity: 0.65 !important;
+}
+
+@keyframes comboWaveFlow {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes comboWaveFlowReverse {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* 闪电/激光能量发光波峰光丝 */
+.combo-liquid-crest-glow {
+  position: absolute !important;
+  left: -5% !important;
+  right: -5% !important;
+  top: 6px !important;
+  height: 2px !important;
+  border-radius: 50% !important;
+  filter: blur(0.75px) !important;
+  z-index: 3 !important;
+  animation: comboCrestShimmer 1.8s ease-in-out infinite alternate !important;
+}
+
+@keyframes comboCrestShimmer {
+  0% {
+    opacity: 0.7;
+    transform: scaleX(0.96);
+  }
+  100% {
     opacity: 1;
+    transform: scaleX(1.04);
   }
 }
 
@@ -291,29 +404,89 @@
 
 /* 1. 纯白初芒流光液体 */
 .combo-liquid-white {
-  background: linear-gradient(to top, rgba(255, 255, 255, 0.22) 0%, rgba(224, 242, 254, 0.14) 70%, rgba(255, 255, 255, 0.35) 100%) !important;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.20) 0%, rgba(224, 242, 254, 0.16) 65%, rgba(255, 255, 255, 0.36) 100%) !important;
 }
-.combo-liquid-white .combo-liquid-surface {
+.combo-liquid-white .combo-liquid-stream-bg {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 18px,
+    rgba(224, 242, 254, 0.15) 28px,
+    rgba(255, 255, 255, 0.38) 36px,
+    transparent 46px
+  ) !important;
+}
+.combo-liquid-white .combo-particle {
   background: rgba(255, 255, 255, 0.95) !important;
-  box-shadow: 0 0 10px 2px rgba(224, 242, 254, 0.9) !important;
+  box-shadow: 0 0 6px 1px rgba(224, 242, 254, 0.9) !important;
+}
+.combo-liquid-white .combo-liquid-wave-front {
+  fill: rgba(255, 255, 255, 0.88) !important;
+}
+.combo-liquid-white .combo-liquid-wave-back {
+  fill: rgba(186, 230, 253, 0.55) !important;
+}
+.combo-liquid-white .combo-liquid-crest-glow {
+  background: rgba(255, 255, 255, 0.98) !important;
+  box-shadow: 0 0 10px 2px rgba(224, 242, 254, 0.95), 0 0 16px 4px rgba(255, 255, 255, 0.8) !important;
 }
 
 /* 2. 暖阳金辉琥珀流光液体 */
 .combo-liquid-yellow {
-  background: linear-gradient(to top, rgba(245, 158, 11, 0.28) 0%, rgba(251, 191, 36, 0.18) 70%, rgba(254, 240, 138, 0.42) 100%) !important;
+  background: linear-gradient(to top, rgba(245, 158, 11, 0.26) 0%, rgba(251, 191, 36, 0.22) 65%, rgba(254, 240, 138, 0.44) 100%) !important;
 }
-.combo-liquid-yellow .combo-liquid-surface {
+.combo-liquid-yellow .combo-liquid-stream-bg {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 18px,
+    rgba(245, 158, 11, 0.22) 28px,
+    rgba(254, 240, 138, 0.48) 36px,
+    transparent 46px
+  ) !important;
+}
+.combo-liquid-yellow .combo-particle {
   background: rgba(254, 240, 138, 0.98) !important;
-  box-shadow: 0 0 14px 3px rgba(251, 191, 36, 0.95) !important;
+  box-shadow: 0 0 7px 1px rgba(245, 158, 11, 0.9) !important;
+}
+.combo-liquid-yellow .combo-liquid-wave-front {
+  fill: rgba(254, 240, 138, 0.92) !important;
+}
+.combo-liquid-yellow .combo-liquid-wave-back {
+  fill: rgba(245, 158, 11, 0.55) !important;
+}
+.combo-liquid-yellow .combo-liquid-crest-glow {
+  background: rgba(254, 240, 138, 1) !important;
+  box-shadow: 0 0 12px 3px rgba(251, 191, 36, 0.95), 0 0 20px 5px rgba(245, 158, 11, 0.8) !important;
 }
 
 /* 3. 炽金极光熔岩金色流光液体 */
 .combo-liquid-gold {
-  background: linear-gradient(to top, rgba(234, 88, 12, 0.35) 0%, rgba(245, 158, 11, 0.28) 50%, rgba(251, 191, 36, 0.35) 80%, rgba(254, 240, 138, 0.60) 100%) !important;
+  background: linear-gradient(to top, rgba(234, 88, 12, 0.32) 0%, rgba(245, 158, 11, 0.30) 45%, rgba(251, 191, 36, 0.45) 80%, rgba(254, 240, 138, 0.65) 100%) !important;
 }
-.combo-liquid-gold .combo-liquid-surface {
+.combo-liquid-gold .combo-liquid-stream-bg {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 16px,
+    rgba(234, 88, 12, 0.28) 26px,
+    rgba(254, 240, 138, 0.65) 36px,
+    transparent 46px
+  ) !important;
+}
+.combo-liquid-gold .combo-particle {
   background: #ffffff !important;
-  box-shadow: 0 0 18px 4px rgba(251, 191, 36, 1.0), 0 0 28px 8px rgba(245, 158, 11, 0.8) !important;
+  box-shadow: 0 0 8px 2px rgba(251, 191, 36, 1), 0 0 12px 3px rgba(245, 158, 11, 0.8) !important;
+}
+.combo-liquid-gold .combo-liquid-wave-front {
+  fill: #ffffff !important;
+}
+.combo-liquid-gold .combo-liquid-wave-back {
+  fill: rgba(251, 191, 36, 0.75) !important;
+}
+.combo-liquid-gold .combo-liquid-crest-glow {
+  background: #ffffff !important;
+  box-shadow: 0 0 16px 4px rgba(255, 255, 255, 1), 0 0 28px 8px rgba(251, 191, 36, 1), 0 0 40px 12px rgba(234, 88, 12, 0.85) !important;
 }
 
 /* --- 新春限定·火树银花背景特效 --- */
