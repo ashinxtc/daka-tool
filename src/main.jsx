@@ -10650,12 +10650,12 @@ ${context}
                             {/* 顶部流体水波液面容器 */}
                             <div className="combo-liquid-wave-wrapper" aria-hidden="true">
                               {/* 后层水波 (Back wave: 柔和半透，反向慢速漂移，与前层形成自然水波干涉) */}
-                              <svg className="combo-liquid-wave combo-liquid-wave-back" viewBox="0 0 800 16" preserveAspectRatio="none">
-                                <path d="M 0,8 C 100,12 250,4 400,8 C 550,12 700,4 800,8 L 800,16 L 0,16 Z" />
+                              <svg className="combo-liquid-wave combo-liquid-wave-back" viewBox="0 0 800 24" preserveAspectRatio="none">
+                                <path d="M 0,12 C 25,20 75,20 100,12 C 125,4 175,4 200,12 C 225,20 275,20 300,12 C 325,4 375,4 400,12 C 425,20 475,20 500,12 C 525,4 575,4 600,12 C 625,20 675,20 700,12 C 725,4 775,4 800,12 L 800,24 L 0,24 Z" />
                               </svg>
                               {/* 前层水波 (Front wave: 主能量波纹，顺向流动) */}
-                              <svg className="combo-liquid-wave combo-liquid-wave-front" viewBox="0 0 800 16" preserveAspectRatio="none">
-                                <path d="M 0,8 C 100,4 250,12 400,8 C 550,4 700,12 800,8 L 800,16 L 0,16 Z" />
+                              <svg className="combo-liquid-wave combo-liquid-wave-front" viewBox="0 0 800 24" preserveAspectRatio="none">
+                                <path d="M 0,12 C 25,2.5 75,2.5 100,12 C 125,21.5 175,21.5 200,12 C 225,2.5 275,2.5 300,12 C 325,21.5 375,21.5 400,12 C 425,2.5 475,2.5 500,12 C 525,21.5 575,21.5 600,12 C 625,2.5 675,2.5 700,12 C 725,21.5 775,21.5 800,12 L 800,24 L 0,24 Z" />
                               </svg>
                               {/* 水波光亮波峰光丝 */}
                               <div className="combo-liquid-crest-glow" />

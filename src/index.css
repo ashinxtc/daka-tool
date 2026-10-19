@@ -261,13 +261,13 @@
   will-change: height;
 }
 
-/* 顶部流体水波液面容器：紧贴任务分隔线，振幅自然流畅 */
+/* 顶部流体水波液面容器：更明显的生动水波起伏 */
 .combo-liquid-wave-wrapper {
   position: absolute !important;
   left: 0 !important;
   right: 0 !important;
-  top: -4px !important;
-  height: 8px !important;
+  top: -7px !important;
+  height: 14px !important;
   overflow: visible !important;
   pointer-events: none !important;
 }
@@ -282,15 +282,15 @@
 }
 
 .combo-liquid-wave-front {
-  animation: comboWaveFlow 2.8s linear infinite !important;
+  animation: comboWaveFlow 2.4s linear infinite !important;
   z-index: 2 !important;
 }
 
 .combo-liquid-wave-back {
-  animation: comboWaveFlowReverse 4.2s linear infinite !important;
+  animation: comboWaveFlowReverse 3.4s linear infinite !important;
   z-index: 1 !important;
   top: -1px !important;
-  opacity: 0.65 !important;
+  opacity: 0.60 !important;
 }
 
 @keyframes comboWaveFlow {
@@ -316,10 +316,10 @@
   position: absolute !important;
   left: 0 !important;
   right: 0 !important;
-  top: 2px !important;
-  height: 1.5px !important;
+  top: 6px !important;
+  height: 2px !important;
   border-radius: 9999px !important;
-  filter: blur(1px) !important;
+  filter: blur(1.5px) !important;
   z-index: 3 !important;
   animation: comboCrestShimmer 1.5s ease-in-out infinite alternate !important;
 }
