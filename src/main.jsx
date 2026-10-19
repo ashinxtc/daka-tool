@@ -10650,27 +10650,32 @@ ${context}
                             {/* 向上涌动的动态能量光波流背景 */}
                             <div className="combo-liquid-stream-bg" />
 
-                            {/* 向上漂浮的光量子/能量微粒 */}
+                            {/* 纵向呼吸能量脉冲发光核心 */}
+                            <div className="combo-liquid-glow-core" />
+
+                            {/* 向上漂浮的光量子/能量微粒群 */}
                             {!isLowPerf && (
                               <div className="combo-liquid-particles" aria-hidden="true">
                                 <span className="combo-particle cp-1" />
                                 <span className="combo-particle cp-2" />
                                 <span className="combo-particle cp-3" />
                                 <span className="combo-particle cp-4" />
+                                <span className="combo-particle cp-5" />
+                                <span className="combo-particle cp-6" />
                               </div>
                             )}
 
-                            {/* 顶部流体水波与闪电波纹液面 */}
+                            {/* 顶部流体水波液面容器 */}
                             <div className="combo-liquid-wave-wrapper" aria-hidden="true">
-                              {/* 后层水波 (Back wave: 柔和半透，反向慢速漂移，形成折射深度感) */}
-                              <svg className="combo-liquid-wave combo-liquid-wave-back" viewBox="0 0 1200 30" preserveAspectRatio="none">
-                                <path d="M 0,15 C 150,26 350,4 600,15 C 850,26 1050,4 1200,15 L 1200,30 L 0,30 Z" />
+                              {/* 后层水波 (Back wave: 柔和半透，反向慢速漂移，与前层形成自然水波干涉) */}
+                              <svg className="combo-liquid-wave combo-liquid-wave-back" viewBox="0 0 800 20" preserveAspectRatio="none">
+                                <path d="M 0,10 C 100,16 250,4 400,10 C 550,16 700,4 800,10 L 800,20 L 0,20 Z" />
                               </svg>
                               {/* 前层水波 (Front wave: 主能量波纹，顺向流动) */}
-                              <svg className="combo-liquid-wave combo-liquid-wave-front" viewBox="0 0 1200 30" preserveAspectRatio="none">
-                                <path d="M 0,15 C 150,4 350,26 600,15 C 850,4 1050,26 1200,15 L 1200,30 L 0,30 Z" />
+                              <svg className="combo-liquid-wave combo-liquid-wave-front" viewBox="0 0 800 20" preserveAspectRatio="none">
+                                <path d="M 0,10 C 100,4 250,16 400,10 C 550,4 700,16 800,10 L 800,20 L 0,20 Z" />
                               </svg>
-                              {/* 闪电/激光能量发光波峰光丝 */}
+                              {/* 水波光亮波峰光丝 */}
                               <div className="combo-liquid-crest-glow" />
                             </div>
                           </div>
@@ -10930,11 +10935,11 @@ ${context}
                                                       : isChecked 
                                                         ? (isToday && gamificationConfig?.comboEnabled !== false
                                                             ? (todayComboInfo.auraType === 'gold'
-                                                                ? 'bg-gradient-to-br from-yellow-300 via-amber-400 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.95)] border border-yellow-200 scale-105'
+                                                                ? 'bg-amber-400/40 backdrop-blur-md text-amber-100 font-black shadow-[0_0_14px_rgba(251,191,36,0.95)] border border-yellow-200/90 scale-105'
                                                                 : todayComboInfo.auraType === 'yellow'
-                                                                  ? 'bg-gradient-to-br from-amber-300 to-yellow-400 text-slate-900 font-bold shadow-[0_0_10px_rgba(251,191,36,0.7)] border border-amber-200'
+                                                                  ? 'bg-amber-400/35 backdrop-blur-md text-yellow-100 font-bold shadow-[0_0_12px_rgba(251,191,36,0.8)] border border-amber-300/80'
                                                                   : todayComboInfo.auraType === 'white'
-                                                                    ? 'bg-gradient-to-br from-white to-sky-100 text-sky-900 font-bold shadow-[0_0_10px_rgba(255,255,255,0.85)] border border-white'
+                                                                    ? 'bg-white/35 backdrop-blur-md text-white font-bold shadow-[0_0_12px_rgba(255,255,255,0.9)] border border-white/70'
                                                                     : `${theme.primaryBg} text-white shadow-md shadow-${theme.id}-200/50 scale-100`)
                                                             : `${theme.primaryBg} text-white shadow-md shadow-${theme.id}-200/50 scale-100`)
                                                         : (hasActiveBg ? 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white hover:scale-110' : 'bg-gray-100 text-gray-300 hover:bg-gray-200 hover:scale-110')
