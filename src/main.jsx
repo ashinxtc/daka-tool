@@ -76,7 +76,7 @@ import { useState, useEffect, useMemo, useRef, useContext, createContext, useCal
     Trash2, Save, Plus, Target, Flag, Gift, Play, Puzzle, ArrowUp, Users, Upload,
     SortDesc, Locate, Medal, Lock, Palette, Skull, FileText, Beaker, TrendingUp,
     Sparkles, BookOpen, Calendar, Clipboard, ShoppingBag, Zap, MessageCircle, Shield, Key,
-    RepairedFlameBadge
+    RepairedFlameBadge, ChevronDown
 } from './components/icons';
 import { PetModal, CardPetImage, PetImage, PET_NOTIF_CONFIG, calcAdventureHungerCost } from './components/pet/PetModal';
 import { PetFloatingButton } from './components/pet/PetFloatingButton';
@@ -599,6 +599,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const todayRef = useRef(null);
             const tableRef = useRef(null);
             const [todayColBounds, setTodayColBounds] = useState(null);
+            const [isCompletedCardsCollapsed, setIsCompletedCardsCollapsed] = useState(false);
             
             const prevLevelRef = useRef(1);
 
@@ -10364,10 +10365,20 @@ ${context}
                     const globalTodayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
                     const isTodayInCalendar = calendarDates.includes(todayDateKey);
 
+                    // 方案 B：精确计算能量液体上升高度百分比（完成项目下沉后，液体从底部相应抬升）
+                    const totalScheduled = scheduledTodayList.length;
+                    const liquidFillHeightPct = totalScheduled > 0
+                      ? (completedTodayCount >= totalScheduled 
+                          ? 100 
+                          : (completedTodayCount > 0 
+                              ? Math.max(14, Math.round((completedTodayCount / totalScheduled) * 100)) 
+                              : 0))
+                      : 0;
+
                     return (
                     <div className="overflow-x-auto pb-2 pt-4" ref={scrollContainerRef}>
                     <div className="relative inline-block min-w-full align-middle">
-                    {/* 当日连胜 · 全列一体化闭合霓虹呼吸光晕 (Unified Perimeter Column Halo) */}
+                    {/* 当日连胜 · 全列一体化闭合霓虹呼吸光晕与上升能量液体 (Unified Column Halo & Liquid Fill) */}
                     {todayColBounds && isTodayInCalendar && gamificationConfig?.comboEnabled !== false && (
                       <div 
                         className={`combo-unified-column-halo combo-aura-${globalTodayComboInfo.auraType || 'charging'}`}
@@ -10377,7 +10388,20 @@ ${context}
                           width: `${todayColBounds.width}px`,
                           height: `${todayColBounds.height}px`,
                         }}
-                      />
+                      >
+                        {/* 内部受控裁剪层：确保液体被圆角裁切，同时外层光晕正常发光 */}
+                        <div className="combo-liquid-container">
+                          {/* 底部升起的能量液体 (Rising Liquid Energy Fill) */}
+                          <div 
+                            className={`combo-liquid-fill combo-liquid-${globalTodayComboInfo.auraType || 'none'}`}
+                            style={{
+                              height: `${liquidFillHeightPct}%`
+                            }}
+                          >
+                            <div className="combo-liquid-surface" />
+                          </div>
+                        </div>
+                      </div>
                     )}
                     <table ref={tableRef} className="w-full text-sm border-separate border-spacing-0">
                     <thead className="relative z-40">
@@ -10522,15 +10546,33 @@ ${context}
                               <tbody>
                                 {(() => {
                                   const weekRange = getCurrentWeekRange();
-                                  const dailyMust = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'daily_must');
-                                  const weeklyOptional = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
-                                  const countType = ongoingTasks.filter(t => !t.frequencyType || t.frequencyType === 'count');
-                                  const calendarOrderedTasks = [...dailyMust, ...weeklyOptional, ...countType];
                                   const todayDateKey = getLocalDateKey(0);
-                                   const scheduledTodayList = ongoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
-                                   const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
-                                   const todayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
-                                   return calendarOrderedTasks.map((task, idx) => {
+                                  const scheduledTodayList = ongoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
+                                  const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
+                                  const todayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
+
+                                  // 方案 A：未完成任务在上方，已完成任务自动下沉至表格底部
+                                  const isTodayInCalendar = calendarDates.includes(todayDateKey);
+                                  let calendarOrderedTasks;
+                                  if (isTodayInCalendar) {
+                                    const pendingTasks = ongoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] === undefined);
+                                    const doneTasks = ongoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined);
+
+                                    const sortGroup = (list) => {
+                                      const dailyMust = list.filter(t => (t.frequencyType || 'count') === 'daily_must');
+                                      const weeklyOptional = list.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
+                                      const countType = list.filter(t => !t.frequencyType || t.frequencyType === 'count');
+                                      return [...dailyMust, ...weeklyOptional, ...countType];
+                                    };
+
+                                    calendarOrderedTasks = [...sortGroup(pendingTasks), ...sortGroup(doneTasks)];
+                                  } else {
+                                    const dailyMust = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'daily_must');
+                                    const weeklyOptional = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
+                                    const countType = ongoingTasks.filter(t => !t.frequencyType || t.frequencyType === 'count');
+                                    calendarOrderedTasks = [...dailyMust, ...weeklyOptional, ...countType];
+                                  }
+                                  return calendarOrderedTasks.map((task, idx) => {
                                     const freq = task.frequencyType || 'count';
                                     const rowTypeStyle = hasActiveBg
                                       ? (freq === 'daily_must' ? 'border-l-4 border-l-red-400 bg-red-500/10' : freq === 'weekly_optional' ? 'border-l-4 border-l-sky-400 bg-sky-500/10' : 'border-l-4 border-l-amber-300/60 bg-amber-500/5')
@@ -10583,7 +10625,7 @@ ${context}
                                                 : '') 
                                             : (isWeekend ? (hasActiveBg ? 'bg-rose-500/[0.05]' : 'bg-rose-50/40') : '')
                                         }`}>
-                                          <div className="relative w-8 h-8 mx-auto">
+                                          <div className="relative w-8 h-8 mx-auto z-25">
                                             {/* 连胜暴击浮动纯文字（无背景无框，高级金色高光流光） */}
                                             {comboFloatingBursts.filter(b => b.taskId === task.id && b.date === date).map(burst => (
                                               <div 
@@ -10610,7 +10652,15 @@ ${context}
                                                     : isSkipped 
                                                       ? (hasActiveBg ? 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 shadow-xs' : 'bg-indigo-100 text-indigo-500 shadow-sm') 
                                                       : isChecked 
-                                                        ? `${theme.primaryBg} text-white shadow-md shadow-${theme.id}-200/50 scale-100` 
+                                                        ? (isToday && gamificationConfig?.comboEnabled !== false
+                                                            ? (todayComboInfo.auraType === 'gold'
+                                                                ? 'bg-gradient-to-br from-yellow-300 via-amber-400 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.95)] border border-yellow-200 scale-105'
+                                                                : todayComboInfo.auraType === 'yellow'
+                                                                  ? 'bg-gradient-to-br from-amber-300 to-yellow-400 text-slate-900 font-bold shadow-[0_0_10px_rgba(251,191,36,0.7)] border border-amber-200'
+                                                                  : todayComboInfo.auraType === 'white'
+                                                                    ? 'bg-gradient-to-br from-white to-sky-100 text-sky-900 font-bold shadow-[0_0_10px_rgba(255,255,255,0.85)] border border-white'
+                                                                    : `${theme.primaryBg} text-white shadow-md shadow-${theme.id}-200/50 scale-100`)
+                                                            : `${theme.primaryBg} text-white shadow-md shadow-${theme.id}-200/50 scale-100`)
                                                         : (hasActiveBg ? 'bg-white/10 text-white/40 hover:bg-white/20 hover:text-white hover:scale-110' : 'bg-gray-100 text-gray-300 hover:bg-gray-200 hover:scale-110')
                                               }`}
                                             >
@@ -10642,20 +10692,36 @@ ${context}
                     })() : (
                           <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                               {(() => {
-                                  const dailyMust = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'daily_must');
-                                  const weeklyOptional = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
-                                  const countType = ongoingTasks.filter(t => !t.frequencyType || t.frequencyType === 'count');
-                                  const todayOrderedTasks = [...dailyMust, ...weeklyOptional, ...countType];
-                                  return todayOrderedTasks.map(task => {
-                                      const today = getLocalDateKey(0);
+                                  const today = getLocalDateKey(0);
+                                  const scheduledTasks = ongoingTasks.filter(task => {
+                                      const isBeforeStart = task.startDate && today < task.startDate;
+                                      const isAfterEnd = task.deadline && today > task.deadline;
+                                      return !isBeforeStart && !isAfterEnd;
+                                  });
+                                  const scheduledCount = scheduledTasks.length;
+                                  const completedTodayCount = scheduledTasks.filter(t => checkins[activeChild]?.[t.id]?.[today] !== undefined).length;
+                                  const cardComboInfo = getComboInfo(completedTodayCount, scheduledCount);
+
+                                  // 分组：未完成待打卡 vs 已完成沉降
+                                  const pendingTasks = scheduledTasks.filter(task => checkins[activeChild]?.[task.id]?.[today] === undefined);
+                                  const completedTasks = scheduledTasks.filter(task => checkins[activeChild]?.[task.id]?.[today] !== undefined);
+
+                                  const sortGroup = (list) => {
+                                      const dailyMust = list.filter(t => (t.frequencyType || 'count') === 'daily_must');
+                                      const weeklyOptional = list.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
+                                      const countType = list.filter(t => !t.frequencyType || t.frequencyType === 'count');
+                                      return [...dailyMust, ...weeklyOptional, ...countType];
+                                  };
+
+                                  const sortedPending = sortGroup(pendingTasks);
+                                  const sortedCompleted = sortGroup(completedTasks);
+
+                                  const renderCard = (task, isCompletedSection = false) => {
                                       const rawRecord = checkins[activeChild]?.[task.id]?.[today];
                                       // 多次打卡支持：数组时需要提取分钟总数用于显示
                                       const displayMinutes = typeof rawRecord === 'number' ? rawRecord : (Array.isArray(rawRecord) ? rawRecord.reduce((s, e) => s + (e.m || 0), 0) : rawRecord);
                                       const isChecked = rawRecord !== undefined;
                                       const record = displayMinutes; // 兼容后续代码
-                                      const isBeforeStart = task.startDate && today < task.startDate;
-                                      const isAfterEnd = task.deadline && today > task.deadline;
-                                      if (isBeforeStart || isAfterEnd) return null;
                                       const freq = task.frequencyType || 'count';
                                       const cardTypeStyle = hasActiveBg
                                           ? (freq === 'daily_must' ? 'border-l-4 border-l-red-400 bg-red-500/10' : freq === 'weekly_optional' ? 'border-l-4 border-l-sky-400 bg-sky-500/10' : 'border-l-4 border-l-amber-400 bg-amber-500/10')
@@ -10665,12 +10731,30 @@ ${context}
                                       const bubbleContent = freq === 'daily_must' ? '必做' : freq === 'weekly_optional' ? `每周 ${task.weeklyTargetCount ?? 3} 次` : `进度：${taskRecordCount}/${taskTarget}`;
                                       const bubbleCls = freq === 'daily_must' ? 'bg-red-100 text-red-600 border-red-200' : freq === 'weekly_optional' ? 'bg-sky-100 text-sky-600 border-sky-200' : 'bg-amber-50 text-amber-600 border-amber-200';
                                       const isRepairedToday = !!(repairedCheckins[activeChild]?.[task.id]?.[today]);
+
+                                      // 沉降已完成卡片流光配色：跟随当前光晕等阶蜕变
+                                      const completedGlowBorder = isChecked
+                                        ? (cardComboInfo.auraType === 'gold'
+                                            ? 'border-amber-400/50 bg-amber-500/15 shadow-lg shadow-amber-500/15 ring-1 ring-amber-400/30'
+                                            : cardComboInfo.auraType === 'yellow'
+                                              ? 'border-amber-300/40 bg-amber-400/10 shadow-md shadow-amber-400/10'
+                                              : cardComboInfo.auraType === 'white'
+                                                ? 'border-white/30 bg-white/15 shadow-md shadow-white/10'
+                                                : (hasActiveBg ? 'bg-white/20 border-white/30' : `bg-white border-${theme.id}-200 shadow-md`))
+                                        : (hasActiveBg ? 'bg-white/10 border-white/15 backdrop-blur-md hover:bg-white/15 hover:border-white/25' : 'border-gray-100 hover:bg-white hover:shadow-sm');
+
+                                      const completedCircleCls = isChecked
+                                        ? (cardComboInfo.auraType === 'gold'
+                                            ? 'bg-gradient-to-br from-yellow-300 via-amber-400 to-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.9)]'
+                                            : cardComboInfo.auraType === 'yellow'
+                                              ? 'bg-gradient-to-br from-amber-300 to-yellow-400 text-slate-900 font-bold shadow-[0_0_10px_rgba(251,191,36,0.7)]'
+                                              : cardComboInfo.auraType === 'white'
+                                                ? 'bg-gradient-to-br from-white to-sky-100 text-sky-900 font-bold shadow-[0_0_10px_rgba(255,255,255,0.85)]'
+                                                : (hasActiveBg ? 'bg-white/20 text-white' : theme.lightBg))
+                                        : (hasActiveBg ? 'bg-white/10' : 'bg-white');
+
                                       return (
-                                          <div key={task.id} onClick={() => handleCellClick(task.id, today)} className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between transition-colors transition-transform group relative overflow-visible ${cardTypeStyle} ${
-                                            hasActiveBg
-                                              ? (isChecked ? 'bg-white/20 border-white/30 backdrop-blur-md shadow-lg shadow-black/10' : 'bg-white/10 border-white/15 backdrop-blur-md hover:bg-white/15 hover:border-white/25')
-                                              : (isChecked ? `bg-white border-${theme.id}-200 shadow-md` : 'border-gray-100 hover:bg-white hover:shadow-sm')
-                                          }`}>
+                                          <div key={task.id} onClick={() => handleCellClick(task.id, today)} className={`p-4 rounded-2xl border cursor-pointer flex items-center justify-between transition-colors transition-transform group relative overflow-visible ${cardTypeStyle} ${completedGlowBorder}`}>
                                               {/* 连胜暴击浮动纯文字（无背景无框，高级金色高光） */}
                                                 {comboFloatingBursts.filter(b => b.taskId === task.id && b.date === today).map(burst => (
                                                   <div 
@@ -10688,13 +10772,9 @@ ${context}
                                               {isRepairedToday && <RepairedFlameBadge size="md" className="absolute -bottom-1 -right-1 z-20" />}
                                               <span className={`absolute -top-1 z-20 min-w-[18px] h-4 px-1.5 rounded-full text-[9px] font-bold border-2 border-white shadow-sm flex items-center justify-center ${bubbleCls}`} style={{ right: '-0.25rem' }}>{bubbleContent}</span>
                                               <div className="flex items-center gap-4 pr-16">
-                                                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                                                    isChecked 
-                                                      ? (hasActiveBg ? 'bg-white/20 text-white' : theme.lightBg) 
-                                                      : (hasActiveBg ? 'bg-white/10' : 'bg-white')
-                                                  }`}>
+                                                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors transition-transform duration-300 ${completedCircleCls}`}>
                                                     {isChecked ? (
-                                                      <CheckCircle2 className={`w-6 h-6 ${hasActiveBg ? 'text-emerald-400' : theme.primary}`} />
+                                                      <CheckCircle2 className={`w-6 h-6 ${cardComboInfo.tier !== 'none' ? 'text-current' : (hasActiveBg ? 'text-emerald-400' : theme.primary)}`} />
                                                     ) : (
                                                       <div className={`w-6 h-6 rounded-full border-2 ${hasActiveBg ? 'border-white/30 group-hover:border-white/60' : 'border-gray-200 group-hover:border-gray-300'}`}></div>
                                                     )}
@@ -10707,7 +10787,54 @@ ${context}
                                               {isChecked && <div className={`text-2xl font-bold ${hasActiveBg ? 'text-amber-300' : theme.primary}`}>{record}<span className={`text-sm font-medium ml-1 ${hasActiveBg ? 'text-white/60' : 'opacity-50'}`}>分钟</span></div>}
                                           </div>
                                       );
-                                  });
+                                  };
+
+                                  return (
+                                    <>
+                                      {/* 上半部分：待打卡任务卡片 */}
+                                      {sortedPending.length === 0 ? (
+                                        <div className="col-span-full py-8 px-6 text-center rounded-2xl border border-amber-300/30 bg-amber-400/10 backdrop-blur-md">
+                                          <div className="text-4xl mb-2">🎉</div>
+                                          <div className="text-lg font-black text-amber-300">今日打卡任务已全部完成！</div>
+                                          <div className="text-xs text-white/70 mt-1">连胜能量已蓄满，快去看看获得的丰厚奖励吧！</div>
+                                        </div>
+                                      ) : (
+                                        sortedPending.map(t => renderCard(t, false))
+                                      )}
+
+                                      {/* 下半部分：已完成任务沉降与折叠收纳 */}
+                                      {sortedCompleted.length > 0 && (
+                                        <>
+                                          <div className="col-span-full pt-3">
+                                            <button 
+                                              type="button"
+                                              onClick={() => setIsCompletedCardsCollapsed(prev => !prev)}
+                                              className={`w-full flex items-center justify-between px-4 py-2.5 rounded-2xl border transition-all text-xs font-bold ${
+                                                hasActiveBg 
+                                                  ? 'bg-white/10 hover:bg-white/15 border-white/15 text-white/90 shadow-sm' 
+                                                  : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700 shadow-xs'
+                                              }`}
+                                            >
+                                              <div className="flex items-center gap-2">
+                                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                                <span>今日已完成 ({sortedCompleted.length})</span>
+                                                {cardComboInfo.tier !== 'none' && (
+                                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${cardComboInfo.textColor}`} style={{ textShadow: cardComboInfo.textShadow }}>
+                                                    {cardComboInfo.icon} {cardComboInfo.title}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-1.5 opacity-75 font-semibold">
+                                                <span>{isCompletedCardsCollapsed ? '点击展开' : '点击折叠'}</span>
+                                                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isCompletedCardsCollapsed ? '' : 'rotate-180'}`} />
+                                              </div>
+                                            </button>
+                                          </div>
+                                          {!isCompletedCardsCollapsed && sortedCompleted.map(t => renderCard(t, true))}
+                                        </>
+                                      )}
+                                    </>
+                                  );
                               })()}
                           </div>
                         )}

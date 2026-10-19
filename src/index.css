@@ -235,6 +235,87 @@
 .combo-halo-header-yellow, .combo-halo-cell-yellow, .combo-halo-bottom-yellow, .combo-beam-yellow, .animate-aura-yellow { animation: unified-halo-yellow 1.8s ease-in-out infinite !important; }
 .combo-halo-header-gold, .combo-halo-cell-gold, .combo-halo-bottom-gold, .combo-beam-gold, .animate-aura-gold { animation: unified-halo-gold 1.5s ease-in-out infinite !important; }
 
+/* =========================================================
+   当日连胜 · 垂直能量液体蓄力层 (Rising Liquid Energy Fill)
+   1. 位于光柱罩层内部，受圆角裁剪
+   2. 完成任务下沉时，能量液体从底部升起，与已完成行精确对应
+   3. 液体及液面波纹颜色跟随连击等阶实时蜕变
+   ========================================================= */
+
+.combo-liquid-container {
+  position: absolute !important;
+  inset: 0 !important;
+  border-radius: inherit !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+
+.combo-liquid-fill {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  pointer-events: none !important;
+  transition: height 0.75s cubic-bezier(0.34, 1.25, 0.64, 1), background 0.4s ease !important;
+}
+
+.combo-liquid-surface {
+  position: absolute !important;
+  top: -2px !important;
+  left: -15% !important;
+  right: -15% !important;
+  height: 5px !important;
+  border-radius: 50% !important;
+  filter: blur(0.5px) !important;
+  animation: combo-liquid-wave 2.2s ease-in-out infinite alternate !important;
+}
+
+@keyframes combo-liquid-wave {
+  0% {
+    transform: scaleX(0.96) translateY(0);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scaleX(1.04) translateY(-1px);
+    opacity: 1;
+  }
+}
+
+/* 蓄力/未打卡：无明显液体 */
+.combo-liquid-none,
+.combo-liquid-charging {
+  height: 0% !important;
+  opacity: 0 !important;
+}
+
+/* 1. 纯白初芒流光液体 */
+.combo-liquid-white {
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.22) 0%, rgba(224, 242, 254, 0.14) 70%, rgba(255, 255, 255, 0.35) 100%) !important;
+}
+.combo-liquid-white .combo-liquid-surface {
+  background: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 0 10px 2px rgba(224, 242, 254, 0.9) !important;
+}
+
+/* 2. 暖阳金辉琥珀流光液体 */
+.combo-liquid-yellow {
+  background: linear-gradient(to top, rgba(245, 158, 11, 0.28) 0%, rgba(251, 191, 36, 0.18) 70%, rgba(254, 240, 138, 0.42) 100%) !important;
+}
+.combo-liquid-yellow .combo-liquid-surface {
+  background: rgba(254, 240, 138, 0.98) !important;
+  box-shadow: 0 0 14px 3px rgba(251, 191, 36, 0.95) !important;
+}
+
+/* 3. 炽金极光熔岩金色流光液体 */
+.combo-liquid-gold {
+  background: linear-gradient(to top, rgba(234, 88, 12, 0.35) 0%, rgba(245, 158, 11, 0.28) 50%, rgba(251, 191, 36, 0.35) 80%, rgba(254, 240, 138, 0.60) 100%) !important;
+}
+.combo-liquid-gold .combo-liquid-surface {
+  background: #ffffff !important;
+  box-shadow: 0 0 18px 4px rgba(251, 191, 36, 1.0), 0 0 28px 8px rgba(245, 158, 11, 0.8) !important;
+}
+
 /* --- 新春限定·火树银花背景特效 --- */
 .bg-lunar-night {
   background: linear-gradient(to bottom, #1e3a8a 0%, #0f172a 60%, #4c0519 100%);
