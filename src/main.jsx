@@ -8,6 +8,7 @@ import './index.css';
 
 import { isIOSSafari, isPWAStandalone } from './utils/platform';
 import { getCheckinEntries, getCheckinMinutes, getCheckinUnits, getCheckinSessionCount, getTaskTotalMinutes, getTaskTotalSessions } from './utils/checkin';
+import { isHabitTask, isReadingTask, isCalendarTask, makeCheckinTombstoneKey, parseCheckinTombstoneKey, isHistoryKeyTombstoned } from './utils/checkinSync';
 import { getLocalDateKey, dateKeySubtractDays, dateObjToLocalKey, tsToLocalDateKey, getDatesInRange, getMonthDates } from './utils/date';
 import { COLOR_PALETTES, BASE_THEME_IDS } from './data/themes';
 import { WECOM_API_URL, EXCHANGE_WORKER_URL, SYNC_WORKER_URL, verificationPageUrl, pushApiUrl } from './constants/api';
@@ -3860,6 +3861,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 'app_pet_skill_cd_v1',        // 宠物技能CD { child: { ... } }
                 'app_deleted_tasks_v1',       // 任务删除墓碑 { child: { taskId: timestamp } }
                 'app_deleted_reading_books_v1', // 阅读藏书与待续书目删除墓碑 { child: { bookIdOrTitle: timestamp } }
+                'app_deleted_checkins_v1',    // 打卡记录删除墓碑 { child: { [`${taskId}::${date}`]: timestamp } }
             ]);
             // checkins 是三层嵌套 { child: { taskId: { date: value } } }，需要深合并
             const MERGEABLE_NESTED_KEYS = new Set([
@@ -3906,6 +3908,49 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         delete tombstones[child][String(bookIdOrTitle)];
                         storage.setItem('app_deleted_reading_books_v1', JSON.stringify(tombstones));
                         storage.markKeyVersion('app_deleted_reading_books_v1');
+                    }
+                } catch (e) {}
+            };
+
+            // 读取已删除打卡墓碑集合 { child: { [`${taskId}::${date}`]: timestamp } }
+            const getDeletedCheckinTombstones = () => {
+                try {
+                    const raw = storage.getItem('app_deleted_checkins_v1');
+                    return raw ? JSON.parse(raw) : {};
+                } catch (e) {
+                    return {};
+                }
+            };
+
+            const recordDeletedCheckin = (child, taskId, date, sessionTimestamp = null) => {
+                if (!child || !taskId || !date) return;
+                try {
+                    const tombstones = getDeletedCheckinTombstones();
+                    if (!tombstones[child]) tombstones[child] = {};
+                    const key = makeCheckinTombstoneKey(taskId, date, sessionTimestamp);
+                    tombstones[child][key] = Date.now();
+                    storage.setItem('app_deleted_checkins_v1', JSON.stringify(tombstones));
+                    storage.markKeyVersion('app_deleted_checkins_v1');
+                } catch (e) {}
+            };
+
+            const removeDeletedCheckinTombstone = (child, taskId, date) => {
+                if (!child || !taskId || !date) return;
+                try {
+                    const tombstones = getDeletedCheckinTombstones();
+                    if (tombstones[child]) {
+                        let changed = false;
+                        const prefix = `${taskId}::${date}`;
+                        Object.keys(tombstones[child]).forEach(k => {
+                            if (k === prefix || k.startsWith(prefix + '::')) {
+                                delete tombstones[child][k];
+                                changed = true;
+                            }
+                        });
+                        if (changed) {
+                            storage.setItem('app_deleted_checkins_v1', JSON.stringify(tombstones));
+                            storage.markKeyVersion('app_deleted_checkins_v1');
+                        }
                     }
                 } catch (e) {}
             };
@@ -3982,6 +4027,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     'app_reading_shelved_v1',
                     'app_deleted_reading_books_v1',
                     'app_deleted_tasks_v1',
+                    'app_deleted_checkins_v1',
                     'app_ai_chat_history',
                     'app_coupons_v1',
                     'app_exempted_days_v1',
@@ -4071,20 +4117,22 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return clean;
             };
 
-            // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方），自动过滤已除名成员数据
+            // 扁平字典并集合并：双方都有同一 key 时保留本地值（本地是最新操作方），自动过滤已除名成员数据与已删除打卡流水
             const mergeFlatDict = (localObj, cloudObj) => {
                 const merged = { ...cloudObj };
                 let localChanged = false, cloudChanged = false;
                 const deletedTombstones = getDeletedProfileTombstones();
+                const checkinTombstones = getDeletedCheckinTombstones();
                 const isKeyDeleted = (k) => {
                     if (isChildOrProfileDeleted(k, deletedTombstones)) return true;
                     for (const dName of Object.keys(deletedTombstones)) {
                         if (k.startsWith(`${dName}-`)) return true;
                     }
+                    if (isHistoryKeyTombstoned(k, checkinTombstones)) return true;
                     return false;
                 };
 
-                // 清理云端已除名成员残留与测试员残留
+                // 清理云端已除名成员残留与测试员残留，以及已删除打卡的奖励流水
                 Object.keys(merged).forEach(k => {
                     if (isKeyDeleted(k) || k.startsWith('测试员') || k.startsWith('TESTER')) {
                         delete merged[k];
@@ -4106,21 +4154,24 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 return { merged, localChanged, cloudChanged };
             };
 
-            // checkins 深合并：child → taskId → dateKey 三层，叶子（数字或数组）双方都有时保留条目更多的一方
+            // checkins 深合并：child → taskId → dateKey 三层，支持删除墓碑阻断复活
             const mergeCheckins = (localObj, cloudObj) => {
                 const merged = {};
                 const children = new Set([...Object.keys(localObj), ...Object.keys(cloudObj)]);
                 let localChanged = false, cloudChanged = false;
-                const deletedTombstones = getDeletedProfileTombstones();
+                const deletedProfileTombstones = getDeletedProfileTombstones();
+                const deletedCheckinTombstones = getDeletedCheckinTombstones();
+                const now = Date.now();
                 children.forEach(child => {
                     if (child === '测试员' || child === 'TESTER') {
                         merged[child] = localObj[child] || {};
                         return; // 测试员打卡完全保留本地，绝不从云端拉取，绝不触发 cloudChanged
                     }
-                    if (isChildOrProfileDeleted(child, deletedTombstones)) {
+                    if (isChildOrProfileDeleted(child, deletedProfileTombstones)) {
                         if (cloudObj[child] && Object.keys(cloudObj[child]).length > 0) cloudChanged = true;
                         return;
                     }
+                    const childCheckinTombstones = (deletedCheckinTombstones && deletedCheckinTombstones[child]) || {};
                     const lChild = localObj[child] || {}, cChild = cloudObj[child] || {};
                     merged[child] = {};
                     const taskIds = new Set([...Object.keys(lChild), ...Object.keys(cChild)]);
@@ -4129,15 +4180,50 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         merged[child][tid] = {};
                         const dates = new Set([...Object.keys(lTask), ...Object.keys(cTask)]);
                         dates.forEach(d => {
+                            const tombKey = makeCheckinTombstoneKey(tid, d);
+                            const dateDeletedAt = childCheckinTombstones[tombKey];
+                            const isDateDeleted = dateDeletedAt && (now - dateDeletedAt < 30 * 86400000);
+
+                            if (isDateDeleted) {
+                                // 该打卡已主动删除（30天墓碑期内）：不从云端复活，云端若有则标记需要清理
+                                if (cTask[d] !== undefined) cloudChanged = true;
+                                if (lTask[d] !== undefined) localChanged = true;
+                                return;
+                            }
+
                             const lv = lTask[d], cv = cTask[d];
-                            if (lv === undefined) { merged[child][tid][d] = cv; localChanged = true; }
-                            else if (cv === undefined) { merged[child][tid][d] = lv; cloudChanged = true; }
-                            else if (Array.isArray(lv) && Array.isArray(cv)) {
-                                // 多次打卡数组：按时间戳 t 去重合并
+                            if (lv === undefined) {
+                                if (cv !== undefined) {
+                                    merged[child][tid][d] = cv;
+                                    localChanged = true;
+                                }
+                            } else if (cv === undefined) {
+                                merged[child][tid][d] = lv;
+                                cloudChanged = true;
+                            } else if (Array.isArray(lv) && Array.isArray(cv)) {
+                                // 多次打卡数组：按时间戳 t 去重合并，并过滤单个 session 墓碑
+                                const isSessionDeleted = (e) => {
+                                    if (!e || !e.t) return false;
+                                    const sessionKey = makeCheckinTombstoneKey(tid, d, e.t);
+                                    const delTs = childCheckinTombstones[sessionKey];
+                                    return delTs && (now - delTs < 30 * 86400000);
+                                };
                                 const seen = new Map();
-                                [...cv, ...lv].forEach(e => { seen.set(e.t || JSON.stringify(e), e); });
+                                cv.forEach(e => {
+                                    if (isSessionDeleted(e)) {
+                                        cloudChanged = true;
+                                        return;
+                                    }
+                                    seen.set(e.t || JSON.stringify(e), e);
+                                });
+                                lv.forEach(e => {
+                                    if (isSessionDeleted(e)) return;
+                                    seen.set(e.t || JSON.stringify(e), e);
+                                });
                                 const arr = [...seen.values()].sort((a, b) => (a.t || 0) - (b.t || 0));
-                                merged[child][tid][d] = arr;
+                                if (arr.length > 0) {
+                                    merged[child][tid][d] = arr;
+                                }
                                 if (arr.length !== lv.length) localChanged = true;
                                 if (arr.length !== cv.length) cloudChanged = true;
                             } else {
@@ -4145,7 +4231,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                                 if (JSON.stringify(lv) !== JSON.stringify(cv)) cloudChanged = true;
                             }
                         });
+                        if (Object.keys(merged[child][tid]).length === 0) {
+                            delete merged[child][tid];
+                        }
                     });
+                    if (Object.keys(merged[child]).length === 0) {
+                        delete merged[child];
+                    }
                 });
                 return { merged, localChanged, cloudChanged };
             };
@@ -4959,6 +5051,80 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     });
                     return { merged, localChanged, cloudChanged };
                 },
+                // 打卡记录删除墓碑表：按 child 分别合并，已重新打卡或超过 30 天的墓碑自动清理
+                'app_deleted_checkins_v1': (l, c) => {
+                    if (!l && !c) return null;
+                    const merged = {};
+                    const children = new Set([...Object.keys(l || {}), ...Object.keys(c || {})]);
+                    let cloudChanged = false, localChanged = false;
+                    const now = Date.now();
+                    const deletedProfileTombstones = getDeletedProfileTombstones();
+                    let localCheckins = {};
+                    try { localCheckins = JSON.parse(storage.getItem('app_checkins_v2') || '{}'); } catch (e) {}
+                    const cloudCheckins = window._syncActiveCloudCheckins || {};
+
+                    children.forEach(child => {
+                        if (child === '测试员' || child === 'TESTER') return;
+                        if (isChildOrProfileDeleted(child, deletedProfileTombstones)) {
+                            if (c?.[child] && Object.keys(c[child]).length > 0) cloudChanged = true;
+                            return;
+                        }
+                        const lMap = l?.[child] || {};
+                        const cMap = c?.[child] || {};
+                        const childMerged = { ...cMap };
+
+                        const lCheck = localCheckins?.[child] || {};
+                        const cCheck = cloudCheckins?.[child] || {};
+
+                        const isCheckinActive = (key) => {
+                            const { taskId, date, sessionTs } = parseCheckinTombstoneKey(key);
+                            if (!taskId || !date) return false;
+                            const lVal = lCheck[taskId]?.[date];
+                            const cVal = cCheck[taskId]?.[date];
+                            if (sessionTs) {
+                                const inL = Array.isArray(lVal) && lVal.some(e => String(e.t) === String(sessionTs));
+                                const inC = Array.isArray(cVal) && cVal.some(e => String(e.t) === String(sessionTs));
+                                return inL || inC;
+                            }
+                            return lVal !== undefined || cVal !== undefined;
+                        };
+
+                        Object.entries(lMap).forEach(([k, ts]) => {
+                            if (isCheckinActive(k)) {
+                                localChanged = true;
+                                return;
+                            }
+                            if (!childMerged[k] || ts > childMerged[k]) {
+                                childMerged[k] = ts;
+                                cloudChanged = true;
+                            }
+                        });
+
+                        Object.entries(cMap).forEach(([k, ts]) => {
+                            if (isCheckinActive(k)) {
+                                delete childMerged[k];
+                                cloudChanged = true;
+                                return;
+                            }
+                            if (!lMap[k] || ts > lMap[k]) {
+                                localChanged = true;
+                            }
+                        });
+
+                        Object.keys(childMerged).forEach(k => {
+                            if (now - childMerged[k] > 30 * 86400000 || isCheckinActive(k)) {
+                                delete childMerged[k];
+                                cloudChanged = true;
+                                localChanged = true;
+                            }
+                        });
+
+                        if (Object.keys(childMerged).length > 0) {
+                            merged[child] = childMerged;
+                        }
+                    });
+                    return { merged, localChanged, cloudChanged };
+                },
                 // 成员档案表：按成员身份（name/id）并集合并，属性互补，避免单设备覆盖导致其他小孩丢失
                 'app_profiles_v1': (l, c) => mergeProfiles(l, c),
                 // 任务定义表：按 child 并集；同 child 按 task.id 深度合并，永不覆盖冲掉
@@ -5238,6 +5404,35 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                 }
 
+                // 提取云端打卡镜像供墓碑有效性校验
+                try {
+                    window._syncActiveCloudCheckins = cloudData['app_checkins_v2'] ? JSON.parse(cloudData['app_checkins_v2']) : null;
+                } catch (e) {
+                    window._syncActiveCloudCheckins = null;
+                }
+
+                // 优先处理打卡删除墓碑：确保打卡记录、星星历史与金元宝账单合并时感知最新墓碑
+                if ('app_deleted_checkins_v1' in cloudData) {
+                    const localCheckinDelStr = ('app_deleted_checkins_v1' in localSnapshot) ? localSnapshot['app_deleted_checkins_v1'] : null;
+                    const delRes = tryMergeSyncKey('app_deleted_checkins_v1', localCheckinDelStr, cloudData['app_deleted_checkins_v1']);
+                    if (delRes) {
+                        if (delRes.localChanged) {
+                            writes['app_deleted_checkins_v1'] = delRes.value;
+                            try { storage.setItem('app_deleted_checkins_v1', delRes.value); } catch (e) {}
+                        }
+                        if (delRes.cloudChanged) needUpload = true;
+                    }
+                }
+                if (localSnapshot['app_deleted_checkins_v1'] && !('app_deleted_checkins_v1' in cloudData)) {
+                    try {
+                        const localTombstones = JSON.parse(localSnapshot['app_deleted_checkins_v1'] || '{}');
+                        const realTombstones = Object.keys(localTombstones).filter(k => k !== '测试员' && k !== 'TESTER');
+                        if (realTombstones.length > 0) needUpload = true;
+                    } catch (e) {
+                        needUpload = true;
+                    }
+                }
+
                 // 提取云端与本地已完成的惩罚日志，供待受惩罚队列合并时做实时核销
                 let cloudEvilLogKeys = null;
                 try {
@@ -5260,7 +5455,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
 
                 Object.entries(cloudData).forEach(([key, cloudVal]) => {
-                    if (key === '_syncTs' || key === '_keyVersions' || key === 'app_deleted_profiles_v1') return;
+                    if (key === '_syncTs' || key === '_keyVersions' || key === 'app_deleted_profiles_v1' || key === 'app_deleted_checkins_v1') return;
                     const localVal = (key in localSnapshot) ? localSnapshot[key] : null;
 
                     // 1. 追加型字典：语义并集合并，双向无损
@@ -7322,6 +7517,7 @@ ${context}
                     newCheckins[activeChild] = { ...childData, [editingEntry.taskId]: { ...taskData, [editingEntry.date]: parseInt(duration) } };
                 }
                 setCheckins(newCheckins);
+                removeDeletedCheckinTombstone(activeChild, editingEntry.taskId, editingEntry.date);
                 setEditingEntry(null);
                 // 1. 计算当前时刻的真实倍率
                 let multiplier = 1;
@@ -7350,15 +7546,16 @@ ${context}
                     finalReward = currentTask.reward * multiplier;
                 }
 
-                // 3. 当日任务连击加成计算 (Combo Rush)
+                // 3. 当日任务连击加成计算 (Combo Rush) - 仅限日历清单任务 (非习惯、非阅读)
                 let comboBonus = 0;
                 let comboKey = null;
                 let comboCount = 1;
                 let todayScheduled = [];
-                if (editingEntry.isNew && editingEntry.date === today && gamificationConfig?.comboEnabled !== false) {
+                if (editingEntry.isNew && editingEntry.date === today && gamificationConfig?.comboEnabled !== false && isCalendarTask(currentTask)) {
                     const childCheckinRecords = checkins[activeChild] || {};
-                    const childTaskList = tasks[activeChild] || [];
+                    const childTaskList = (tasks[activeChild] || []).filter(isCalendarTask);
                     todayScheduled = childTaskList.filter(t => {
+                        if (t.earlyCompleted) return false;
                         if (t.startDate && today < t.startDate) return false;
                         if (t.deadline && today > t.deadline) return false;
                         return true;
@@ -7954,6 +8151,7 @@ ${context}
                     newCheckins[activeChild] = { ...childData, [taskId]: { ...taskData, [today]: readingMinutes } };
                 }
                 setCheckins(newCheckins);
+                removeDeletedCheckinTombstone(activeChild, taskId, today);
 
                 // 4. 每日打卡常规金元宝与星星结算
                 let multiplier = 1;
@@ -8338,6 +8536,7 @@ ${context}
                     }
                 };
                 setCheckins(newCheckins);
+                removeDeletedCheckinTombstone(activeChild, task.id, today);
                 triggerSyncUpload();
 
                 // 发放奖励与统计更新
@@ -9137,97 +9336,110 @@ ${context}
                 const isMulti = task?.multiCheckin && task?.frequencyType === 'daily_must';
                 const isSingleDelete = isMulti && sessionIndex !== null && sessionIndex >= 0;
 
-                // 删除 wheelHistory key(s)
-                const histPrefix = `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
-                setWheelHistory(prev => {
-                    const next = { ...prev };
-                    if (isSingleDelete) {
-                        // 只删指定 sessionIndex 对应的 key
-                        const taskRecord = checkins[activeChild]?.[task.id];
-                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
-                        if (entries[sessionIndex]) {
-                            const ts = entries[sessionIndex].t;
-                            const key = ts ? `${histPrefix}_${ts}` : histPrefix;
-                            delete next[key];
-                        }
-                    } else if (isMulti) {
-                        Object.keys(next).forEach(k => { if (k === histPrefix || k.startsWith(histPrefix + '_')) delete next[k]; });
-                    } else { delete next[histPrefix]; }
-                    return next;
-                });
-                // 同步删除星星记录
-                const starPrefix = `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
-                setStarHistory(prev => {
-                    const next = { ...prev };
-                    if (isSingleDelete) {
-                        const taskRecord = checkins[activeChild]?.[task.id];
-                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
-                        if (entries[sessionIndex]) {
-                            const ts = entries[sessionIndex].t;
-                            const key = ts ? `${starPrefix}_${ts}` : starPrefix;
-                            delete next[key];
-                        }
-                    } else if (isMulti) {
-                        Object.keys(next).forEach(k => { if (k === starPrefix || k.startsWith(starPrefix + '_')) delete next[k]; });
-                    } else { delete next[starPrefix]; }
-                    return next;
-                });
-                // 同步删除 BONUS_MULTI 记录
-                setWheelHistory(prev => {
-                    const next = { ...prev };
-                    const bonusPrefix = `${activeChild}-BONUS_MULTI-${editingEntry.taskId}-${editingEntry.date}`;
-                    if (isSingleDelete) {
-                        const taskRecord = checkins[activeChild]?.[task.id];
-                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
-                        if (entries[sessionIndex]) {
-                            const ts = entries[sessionIndex].t;
-                            const key = `${bonusPrefix}_${ts}`;
-                            delete next[key];
-                            delete next[bonusPrefix]; // 兼容无后缀 key
-                        }
-                    } else {
-                        Object.keys(next).forEach(k => { if (k.startsWith(bonusPrefix)) delete next[k]; });
-                    }
-                    return next;
-                });
-                // 同步删除 COMBO_BONUS 连击奖励记录
-                setWheelHistory(prev => {
-                    const next = { ...prev };
-                    const comboPrefix = `${activeChild}-COMBO_BONUS-${editingEntry.taskId}-${editingEntry.date}`;
-                    if (isSingleDelete) {
-                        const taskRecord = checkins[activeChild]?.[task.id];
-                        const entries = getCheckinEntries(taskRecord, editingEntry.date);
-                        if (entries[sessionIndex]) {
-                            const ts = entries[sessionIndex].t;
-                            const key = `${comboPrefix}_${ts}`;
-                            delete next[key];
-                            delete next[comboPrefix];
-                        }
-                    } else {
-                        Object.keys(next).forEach(k => { if (k.startsWith(comboPrefix)) delete next[k]; });
-                    }
-                    return next;
-                });
+                const taskRecord = checkins[activeChild]?.[task?.id || editingEntry.taskId];
+                const entries = getCheckinEntries(taskRecord, editingEntry.date);
+                const sessionTs = (isSingleDelete && entries[sessionIndex]) ? entries[sessionIndex].t : null;
 
-                // 删除 checkins 数据
-                setCheckins(prev => {
-                    const childData = prev[activeChild] || {};
-                    const taskData = { ...(childData[editingEntry.taskId] || {}) };
-                    if (isSingleDelete) {
-                        const val = taskData[editingEntry.date];
-                        const arr = typeof val === 'number' ? [{ m: val, u: 0, t: 0 }] : (Array.isArray(val) ? [...val] : []);
-                        arr.splice(sessionIndex, 1);
-                        if (arr.length === 0) {
-                            delete taskData[editingEntry.date];
-                        } else {
-                            taskData[editingEntry.date] = arr;
-                        }
-                    } else {
-                        delete taskData[editingEntry.date];
+                // 1. 记录打卡删除墓碑（30天内防云端拉取复活，并促使云端与其他端核销）
+                recordDeletedCheckin(activeChild, editingEntry.taskId, editingEntry.date, sessionTs);
+
+                // 2. 清理 wheelHistory key(s)
+                const histPrefix = `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
+                const bonusPrefix = `${activeChild}-BONUS_MULTI-${editingEntry.taskId}-${editingEntry.date}`;
+                const comboPrefix = `${activeChild}-COMBO_BONUS-${editingEntry.taskId}-${editingEntry.date}`;
+                const nextWheel = { ...wheelHistory };
+
+                if (isSingleDelete) {
+                    if (sessionTs) {
+                        delete nextWheel[`${histPrefix}_${sessionTs}`];
+                        delete nextWheel[`${bonusPrefix}_${sessionTs}`];
+                        delete nextWheel[`${comboPrefix}_${sessionTs}`];
                     }
-                    return { ...prev, [activeChild]: { ...childData, [editingEntry.taskId]: taskData } };
-                });
+                    delete nextWheel[histPrefix];
+                    delete nextWheel[bonusPrefix];
+                    delete nextWheel[comboPrefix];
+                } else if (isMulti) {
+                    Object.keys(nextWheel).forEach(k => {
+                        if (k === histPrefix || k.startsWith(histPrefix + '_')) delete nextWheel[k];
+                        if (k.startsWith(bonusPrefix)) delete nextWheel[k];
+                        if (k.startsWith(comboPrefix)) delete nextWheel[k];
+                    });
+                } else {
+                    delete nextWheel[histPrefix];
+                    Object.keys(nextWheel).forEach(k => {
+                        if (k.startsWith(bonusPrefix)) delete nextWheel[k];
+                        if (k.startsWith(comboPrefix)) delete nextWheel[k];
+                    });
+                }
+                setWheelHistory(nextWheel);
+                try {
+                    storage.setItem('app_wheel_history', JSON.stringify(nextWheel));
+                    storage.markKeyVersion('app_wheel_history');
+                } catch (e) {}
+
+                // 3. 同步删除星星记录
+                const starPrefix = `${activeChild}-STAR_CHECKIN-${editingEntry.taskId}-${editingEntry.date}`;
+                const nextStar = { ...starHistory };
+                if (isSingleDelete) {
+                    if (sessionTs) {
+                        delete nextStar[`${starPrefix}_${sessionTs}`];
+                    }
+                    delete nextStar[starPrefix];
+                } else if (isMulti) {
+                    Object.keys(nextStar).forEach(k => {
+                        if (k === starPrefix || k.startsWith(starPrefix + '_')) delete nextStar[k];
+                    });
+                } else {
+                    delete nextStar[starPrefix];
+                }
+                setStarHistory(nextStar);
+                try {
+                    storage.setItem('app_star_history_v1', JSON.stringify(nextStar));
+                    storage.markKeyVersion('app_star_history_v1');
+                } catch (e) {}
+
+                // 4. 清理 checkins 数据
+                const childData = checkins[activeChild] || {};
+                const taskData = { ...(childData[editingEntry.taskId] || {}) };
+                if (isSingleDelete) {
+                    const val = taskData[editingEntry.date];
+                    const arr = typeof val === 'number' ? [{ m: val, u: 0, t: 0 }] : (Array.isArray(val) ? [...val] : []);
+                    arr.splice(sessionIndex, 1);
+                    if (arr.length === 0) {
+                        delete taskData[editingEntry.date];
+                    } else {
+                        taskData[editingEntry.date] = arr;
+                    }
+                } else {
+                    delete taskData[editingEntry.date];
+                }
+                const nextCheckins = { ...checkins, [activeChild]: { ...childData, [editingEntry.taskId]: taskData } };
+                setCheckins(nextCheckins);
+                try {
+                    storage.setItem('app_checkins_v2', JSON.stringify(nextCheckins));
+                    storage.markKeyVersion('app_checkins_v2');
+                } catch (e) {}
+
+                // 5. 若存在补签记录则一并清理
+                if (repairedCheckins?.[activeChild]?.[editingEntry.taskId]?.[editingEntry.date]) {
+                    setRepairedCheckins(prev => {
+                        const rChild = prev[activeChild] || {};
+                        const rTask = { ...(rChild[editingEntry.taskId] || {}) };
+                        delete rTask[editingEntry.date];
+                        const nextR = { ...prev, [activeChild]: { ...rChild, [editingEntry.taskId]: rTask } };
+                        try {
+                            storage.setItem('app_repaired_checkins_v1', JSON.stringify(nextR));
+                            storage.markKeyVersion('app_repaired_checkins_v1');
+                        } catch (e) {}
+                        return nextR;
+                    });
+                }
+
                 setEditingEntry(null);
+
+                // 6. 核心修复：主动落盘并触发跨设备云同步，彻底根除删除后复活
+                flushPendingState();
+                triggerSyncUpload();
             };
 
             // overrides: 新增弹窗表单传入的字段（name/type/frequencyType/reward 等）；返回新任务 id 供自动展开编辑
@@ -10359,8 +10571,8 @@ ${context}
 
                     {(viewMode === 'calendar' || viewMode === 'week') ? (() => {
                     const todayDateKey = getLocalDateKey(0);
-                    const childTasks = tasks[activeChild] || [];
-                    const scheduledTodayList = childTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
+                    const calendarOngoingTasks = ongoingTasks.filter(isCalendarTask);
+                    const scheduledTodayList = calendarOngoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
                     const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
                     const globalTodayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
                     const isTodayInCalendar = calendarDates.includes(todayDateKey);
@@ -10428,11 +10640,12 @@ ${context}
                                     const todayStr = getLocalDateKey(0);
                                     const isToday = date === todayStr;
                                     const isPast = date < todayStr;
-                                    const hasAnyCheckin = (tasks[activeChild] || []).some(t => checkins[activeChild]?.[t.id]?.[date] !== undefined);
+                                    const calendarChildTasks = ongoingTasks.filter(isCalendarTask);
+                                    const hasAnyCheckin = calendarChildTasks.some(t => checkins[activeChild]?.[t.id]?.[date] !== undefined);
                                     const isExempted = exemptedDays[activeChild]?.includes(date);
                                     const isMissed = isPast && date >= joinDate && !hasAnyCheckin && !isExempted;
 
-                                    const todayScheduled = childTasks.filter(t => (!t.startDate || date >= t.startDate) && (!t.deadline || date <= t.deadline));
+                                    const todayScheduled = calendarChildTasks.filter(t => (!t.startDate || date >= t.startDate) && (!t.deadline || date <= t.deadline));
                                     const todayCompleted = todayScheduled.filter(t => checkins[activeChild]?.[t.id]?.[date] !== undefined).length;
                                     const todayTotal = todayScheduled.length;
                                     const comboProgressPct = todayTotal > 0 ? Math.min(100, Math.round((todayCompleted / todayTotal) * 100)) : 0;
@@ -10547,7 +10760,8 @@ ${context}
                                 {(() => {
                                   const weekRange = getCurrentWeekRange();
                                   const todayDateKey = getLocalDateKey(0);
-                                  const scheduledTodayList = ongoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
+                                  const calendarOngoingTasks = ongoingTasks.filter(isCalendarTask);
+                                  const scheduledTodayList = calendarOngoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
                                   const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
                                   const todayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
 
@@ -10555,8 +10769,8 @@ ${context}
                                   const isTodayInCalendar = calendarDates.includes(todayDateKey);
                                   let calendarOrderedTasks;
                                   if (isTodayInCalendar) {
-                                    const pendingTasks = ongoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] === undefined);
-                                    const doneTasks = ongoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined);
+                                    const pendingTasks = calendarOngoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] === undefined);
+                                    const doneTasks = calendarOngoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined);
 
                                     const sortGroup = (list) => {
                                       const dailyMust = list.filter(t => (t.frequencyType || 'count') === 'daily_must');
@@ -10567,9 +10781,9 @@ ${context}
 
                                     calendarOrderedTasks = [...sortGroup(pendingTasks), ...sortGroup(doneTasks)];
                                   } else {
-                                    const dailyMust = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'daily_must');
-                                    const weeklyOptional = ongoingTasks.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
-                                    const countType = ongoingTasks.filter(t => !t.frequencyType || t.frequencyType === 'count');
+                                    const dailyMust = calendarOngoingTasks.filter(t => (t.frequencyType || 'count') === 'daily_must');
+                                    const weeklyOptional = calendarOngoingTasks.filter(t => (t.frequencyType || 'count') === 'weekly_optional');
+                                    const countType = calendarOngoingTasks.filter(t => !t.frequencyType || t.frequencyType === 'count');
                                     calendarOrderedTasks = [...dailyMust, ...weeklyOptional, ...countType];
                                   }
                                   return calendarOrderedTasks.map((task, idx) => {
@@ -10694,6 +10908,7 @@ ${context}
                               {(() => {
                                   const today = getLocalDateKey(0);
                                   const scheduledTasks = ongoingTasks.filter(task => {
+                                      if (!isCalendarTask(task)) return false;
                                       const isBeforeStart = task.startDate && today < task.startDate;
                                       const isAfterEnd = task.deadline && today > task.deadline;
                                       return !isBeforeStart && !isAfterEnd;

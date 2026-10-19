@@ -81,6 +81,7 @@ export const BACKUP_KEYS = {
     "readingHistory": "app_reading_history_v1",
     "deletedTasks": "app_deleted_tasks_v1",
     "deletedProfiles": "app_deleted_profiles_v1",
+    "deletedCheckins": "app_deleted_checkins_v1",
     "parentQrLanHost": "app_parent_qr_lan_host",
     "pendingEvilPenalties": "app_pending_evil_penalties_v2"
 };
@@ -90,7 +91,7 @@ const rawStrings = new Set(['app_active_child', 'app_device_id', 'app_last_repor
 const stringSettings = new Set(['app_settings_password', 'app_sync_code', 'app_theme', 'app_deepseek_api_key']);
 const objectKeys = new Set(['app_tasks_v2', 'app_checkins_v2', 'app_wheel_history', 'app_xp_history', 'app_stats_v1',
     'app_parent_deduction_receipts_v1', 'app_escrow_penalties_v1', 'app_authorized_parents_v1', 'app_deleted_profiles_v1',
-    'app_deleted_tasks_v1', 'app_inventory_v1', 'app_equipped_gear_v1', 'app_stars_v1', 'app_star_history_v1']);
+    'app_deleted_tasks_v1', 'app_deleted_checkins_v1', 'app_inventory_v1', 'app_equipped_gear_v1', 'app_stars_v1', 'app_star_history_v1']);
 
 function validateEntry(key, raw) {
     if (!key.startsWith('app_') || isJunkKey(key)) throw new Error(`无效的数据项目：${key}`);
