@@ -15,6 +15,7 @@ export const TimeRewardModal = ({
     task,
     baseGold = 1,
     deadline = '09:00',
+    tier = null,
     onClose,
     onClaim,
     nextRewardAction,
@@ -25,14 +26,15 @@ export const TimeRewardModal = ({
     const [selectedIdx, setSelectedIdx] = useState(null);
     const [revealed, setRevealed] = useState([false, false, false]);
 
-    // 打开弹窗时重置并随机生成 3 张新卡
+    // 打开弹窗时重置并根据时段配置生成 3 张新卡
     useEffect(() => {
         if (show) {
-            setCards(generateTimeRewardCards());
+            const maxMult = tier?.maxMultiplier || 5;
+            setCards(generateTimeRewardCards(maxMult));
             setSelectedIdx(null);
             setRevealed([false, false, false]);
         }
-    }, [show]);
+    }, [show, tier]);
 
     if (!show || !task) return null;
 
@@ -152,16 +154,16 @@ export const TimeRewardModal = ({
                     style={getThemeHeaderStyle(theme)}
                 >
                     <div className="flex items-center gap-2">
-                        <span className="text-2xl animate-pulse">⏰</span>
+                        <span className="text-2xl animate-pulse">{tier?.icon || '⏰'}</span>
                         <div>
                             <h3 className="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
-                                <span>神速打卡 · 暴击抽卡</span>
+                                <span>{tier?.name || '神速打卡 · 暴击抽卡'}</span>
                                 <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-white/20 border border-white/30">
-                                    {deadline} 前达标
+                                    {tier?.deadline || deadline} 前达标
                                 </span>
                             </h3>
                             <p className="text-[11px] text-white/80 mt-0.5">
-                                恭喜神速完成「{task.name}」！最高狂抽 5 倍暴击
+                                恭喜在 {tier?.deadline || deadline} 前完成「{task.name}」！最高狂抽 {tier?.maxMultiplier || 5} 倍暴击
                             </p>
                         </div>
                     </div>

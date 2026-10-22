@@ -3183,7 +3183,7 @@ const CopyIcon = (props) => (
 																	: 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
 															}`}
 														>
-															跟随全局设置（{gamificationConfig?.timeRewardDeadline || '09:00'}）
+															跟随全局设置（{(gamificationConfig?.timeRewardMode || 'tiered') === 'tiered' ? '分时段阶梯' : (gamificationConfig?.timeRewardDeadline || '09:00')}）
 														</button>
 														<button 
 															type="button" 
@@ -4810,13 +4810,13 @@ const CopyIcon = (props) => (
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-lg">⏰</span>
-                                                <h4 className="font-bold text-white text-sm">打卡时间抽卡奖励（准时神速激励）</h4>
+                                                <h4 className="font-bold text-white text-sm">打卡时间抽卡奖励（分时段神速激励）</h4>
                                                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/30">
-                                                    最高 5 倍暴击
+                                                    支持分时段阶梯
                                                 </span>
                                             </div>
                                             <p className="text-slate-400 text-xs mt-1 leading-relaxed">
-                                                孩子在指定时间点及之前完成打卡，即可触发三选一暴击抽卡弹窗，抽取 2倍、3倍、5倍金币翻倍或再接再厉（原收益）。若任务附带即时奖励，抽卡将在即时奖励前优先执行。
+                                                支持设置不同时段与不同倍率奖励（如：下午13:00前最高5倍，晚上22:00前最高2倍）。在设定时段内打卡可触发三选一暴击抽卡。
                                             </p>
                                         </div>
                                         <ToggleSwitch 
@@ -4831,45 +4831,217 @@ const CopyIcon = (props) => (
 
                                     {gamificationConfig?.timeRewardEnabled !== false && (
                                         <div className="mt-2 pt-3 border-t border-slate-800 space-y-3 text-xs">
-                                            {/* 截止时间配置 */}
-                                            <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2.5">
-                                                <div className="flex items-center justify-between">
-                                                    <label className="text-slate-200 font-bold block">
-                                                        抽卡截止时间点（当天此时间点及之前打卡有效）
-                                                    </label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={gamificationConfig?.timeRewardDeadline || '09:00'}
-                                                        onChange={(e) => setGamificationConfig(prev => ({
-                                                            ...(prev || {}),
-                                                            timeRewardDeadline: e.target.value || '09:00'
-                                                        }))}
-                                                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-amber-500/50 text-amber-300 font-mono font-bold text-sm focus:outline-none focus:border-amber-400"
-                                                    />
-                                                </div>
-
-                                                {/* 快捷推荐时间预设 */}
-                                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                                    <span className="text-[11px] text-slate-400 mr-1">快捷预设:</span>
-                                                    {['07:30', '08:00', '08:30', '09:00', '10:00', '12:00'].map(t => (
-                                                        <button
-                                                            key={t}
-                                                            type="button"
-                                                            onClick={() => setGamificationConfig(prev => ({
-                                                                ...(prev || {}),
-                                                                timeRewardDeadline: t
-                                                            }))}
-                                                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
-                                                                (gamificationConfig?.timeRewardDeadline || '09:00') === t
-                                                                    ? 'bg-amber-500 text-amber-950 border-amber-400'
-                                                                    : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-slate-500'
-                                                            }`}
-                                                        >
-                                                            {t}
-                                                        </button>
-                                                    ))}
-                                                </div>
+                                            {/* 模式切换：分时段阶梯激励 vs 单一截止时间 */}
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setGamificationConfig(prev => ({
+                                                        ...(prev || {}),
+                                                        timeRewardMode: 'tiered'
+                                                    }))}
+                                                    className={`flex-1 py-1.5 px-3 rounded-lg font-bold border text-xs transition-colors cursor-pointer ${
+                                                        (gamificationConfig?.timeRewardMode || 'tiered') === 'tiered'
+                                                            ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                    }`}
+                                                >
+                                                    🎯 分时段阶梯激励模式（推荐）
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setGamificationConfig(prev => ({
+                                                        ...(prev || {}),
+                                                        timeRewardMode: 'single'
+                                                    }))}
+                                                    className={`flex-1 py-1.5 px-3 rounded-lg font-bold border text-xs transition-colors cursor-pointer ${
+                                                        gamificationConfig?.timeRewardMode === 'single'
+                                                            ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                                                    }`}
+                                                >
+                                                    ⏱️ 单一截止时间模式
+                                                </button>
                                             </div>
+
+                                            {(gamificationConfig?.timeRewardMode || 'tiered') === 'tiered' ? (
+                                                /* 分时段阶梯配置列表 */
+                                                <div className="space-y-3">
+                                                    {/* 时段一：晨光黄金时段 */}
+                                                    <div className="p-3.5 rounded-xl bg-slate-800/80 border border-amber-500/30 space-y-2.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-base">🌅</span>
+                                                                <span className="text-slate-200 font-bold">第一时段（晨光黄金期 · 下午1点前）</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-slate-400 text-[11px]">截止时间:</span>
+                                                                <input 
+                                                                    type="time" 
+                                                                    value={gamificationConfig?.timeRewardTiers?.[0]?.deadline || '13:00'}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value || '13:00';
+                                                                        const prevTiers = gamificationConfig?.timeRewardTiers || [
+                                                                            { id: 'tier_early', name: '晨光黄金时段', deadline: '13:00', maxMultiplier: 5, icon: '🌅' },
+                                                                            { id: 'tier_evening', name: '晚间冲刺时段', deadline: '22:00', maxMultiplier: 2, icon: '🌙' }
+                                                                        ];
+                                                                        const nextTiers = [...prevTiers];
+                                                                        nextTiers[0] = { ...nextTiers[0], deadline: val };
+                                                                        setGamificationConfig(prev => ({ ...prev, timeRewardTiers: nextTiers }));
+                                                                    }}
+                                                                    className="px-2 py-0.5 rounded-md bg-slate-900 border border-amber-500/50 text-amber-300 font-mono font-bold text-xs"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* 第一时段倍率池 */}
+                                                        <div className="flex items-center justify-between pt-1">
+                                                            <span className="text-slate-400 text-[11px]">可抽卡牌倍率上限:</span>
+                                                            <div className="flex items-center gap-1.5">
+                                                                {[
+                                                                    { mult: 5, label: '👑 最高 5 倍 (1x/2x/3x/5x)' },
+                                                                    { mult: 3, label: '🔥 最高 3 倍 (1x/2x/3x)' }
+                                                                ].map(opt => {
+                                                                    const curMult = gamificationConfig?.timeRewardTiers?.[0]?.maxMultiplier || 5;
+                                                                    return (
+                                                                        <button
+                                                                            key={opt.mult}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const prevTiers = gamificationConfig?.timeRewardTiers || [
+                                                                                    { id: 'tier_early', name: '晨光黄金时段', deadline: '13:00', maxMultiplier: 5, icon: '🌅' },
+                                                                                    { id: 'tier_evening', name: '晚间冲刺时段', deadline: '22:00', maxMultiplier: 2, icon: '🌙' }
+                                                                                ];
+                                                                                const nextTiers = [...prevTiers];
+                                                                                nextTiers[0] = { ...nextTiers[0], maxMultiplier: opt.mult };
+                                                                                setGamificationConfig(prev => ({ ...prev, timeRewardTiers: nextTiers }));
+                                                                            }}
+                                                                            className={`px-2 py-1 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
+                                                                                curMult === opt.mult
+                                                                                    ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                                                    : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+                                                                            }`}
+                                                                        >
+                                                                            {opt.label}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 时段二：晚间冲刺时段 */}
+                                                    <div className="p-3.5 rounded-xl bg-slate-800/80 border border-blue-500/30 space-y-2.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-base">🌙</span>
+                                                                <span className="text-slate-200 font-bold">第二时段（晚间冲刺期 · 晚上10点前）</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-slate-400 text-[11px]">截止时间:</span>
+                                                                <input 
+                                                                    type="time" 
+                                                                    value={gamificationConfig?.timeRewardTiers?.[1]?.deadline || '22:00'}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value || '22:00';
+                                                                        const prevTiers = gamificationConfig?.timeRewardTiers || [
+                                                                            { id: 'tier_early', name: '晨光黄金时段', deadline: '13:00', maxMultiplier: 5, icon: '🌅' },
+                                                                            { id: 'tier_evening', name: '晚间冲刺时段', deadline: '22:00', maxMultiplier: 2, icon: '🌙' }
+                                                                        ];
+                                                                        const nextTiers = [...prevTiers];
+                                                                        nextTiers[1] = { ...nextTiers[1], deadline: val };
+                                                                        setGamificationConfig(prev => ({ ...prev, timeRewardTiers: nextTiers }));
+                                                                    }}
+                                                                    className="px-2 py-0.5 rounded-md bg-slate-900 border border-blue-500/50 text-blue-300 font-mono font-bold text-xs"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* 第二时段倍率池 */}
+                                                        <div className="flex items-center justify-between pt-1">
+                                                            <span className="text-slate-400 text-[11px]">可抽卡牌倍率上限:</span>
+                                                            <div className="flex items-center gap-1.5">
+                                                                {[
+                                                                    { mult: 2, label: '⚡ 最高 2 倍 (1x/2x 推荐)' },
+                                                                    { mult: 3, label: '🔥 最高 3 倍 (1x/2x/3x)' },
+                                                                    { mult: 5, label: '👑 最高 5 倍' }
+                                                                ].map(opt => {
+                                                                    const curMult = gamificationConfig?.timeRewardTiers?.[1]?.maxMultiplier || 2;
+                                                                    return (
+                                                                        <button
+                                                                            key={opt.mult}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const prevTiers = gamificationConfig?.timeRewardTiers || [
+                                                                                    { id: 'tier_early', name: '晨光黄金时段', deadline: '13:00', maxMultiplier: 5, icon: '🌅' },
+                                                                                    { id: 'tier_evening', name: '晚间冲刺时段', deadline: '22:00', maxMultiplier: 2, icon: '🌙' }
+                                                                                ];
+                                                                                const nextTiers = [...prevTiers];
+                                                                                nextTiers[1] = { ...nextTiers[1], maxMultiplier: opt.mult };
+                                                                                setGamificationConfig(prev => ({ ...prev, timeRewardTiers: nextTiers }));
+                                                                            }}
+                                                                            className={`px-2 py-1 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
+                                                                                curMult === opt.mult
+                                                                                    ? 'bg-blue-500 text-blue-950 border-blue-400'
+                                                                                    : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+                                                                            }`}
+                                                                        >
+                                                                            {opt.label}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 规则汇总小贴士 */}
+                                                    <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                                                        <div className="text-amber-300 font-bold">💡 时段阶梯规则示意：</div>
+                                                        <div>• {gamificationConfig?.timeRewardTiers?.[0]?.deadline || '13:00'} 前打卡：命中第一时段，最高狂抽 {gamificationConfig?.timeRewardTiers?.[0]?.maxMultiplier || 5} 倍暴击</div>
+                                                        <div>• {gamificationConfig?.timeRewardTiers?.[0]?.deadline || '13:00'} ~ {gamificationConfig?.timeRewardTiers?.[1]?.deadline || '22:00'} 打卡：命中第二时段，最高狂抽 {gamificationConfig?.timeRewardTiers?.[1]?.maxMultiplier || 2} 倍暴击</div>
+                                                        <div>• {gamificationConfig?.timeRewardTiers?.[1]?.deadline || '22:00'} 之后打卡：已逾期，不触发抽卡，保持原额收益</div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                /* 单一截止时间配置 */
+                                                <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-slate-200 font-bold block">
+                                                            抽卡截止时间点（当天此时间点及之前打卡有效）
+                                                        </label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={gamificationConfig?.timeRewardDeadline || '09:00'}
+                                                            onChange={(e) => setGamificationConfig(prev => ({
+                                                                ...(prev || {}),
+                                                                timeRewardDeadline: e.target.value || '09:00'
+                                                            }))}
+                                                            className="px-2.5 py-1 rounded-lg bg-slate-900 border border-amber-500/50 text-amber-300 font-mono font-bold text-sm focus:outline-none focus:border-amber-400"
+                                                        />
+                                                    </div>
+
+                                                    {/* 快捷推荐时间预设 */}
+                                                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                                        <span className="text-[11px] text-slate-400 mr-1">快捷预设:</span>
+                                                        {['07:30', '08:00', '08:30', '09:00', '10:00', '12:00'].map(t => (
+                                                            <button
+                                                                key={t}
+                                                                type="button"
+                                                                onClick={() => setGamificationConfig(prev => ({
+                                                                    ...(prev || {}),
+                                                                    timeRewardDeadline: t
+                                                                }))}
+                                                                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                                                                    (gamificationConfig?.timeRewardDeadline || '09:00') === t
+                                                                        ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                                        : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-slate-500'
+                                                                }`}
+                                                            >
+                                                                {t}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* 规则倍率说明 */}
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

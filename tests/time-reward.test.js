@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { 
     isBeforeTimeDeadline, 
     generateTimeRewardCards, 
+    getActiveTimeRewardTier,
     DEFAULT_GAMIFICATION_CONFIG,
+    DEFAULT_TIME_REWARD_TIERS,
     TIME_REWARD_CARD_TYPES 
 } from '../src/utils/gamification.js';
 import { getLocalDateKey } from '../src/utils/date.js';
@@ -206,4 +208,101 @@ test('Time Reward: ledger transactions correctly parse TIME_REWARD entries and r
     assert.ok(tx2.date.match(/^\d{4}-\d{2}-\d{2}$/));
     assert.equal(tx2.amount, 10);
     assert.equal(tx2.name, '⏰ 准时打卡暴击 (3倍)：趣味数学');
+});
+
+test('Time Reward: getActiveTimeRewardTier accurately matches tiered time intervals', () => {
+    const config = {
+        timeRewardEnabled: true,
+        timeRewardMode: 'tiered',
+        timeRewardTiers: DEFAULT_TIME_REWARD_TIERS
+    };
+
+    // 1. 10:00 AM -> hits early tier (13:00, maxMultiplier 5)
+    const morningTime = new Date('2026-10-22T10:00:00');
+    const tier1 = getActiveTimeRewardTier(config, null, morningTime);
+    assert.ok(tier1);
+    assert.equal(tier1.id, 'tier_early');
+    assert.equal(tier1.deadline, '13:00');
+    assert.equal(tier1.maxMultiplier, 5);
+
+    // 2. Exact 13:00 -> hits early tier (inclusive)
+    const exact13 = new Date('2026-10-22T13:00:00');
+    const tierExact = getActiveTimeRewardTier(config, null, exact13);
+    assert.ok(tierExact);
+    assert.equal(tierExact.id, 'tier_early');
+
+    // 3. 15:30 -> hits evening sprint tier (13:00 ~ 22:00, maxMultiplier 2)
+    const afternoonTime = new Date('2026-10-22T15:30:00');
+    const tier2 = getActiveTimeRewardTier(config, null, afternoonTime);
+    assert.ok(tier2);
+    assert.equal(tier2.id, 'tier_evening');
+    assert.equal(tier2.deadline, '22:00');
+    assert.equal(tier2.maxMultiplier, 2);
+
+    // 4. Exact 22:00 -> hits evening tier
+    const exact22 = new Date('2026-10-22T22:00:00');
+    const tier22 = getActiveTimeRewardTier(config, null, exact22);
+    assert.ok(tier22);
+    assert.equal(tier22.id, 'tier_evening');
+
+    // 5. 22:01 / 23:00 -> overdue, returns null
+    const lateNight = new Date('2026-10-22T22:01:00');
+    const tierOverdue = getActiveTimeRewardTier(config, null, lateNight);
+    assert.equal(tierOverdue, null);
+
+    // 6. Past date check-in is rejected even if current time is 10:00
+    const todayStr = getLocalDateKey(0, morningTime);
+    const yesterdayStr = '2026-10-21';
+    assert.ok(getActiveTimeRewardTier(config, todayStr, morningTime));
+    assert.equal(getActiveTimeRewardTier(config, yesterdayStr, morningTime), null);
+
+    // 7. Disabled switch returns null
+    assert.equal(getActiveTimeRewardTier({ ...config, timeRewardEnabled: false }, null, morningTime), null);
+
+    // 8. Single mode fallback
+    const singleConfig = {
+        timeRewardEnabled: true,
+        timeRewardMode: 'single',
+        timeRewardDeadline: '12:00'
+    };
+    const tierSingleHit = getActiveTimeRewardTier(singleConfig, null, morningTime);
+    assert.ok(tierSingleHit);
+    assert.equal(tierSingleHit.deadline, '12:00');
+    assert.equal(tierSingleHit.maxMultiplier, 5);
+
+    const tierSingleMiss = getActiveTimeRewardTier(singleConfig, null, afternoonTime);
+    assert.equal(tierSingleMiss, null);
+});
+
+test('Time Reward: generateTimeRewardCards respects maxMultiplier for tiers', () => {
+    // Test maxMultiplier = 2 (e.g. evening tier)
+    for (let i = 0; i < 20; i++) {
+        const cards = generateTimeRewardCards(2);
+        assert.equal(cards.length, 3);
+        cards.forEach(c => {
+            assert.ok(c.multiplier <= 2, `Card multiplier ${c.multiplier} must not exceed 2`);
+            assert.ok([1, 2].includes(c.multiplier));
+        });
+        const hasBonus = cards.some(c => c.multiplier === 2);
+        assert.ok(hasBonus, 'Must guarantee at least one 2x card when maxMultiplier is 2');
+    }
+
+    // Test maxMultiplier = 3
+    for (let i = 0; i < 20; i++) {
+        const cards = generateTimeRewardCards(3);
+        assert.equal(cards.length, 3);
+        cards.forEach(c => {
+            assert.ok(c.multiplier <= 3, `Card multiplier ${c.multiplier} must not exceed 3`);
+            assert.ok([1, 2, 3].includes(c.multiplier));
+        });
+    }
+
+    // Test maxMultiplier = 5 (default early tier)
+    for (let i = 0; i < 20; i++) {
+        const cards = generateTimeRewardCards(5);
+        assert.equal(cards.length, 3);
+        cards.forEach(c => {
+            assert.ok(c.multiplier <= 5, `Card multiplier ${c.multiplier} must not exceed 5`);
+        });
+    }
 });

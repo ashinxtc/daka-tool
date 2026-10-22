@@ -3,6 +3,23 @@
 
 import { getLocalDateKey, dateKeySubtractDays, tsToLocalDateKey } from './date.js';
 
+export const DEFAULT_TIME_REWARD_TIERS = [
+    {
+        id: 'tier_early',
+        name: '晨光黄金时段',
+        deadline: '13:00',
+        maxMultiplier: 5,
+        icon: '🌅'
+    },
+    {
+        id: 'tier_evening',
+        name: '晚间冲刺时段',
+        deadline: '22:00',
+        maxMultiplier: 2,
+        icon: '🌙'
+    }
+];
+
 export const DEFAULT_GAMIFICATION_CONFIG = {
     // 1. 星级通关制
     starRatingEnabled: true,
@@ -34,7 +51,9 @@ export const DEFAULT_GAMIFICATION_CONFIG = {
 
     // 5. 打卡时间抽卡奖励 (Time-based Card Draw Reward)
     timeRewardEnabled: true,     // 是否开启时间达标抽卡
-    timeRewardDeadline: '09:00'  // 默认截止时间点（在此时间点及之前完成打卡可参与抽卡）
+    timeRewardMode: 'tiered',    // 'single' (单截止时间) | 'tiered' (分时段阶梯激励)
+    timeRewardDeadline: '09:00', // 单时段模式下的截止时间点
+    timeRewardTiers: DEFAULT_TIME_REWARD_TIERS // 分时段阶梯模式配置
 };
 
 // 辅助日期增加天数
@@ -461,22 +480,36 @@ export const isBeforeTimeDeadline = (deadline = '09:00', dateKey = null, current
  * 随机生成 3 张神速抽卡卡牌（保证有悬念与暴击可能，打乱位置）
  * @returns {Array} 3 张卡牌对象数组
  */
-export const generateTimeRewardCards = () => {
+/**
+ * 随机生成 3 张神速抽卡卡牌（根据当前时段允许的最高倍率，保证有悬念与暴击可能，打乱位置）
+ * @param {number} [maxMultiplier=5] - 当前时段允许的最高倍数（如 2, 3, 5）
+ * @returns {Array} 3 张卡牌对象数组
+ */
+export const generateTimeRewardCards = (maxMultiplier = 5) => {
+    const allowedPool = TIME_REWARD_CARD_TYPES.filter(c => c.multiplier <= maxMultiplier);
+    const poolToUse = allowedPool.length > 0 ? allowedPool : TIME_REWARD_CARD_TYPES;
+
     const sampleOne = (excludeMultipliers = []) => {
-        const pool = TIME_REWARD_CARD_TYPES.filter(c => !excludeMultipliers.includes(c.multiplier));
-        const totalWeight = pool.reduce((sum, c) => sum + c.weight, 0);
+        const pool = poolToUse.filter(c => !excludeMultipliers.includes(c.multiplier));
+        const activePool = pool.length > 0 ? pool : poolToUse;
+        const totalWeight = activePool.reduce((sum, c) => sum + c.weight, 0);
         let rnd = Math.random() * totalWeight;
-        for (const card of pool) {
+        for (const card of activePool) {
             rnd -= card.weight;
             if (rnd <= 0) return card;
         }
-        return pool[pool.length - 1];
+        return activePool[activePool.length - 1];
     };
 
     const chosen = [];
-    // 保证至少有 1 张暴击卡 (2x/3x/5x)
-    chosen.push(sampleOne([1]));
-    // 其余 2 张从全池抽取
+    // 保证至少有 1 张暴击卡（若当前池中存在 > 1 的倍率卡）
+    const hasBonus = poolToUse.some(c => c.multiplier > 1);
+    if (hasBonus) {
+        chosen.push(sampleOne([1]));
+    } else {
+        chosen.push(sampleOne([]));
+    }
+    // 其余 2 张从池中抽取
     chosen.push(sampleOne([]));
     chosen.push(sampleOne([]));
 
@@ -491,6 +524,64 @@ export const generateTimeRewardCards = () => {
         index,
         ...c
     }));
+};
+
+/**
+ * 获取当前时间命中的抽卡时段阶梯配置
+ * @param {Object} config - gamificationConfig
+ * @param {string} [dateKey] - 打卡日期（当天）
+ * @param {Date} [currentTime] - 当前时间
+ * @returns {Object|null} 命中的时段配置对象，若未命中或超时返回 null
+ */
+export const getActiveTimeRewardTier = (config = DEFAULT_GAMIFICATION_CONFIG, dateKey = null, currentTime = new Date()) => {
+    const effective = { ...DEFAULT_GAMIFICATION_CONFIG, ...(config || {}) };
+    if (effective.timeRewardEnabled === false) return null;
+
+    // 仅限当天实时打卡
+    if (dateKey) {
+        const todayStr = getLocalDateKey(0, currentTime);
+        if (dateKey !== todayStr) return null;
+    }
+
+    const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+
+    // 1. 单截止时间模式 (single)
+    if (effective.timeRewardMode === 'single') {
+        const deadline = effective.timeRewardDeadline || '09:00';
+        const [dh, dm] = deadline.split(':').map(Number);
+        if (!isNaN(dh) && !isNaN(dm) && currentMinutes <= dh * 60 + dm) {
+            return {
+                id: 'single',
+                name: '准时神速打卡',
+                deadline,
+                maxMultiplier: 5,
+                icon: '⏰'
+            };
+        }
+        return null;
+    }
+
+    // 2. 分时段阶梯模式 (tiered)
+    const tiers = Array.isArray(effective.timeRewardTiers) && effective.timeRewardTiers.length > 0
+        ? effective.timeRewardTiers
+        : DEFAULT_TIME_REWARD_TIERS;
+
+    // 按截止时间升序排序
+    const sortedTiers = [...tiers].sort((a, b) => {
+        const [ah, am] = (a.deadline || '23:59').split(':').map(Number);
+        const [bh, bm] = (b.deadline || '23:59').split(':').map(Number);
+        return (ah * 60 + am) - (bh * 60 + bm);
+    });
+
+    for (const tier of sortedTiers) {
+        const [dh, dm] = (tier.deadline || '23:59').split(':').map(Number);
+        const deadlineMinutes = dh * 60 + dm;
+        if (currentMinutes <= deadlineMinutes) {
+            return tier;
+        }
+    }
+
+    return null;
 };
 
 /**

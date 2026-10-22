@@ -29,7 +29,7 @@ import { TimeEntryModal } from './components/checkin/TimeEntryModal';
 import { TaskCard } from './components/checkin/TaskCard';
 import { TaskDashboardTrack } from './components/checkin/TaskDashboardTrack';
 import { HomeworkExamRecordModal, GRADE_OPTIONS } from './components/homework/HomeworkExamRecordModal';
-import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates, calculateComboBonus, getComboInfo, playComboSound, isBeforeTimeDeadline } from './utils/gamification';
+import { DEFAULT_GAMIFICATION_CONFIG, DEFAULT_TIME_REWARD_TIERS, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates, calculateComboBonus, getComboInfo, playComboSound, isBeforeTimeDeadline, getActiveTimeRewardTier } from './utils/gamification';
 import { StarRatingBadge } from './components/gamification/StarRatingBadge';
 import { ComebackModal, ComebackBanner } from './components/gamification/ComebackModal';
 import { FirstBloodModal } from './components/gamification/FirstBloodModal';
@@ -9782,17 +9782,33 @@ ${context}
                     return;
                 }
 
-                const deadline = (taskOption === 'custom' && task?.timeRewardDeadline)
-                    ? task.timeRewardDeadline
-                    : (gamificationConfig?.timeRewardDeadline || '09:00');
+                // 1. 如果任务单独指定了自定义截止时间
+                if (taskOption === 'custom' && task?.timeRewardDeadline) {
+                    const isEarly = isBeforeTimeDeadline(task.timeRewardDeadline, dateKey);
+                    if (isEarly && baseGold > 0) {
+                        setTimeRewardModalData({
+                            show: true,
+                            task,
+                            baseGold,
+                            deadline: task.timeRewardDeadline,
+                            tier: { name: '专属准时奖励', deadline: task.timeRewardDeadline, maxMultiplier: 5, icon: '⏰' },
+                            nextAction
+                        });
+                        return;
+                    }
+                    if (nextAction) nextAction();
+                    return;
+                }
 
-                const isEarly = isBeforeTimeDeadline(deadline, dateKey);
-                if (isEarly && baseGold > 0) {
+                // 2. 全局分时段阶梯匹配
+                const matchedTier = getActiveTimeRewardTier(gamificationConfig, dateKey);
+                if (matchedTier && baseGold > 0) {
                     setTimeRewardModalData({
                         show: true,
                         task,
                         baseGold,
-                        deadline,
+                        deadline: matchedTier.deadline,
+                        tier: matchedTier,
                         nextAction
                     });
                     return;
@@ -11908,6 +11924,7 @@ ${context}
                       task={timeRewardModalData.task}
                       baseGold={timeRewardModalData.baseGold}
                       deadline={timeRewardModalData.deadline}
+                      tier={timeRewardModalData.tier}
                       onClose={() => setTimeRewardModalData(null)}
                       onClaim={handleClaimTimeReward}
                       nextRewardAction={timeRewardModalData.nextAction}
