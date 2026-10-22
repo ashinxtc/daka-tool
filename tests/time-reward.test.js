@@ -164,3 +164,46 @@ test('Time Reward: sequential execution pipeline guarantees card draw before onC
         'wheel_gold_reward'
     ], 'Card draw must strictly precede instant checkin reward wheel');
 });
+
+
+test('Time Reward: ledger transactions correctly parse TIME_REWARD entries and retain valid date', () => {
+    const tasks = {
+        ChildA: [
+            { id: 'math', name: '趣味数学', reward: 5 }
+        ]
+    };
+
+    const parseTimeRewardKey = (key, value, activeTasks) => {
+        const tsMatch = key.match(/[-_](\d{13})$/);
+        const ts = tsMatch ? parseInt(tsMatch[1], 10) : NaN;
+        const dateMatch = key.match(/(\d{4}-\d{2}-\d{2})/);
+        const date = dateMatch ? dateMatch[1] : (isNaN(ts) ? getLocalDateKey(0) : tsToLocalDateKey(ts));
+        const taskIdMatch = key.match(/-TIME_REWARD-([^-]+)-/);
+        const taskId = taskIdMatch ? taskIdMatch[1] : '';
+        const task = activeTasks.find(t => t.id === taskId);
+        const multMatch = key.match(/-(\d+)X-/i);
+        let mult = multMatch ? multMatch[1] : '';
+        if (!mult && task && task.reward > 0) {
+            mult = Math.round(value / task.reward) + 1;
+        }
+        const multText = mult ? ` (${mult}倍)` : '';
+        const name = task ? `⏰ 准时打卡暴击${multText}：${task.name}` : `⏰ 准时打卡暴击${multText}`;
+        return { date, name, amount: value, type: 'income' };
+    };
+
+    // Test 1: New key with explicit multiplier
+    const newKey = 'ChildA-TIME_REWARD-math-2026-10-22-3X-1729601623456';
+    const tx1 = parseTimeRewardKey(newKey, 10, tasks.ChildA);
+    assert.equal(tx1.date, '2026-10-22');
+    assert.ok(tx1.date.match(/^\d{4}-\d{2}-\d{2}$/));
+    assert.equal(tx1.amount, 10);
+    assert.equal(tx1.name, '⏰ 准时打卡暴击 (3倍)：趣味数学');
+
+    // Test 2: Legacy key with underscore timestamp
+    const legacyKey = 'ChildA-TIME_REWARD-math-2026-10-22_1729601623456';
+    const tx2 = parseTimeRewardKey(legacyKey, 10, tasks.ChildA);
+    assert.equal(tx2.date, '2026-10-22');
+    assert.ok(tx2.date.match(/^\d{4}-\d{2}-\d{2}$/));
+    assert.equal(tx2.amount, 10);
+    assert.equal(tx2.name, '⏰ 准时打卡暴击 (3倍)：趣味数学');
+});

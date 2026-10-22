@@ -2712,12 +2712,20 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                          type = 'income';
 					// ==================== 【新增这两段进贡解析】 ====================
 					} else if (key.includes('TIME_REWARD')) {
-						const ts = extractTimestamp(key);
-						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
+						const tsMatch = key.match(/[-_](\d{13})$/);
+						const ts = tsMatch ? parseInt(tsMatch[1], 10) : extractTimestamp(key);
+						const dateMatch = key.match(/(\d{4}-\d{2}-\d{2})/);
+						date = dateMatch ? dateMatch[1] : (isNaN(ts) ? getLocalDateKey(0) : tsToLocalDateKey(ts));
 						const taskIdMatch = key.match(/-TIME_REWARD-([^-]+)-/);
 						const taskId = taskIdMatch ? taskIdMatch[1] : '';
 						const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
-						name = task ? `⏰ 准时打卡暴击：${task.name}` : '⏰ 准时打卡暴击';
+						const multMatch = key.match(/-(\d+)X-/i);
+						let mult = multMatch ? multMatch[1] : '';
+						if (!mult && task && task.reward > 0) {
+							mult = Math.round(value / task.reward) + 1;
+						}
+						const multText = mult ? ` (${mult}倍)` : '';
+						name = task ? `⏰ 准时打卡暴击${multText}：${task.name}` : `⏰ 准时打卡暴击${multText}`;
 						type = 'income';
 					} else if (key.includes('TRIBUTE_IN')) {
 						const parts = key.split('-');
@@ -6736,7 +6744,7 @@ ${context}
                     Object.entries(wheelHistory).forEach(([key, value]) => {
                         if (!key.startsWith(`${child}-`)) return;
                         if (key.includes('EVIL') || key.includes('SHOP') || key.includes('REDEEM')) return;
-                        const parts = key.split('-');
+                        const parts = key.split(/[-_]/);
                         const ts = parseInt(parts[parts.length - 1]);
                         if (isNaN(ts) || ts < 1000000000000) return;
                         const date = tsToLocalDateKey(ts);
@@ -9735,18 +9743,19 @@ ${context}
                 triggerSyncUpload();
             };
 
-            const handleClaimTimeReward = ({ multiplier, bonusGold, totalGold, card }) => {
-                if (!timeRewardModalData || !timeRewardModalData.task) return;
-                const { task, baseGold, deadline } = timeRewardModalData;
+            const handleClaimTimeReward = ({ task: claimTask, baseGold: claimBase, multiplier, bonusGold, totalGold, card }) => {
+                const targetTask = claimTask || timeRewardModalData?.task;
+                if (!targetTask) return;
+                const base = claimBase !== undefined ? claimBase : (timeRewardModalData?.baseGold || 1);
                 const todayStr = getLocalDateKey(0);
 
                 if (bonusGold > 0) {
-                    const historyKey = `${activeChild}-TIME_REWARD-${task.id}-${todayStr}_${Date.now()}`;
+                    const historyKey = `${activeChild}-TIME_REWARD-${targetTask.id}-${todayStr}-${multiplier}X-${Date.now()}`;
                     setWheelHistory(prev => ({ ...prev, [historyKey]: bonusGold }));
                     updateStats(activeChild, 'gold_earn', bonusGold, { source: 'time_reward', dateKey: todayStr });
                     showToast('success', `⏰ 准时打卡暴击！${card?.name || `${multiplier}倍`} 额外入账 +${bonusGold} 金元宝！`);
                 } else {
-                    showToast('success', `⏰ 准时打卡！完成「${task.name}」获得 ${baseGold} 金元宝！`);
+                    showToast('success', `⏰ 准时打卡！完成「${targetTask.name}」获得 ${base} 金元宝！`);
                 }
 
                 try { fireRoyalSalute(); } catch (e) {}

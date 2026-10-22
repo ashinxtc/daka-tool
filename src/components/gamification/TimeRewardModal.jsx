@@ -79,6 +79,9 @@ export const TimeRewardModal = ({
     const handleClaim = () => {
         if (onClaim && selectedCard) {
             onClaim({
+                task,
+                baseGold,
+                deadline,
                 multiplier,
                 bonusGold,
                 totalGold,
@@ -104,6 +107,9 @@ export const TimeRewardModal = ({
             const autoBonus = baseGold * (autoCard.multiplier - 1);
             if (onClaim) {
                 onClaim({
+                    task,
+                    baseGold,
+                    deadline,
                     multiplier: autoCard.multiplier,
                     bonusGold: autoBonus,
                     totalGold: baseGold + autoBonus,
@@ -112,6 +118,9 @@ export const TimeRewardModal = ({
             }
         } else if (onClaim && selectedCard) {
             onClaim({
+                task,
+                baseGold,
+                deadline,
                 multiplier,
                 bonusGold,
                 totalGold,
