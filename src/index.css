@@ -704,3 +704,50 @@ body[data-decoration-paused="true"] :is(.atmosphere-layer, .atmosphere-layer *,
 .weather-decoration, .weather-decoration *, .npc-float, .animate-pet-bounce-gentle, .animate-pet-sleep-bob, .animate-flame-flicker) {
   animation-play-state: paused !important;
 }
+
+
+/* =========================================================
+   打卡时间奖励 3D 抽卡翻牌效果
+   ========================================================= */
+.card-flip-container {
+  perspective: 1000px;
+}
+.card-flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-style: preserve-3d;
+}
+.card-flip-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+.card-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border-radius: 1rem;
+}
+.card-face-back {
+  transform: rotateY(0deg);
+}
+.card-face-front {
+  transform: rotateY(180deg);
+}
+@keyframes card-shimmer {
+  0% { transform: translateX(-150%) skewX(-20deg); }
+  50%, 100% { transform: translateX(250%) skewX(-20deg); }
+}
+.animate-card-shimmer {
+  animation: card-shimmer 3s infinite ease-in-out;
+}
+@keyframes card-float-gentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+.animate-card-float {
+  animation: card-float-gentle 2.5s infinite ease-in-out;
+}

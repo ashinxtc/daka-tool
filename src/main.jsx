@@ -29,10 +29,11 @@ import { TimeEntryModal } from './components/checkin/TimeEntryModal';
 import { TaskCard } from './components/checkin/TaskCard';
 import { TaskDashboardTrack } from './components/checkin/TaskDashboardTrack';
 import { HomeworkExamRecordModal, GRADE_OPTIONS } from './components/homework/HomeworkExamRecordModal';
-import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates, calculateComboBonus, getComboInfo, playComboSound } from './utils/gamification';
+import { DEFAULT_GAMIFICATION_CONFIG, calculateDailyStars, calculateFirstBloodReward, dateKeyAddDays, getComebackSafeDates, calculateComboBonus, getComboInfo, playComboSound, isBeforeTimeDeadline } from './utils/gamification';
 import { StarRatingBadge } from './components/gamification/StarRatingBadge';
 import { ComebackModal, ComebackBanner } from './components/gamification/ComebackModal';
 import { FirstBloodModal } from './components/gamification/FirstBloodModal';
+import { TimeRewardModal } from './components/gamification/TimeRewardModal';
 import { WheelChoiceModal, WheelModal, EvilWheelModal } from './components/wheel/WheelModal';
 import { FamilyMessagePanel, ChatDrawer } from './components/chat/ChatDrawer';
 import { SilenceModal } from './components/modals/SilenceModal';
@@ -901,6 +902,7 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [showComebackModal, setShowComebackModal] = useState(false);
             const [showFirstBloodModal, setShowFirstBloodModal] = useState(false);
             const [firstBloodCurrentReward, setFirstBloodCurrentReward] = useState(null);
+            const [timeRewardModalData, setTimeRewardModalData] = useState(null);
 
             const [accountingDate, setAccountingDate] = useState(() => getLocalDateKey(0));
             // 当日星级与安全免罚护盾计算 (响应式)
@@ -2709,6 +2711,14 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                          name = '收到友好邻邦红包';
                          type = 'income';
 					// ==================== 【新增这两段进贡解析】 ====================
+					} else if (key.includes('TIME_REWARD')) {
+						const ts = extractTimestamp(key);
+						date = isNaN(ts) ? '' : tsToLocalDateKey(ts);
+						const taskIdMatch = key.match(/-TIME_REWARD-([^-]+)-/);
+						const taskId = taskIdMatch ? taskIdMatch[1] : '';
+						const task = (tasks[deferredActiveChild] || []).find(t => t.id === taskId);
+						name = task ? `⏰ 准时打卡暴击：${task.name}` : '⏰ 准时打卡暴击';
+						type = 'income';
 					} else if (key.includes('TRIBUTE_IN')) {
 						const parts = key.split('-');
 						const fromName = parts[2]; // 提取是从谁那里收到的
@@ -7905,14 +7915,23 @@ ${context}
                     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); 
                 }
 				
-				// 即时打卡奖励（在大满贯判定之前触发）
+				// 准时打卡时间抽卡奖励 & 打卡即时奖励（严格按：先抽卡、抽完再执行打卡即时奖励）
 				if (editingEntry.isNew) {
 					const taskOnCheckinReward = (tasks[activeChild] || []).find(t => t.id === editingEntry.taskId)?.onCheckinReward;
-					if (taskOnCheckinReward === 'wheel_gold') {
-						handleLaunchExtraWheel('gold');
-					} else if (taskOnCheckinReward === 'wheel_xp') {
-						handleLaunchExtraWheel('xp');
-					}
+					const nextRewardAction = taskOnCheckinReward ? () => {
+						if (taskOnCheckinReward === 'wheel_gold') {
+							handleLaunchExtraWheel('gold');
+						} else if (taskOnCheckinReward === 'wheel_xp') {
+							handleLaunchExtraWheel('xp');
+						}
+					} : null;
+
+					triggerTimeRewardOrNext({
+						task: currentTask,
+						baseGold: finalReward,
+						nextAction: nextRewardAction,
+						dateKey: editingEntry.date
+					});
 				}
 
 				// 增加 isNew 判断，防止修改旧记录时重复触发事件
@@ -8222,18 +8241,23 @@ ${context}
                 triggerSyncUpload();
                 showToast('success', `📖 今日阅读已记录！+${dailyReward} 金元宝，+3 星星！`);
 
-                // 即时打卡奖励触发逻辑（若伴读配置了转盘奖励）
+                // 准时打卡时间抽卡奖励 & 打卡即时奖励（严格按：先抽卡、抽完再执行即时转盘奖励）
                 const currentTask = (tasks[activeChild] || []).find(t => t.id === taskId) || task;
                 const readingTaskReward = currentTask.onCheckinReward || task.onCheckinReward;
-                if (readingTaskReward) {
-                    setTimeout(() => {
-                        if (readingTaskReward === 'wheel_gold') {
-                            handleLaunchExtraWheel('gold');
-                        } else if (readingTaskReward === 'wheel_xp') {
-                            handleLaunchExtraWheel('xp');
-                        }
-                    }, 300);
-                }
+                const nextRewardAction = readingTaskReward ? () => {
+                    if (readingTaskReward === 'wheel_gold') {
+                        handleLaunchExtraWheel('gold');
+                    } else if (readingTaskReward === 'wheel_xp') {
+                        handleLaunchExtraWheel('xp');
+                    }
+                } : null;
+
+                triggerTimeRewardOrNext({
+                    task: currentTask,
+                    baseGold: dailyReward,
+                    nextAction: nextRewardAction,
+                    dateKey: getLocalDateKey(0)
+                });
             };
 
             // --- 【伴读书阁】接力开启下一本新书 ---
@@ -8620,19 +8644,27 @@ ${context}
                         showToast('success', `🎉 太棒了！「${task.name}」今日圆满达标！金元宝 +${finalReward}`);
                     }
 
-                    // 即时打卡奖励触发逻辑（金元宝转盘 / 经验转盘）
+                    // 准时打卡时间抽卡奖励 & 打卡即时奖励（严格按：先抽卡、抽完再执行即时转盘奖励）
                     const currentTask = (tasks[activeChild] || []).find(t => t.id === task.id) || task;
                     const taskOnCheckinReward = currentTask.onCheckinReward || task.onCheckinReward;
-                    // 定量目标(如喝水8杯)在首次达成当日目标时触发；单次打卡(check模式)或随心多次(无目标count模式)在有效打卡时触发
                     const shouldTriggerReward = isCount && hasTarget ? (nextVal >= target && curCount < target) : true;
-                    if (shouldTriggerReward && taskOnCheckinReward) {
-                        setTimeout(() => {
-                            if (taskOnCheckinReward === 'wheel_gold') {
-                                handleLaunchExtraWheel('gold');
-                            } else if (taskOnCheckinReward === 'wheel_xp') {
-                                handleLaunchExtraWheel('xp');
-                            }
-                        }, 300);
+                    const nextRewardAction = (shouldTriggerReward && taskOnCheckinReward) ? () => {
+                        if (taskOnCheckinReward === 'wheel_gold') {
+                            handleLaunchExtraWheel('gold');
+                        } else if (taskOnCheckinReward === 'wheel_xp') {
+                            handleLaunchExtraWheel('xp');
+                        }
+                    } : null;
+
+                    if (shouldTriggerReward && finalReward > 0) {
+                        triggerTimeRewardOrNext({
+                            task: currentTask,
+                            baseGold: finalReward,
+                            nextAction: nextRewardAction,
+                            dateKey: getLocalDateKey(0)
+                        });
+                    } else if (nextRewardAction) {
+                        setTimeout(nextRewardAction, 300);
                     }
                 }
             };
@@ -9376,6 +9408,7 @@ ${context}
                 const histPrefix = `${activeChild}-TASK-${editingEntry.taskId}-${editingEntry.date}`;
                 const bonusPrefix = `${activeChild}-BONUS_MULTI-${editingEntry.taskId}-${editingEntry.date}`;
                 const comboPrefix = `${activeChild}-COMBO_BONUS-${editingEntry.taskId}-${editingEntry.date}`;
+                const timeRewardPrefix = `${activeChild}-TIME_REWARD-${editingEntry.taskId}-${editingEntry.date}`;
                 const nextWheel = { ...wheelHistory };
 
                 if (isSingleDelete) {
@@ -9387,17 +9420,22 @@ ${context}
                     delete nextWheel[histPrefix];
                     delete nextWheel[bonusPrefix];
                     delete nextWheel[comboPrefix];
+                    Object.keys(nextWheel).forEach(k => {
+                        if (k.startsWith(timeRewardPrefix)) delete nextWheel[k];
+                    });
                 } else if (isMulti) {
                     Object.keys(nextWheel).forEach(k => {
                         if (k === histPrefix || k.startsWith(histPrefix + '_')) delete nextWheel[k];
                         if (k.startsWith(bonusPrefix)) delete nextWheel[k];
                         if (k.startsWith(comboPrefix)) delete nextWheel[k];
+                        if (k.startsWith(timeRewardPrefix)) delete nextWheel[k];
                     });
                 } else {
                     delete nextWheel[histPrefix];
                     Object.keys(nextWheel).forEach(k => {
                         if (k.startsWith(bonusPrefix)) delete nextWheel[k];
                         if (k.startsWith(comboPrefix)) delete nextWheel[k];
+                        if (k.startsWith(timeRewardPrefix)) delete nextWheel[k];
                     });
                 }
                 setWheelHistory(nextWheel);
@@ -9553,9 +9591,10 @@ ${context}
                 setWheelHistory(prev => {
                     const taskPrefix = `${activeChild}-TASK-${taskId}-`;
                     const habitPrefix = `${activeChild}-HABIT-${taskId}-`;
+                    const timeRewardPrefix = `${activeChild}-TIME_REWARD-${taskId}-`;
                     const next = { ...prev };
                     Object.keys(next).forEach(k => {
-                        if (k.startsWith(taskPrefix) || k.startsWith(habitPrefix)) delete next[k];
+                        if (k.startsWith(taskPrefix) || k.startsWith(habitPrefix) || k.startsWith(timeRewardPrefix)) delete next[k];
                     });
                     return next;
                 });
@@ -9694,6 +9733,63 @@ ${context}
                 try { fireRoyalSalute(); } catch (e) {}
                 showToast('success', `🎉 首胜破冰盲盒开启成功！+${reward.totalGold} 金元宝已入账！`);
                 triggerSyncUpload();
+            };
+
+            const handleClaimTimeReward = ({ multiplier, bonusGold, totalGold, card }) => {
+                if (!timeRewardModalData || !timeRewardModalData.task) return;
+                const { task, baseGold, deadline } = timeRewardModalData;
+                const todayStr = getLocalDateKey(0);
+
+                if (bonusGold > 0) {
+                    const historyKey = `${activeChild}-TIME_REWARD-${task.id}-${todayStr}_${Date.now()}`;
+                    setWheelHistory(prev => ({ ...prev, [historyKey]: bonusGold }));
+                    updateStats(activeChild, 'gold_earn', bonusGold, { source: 'time_reward', dateKey: todayStr });
+                    showToast('success', `⏰ 准时打卡暴击！${card?.name || `${multiplier}倍`} 额外入账 +${bonusGold} 金元宝！`);
+                } else {
+                    showToast('success', `⏰ 准时打卡！完成「${task.name}」获得 ${baseGold} 金元宝！`);
+                }
+
+                try { fireRoyalSalute(); } catch (e) {}
+                triggerSyncUpload();
+            };
+
+            const triggerTimeRewardOrNext = ({ task, baseGold, nextAction, dateKey = getLocalDateKey(0) }) => {
+                const today = getLocalDateKey(0);
+                // 仅限今天实时打卡
+                if (dateKey !== today) {
+                    if (nextAction) nextAction();
+                    return;
+                }
+
+                const taskOption = task?.timeRewardOption || 'default';
+                if (taskOption === 'disabled') {
+                    if (nextAction) nextAction();
+                    return;
+                }
+
+                const isGlobalEnabled = gamificationConfig?.timeRewardEnabled !== false;
+                if (!isGlobalEnabled && taskOption !== 'custom') {
+                    if (nextAction) nextAction();
+                    return;
+                }
+
+                const deadline = (taskOption === 'custom' && task?.timeRewardDeadline)
+                    ? task.timeRewardDeadline
+                    : (gamificationConfig?.timeRewardDeadline || '09:00');
+
+                const isEarly = isBeforeTimeDeadline(deadline, dateKey);
+                if (isEarly && baseGold > 0) {
+                    setTimeRewardModalData({
+                        show: true,
+                        task,
+                        baseGold,
+                        deadline,
+                        nextAction
+                    });
+                    return;
+                }
+
+                if (nextAction) nextAction();
             };
 
             // 监听今日打卡事件自动核验首胜
@@ -11796,6 +11892,19 @@ ${context}
                     reward={firstBloodCurrentReward}
                     theme={theme}
                   />
+
+                  {timeRewardModalData?.show && (
+                    <TimeRewardModal
+                      show={timeRewardModalData.show}
+                      task={timeRewardModalData.task}
+                      baseGold={timeRewardModalData.baseGold}
+                      deadline={timeRewardModalData.deadline}
+                      onClose={() => setTimeRewardModalData(null)}
+                      onClaim={handleClaimTimeReward}
+                      nextRewardAction={timeRewardModalData.nextAction}
+                      theme={theme}
+                    />
+                  )}
 				  <GoldHistoryModal
                     show={showGoldHistory}
                     onClose={() => setShowGoldHistory(false)}

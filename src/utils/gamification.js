@@ -30,7 +30,11 @@ export const DEFAULT_GAMIFICATION_CONFIG = {
     comboEnabled: true,          // 是否开启连击加成
     comboStep: 1,                // 递增步长：完成第2项额外+1，第3项+2以此类推
     comboCap: 10,                // 单项连击最高加成上限封顶
-    comboSoundEnabled: true      // 连击升调音效
+    comboSoundEnabled: true,     // 连击升调音效
+
+    // 5. 打卡时间抽卡奖励 (Time-based Card Draw Reward)
+    timeRewardEnabled: true,     // 是否开启时间达标抽卡
+    timeRewardDeadline: '09:00'  // 默认截止时间点（在此时间点及之前完成打卡可参与抽卡）
 };
 
 // 辅助日期增加天数
@@ -365,3 +369,190 @@ export const playComboSound = (comboCount = 1) => {
     }
 };
 
+
+
+// ==================== 5. 打卡时间抽卡奖励 (Time-based Card Draw Reward) ====================
+
+export const TIME_REWARD_CARD_TYPES = [
+    {
+        multiplier: 1,
+        name: '再接再厉',
+        icon: '🌱',
+        title: '稳扎稳打',
+        desc: '保持原额收益，明天继续神速！',
+        gradient: 'from-emerald-500/20 via-teal-500/30 to-emerald-600/40',
+        border: 'border-emerald-400/50',
+        badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30',
+        glow: 'shadow-[0_0_25px_rgba(16,185,129,0.35)]',
+        color: '#10b981',
+        weight: 30
+    },
+    {
+        multiplier: 2,
+        name: '2倍暴击',
+        icon: '⚡',
+        title: '电光石火',
+        desc: '金元宝翻倍，双倍快乐！',
+        gradient: 'from-blue-500/20 via-indigo-500/30 to-blue-600/40',
+        border: 'border-blue-400/50',
+        badge: 'bg-blue-500/20 text-blue-300 border-blue-400/30',
+        glow: 'shadow-[0_0_25px_rgba(59,130,246,0.4)]',
+        color: '#3b82f6',
+        weight: 40
+    },
+    {
+        multiplier: 3,
+        name: '3倍大奖',
+        icon: '🔥',
+        title: '烈焰狂欢',
+        desc: '金元宝 x3，财源滚滚来！',
+        gradient: 'from-amber-500/20 via-orange-500/30 to-amber-600/40',
+        border: 'border-amber-400/60',
+        badge: 'bg-amber-500/20 text-amber-300 border-amber-400/40',
+        glow: 'shadow-[0_0_30px_rgba(245,158,11,0.5)]',
+        color: '#f59e0b',
+        weight: 22
+    },
+    {
+        multiplier: 5,
+        name: '5倍锦鲤',
+        icon: '👑',
+        title: '锦鲤至尊',
+        desc: '终极 5倍暴击，全场欢呼！',
+        gradient: 'from-fuchsia-500/20 via-purple-500/30 to-pink-600/40',
+        border: 'border-fuchsia-400/60',
+        badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-400/40',
+        glow: 'shadow-[0_0_35px_rgba(217,70,239,0.6)]',
+        color: '#d946ef',
+        weight: 8
+    }
+];
+
+/**
+ * 检查当前时间是否在指定时间点之前（包含等于）
+ * 仅限当天实时打卡（不可对历史补打卡触发准时抽卡）
+ * @param {string} deadline - 'HH:mm' 格式，如 '09:00'
+ * @param {string} [dateKey] - 可选的打卡日期，如果传入且不是今天则不满足
+ * @param {Date} [currentTime] - 用于测试的可选当前时间
+ * @returns {boolean}
+ */
+export const isBeforeTimeDeadline = (deadline = '09:00', dateKey = null, currentTime = new Date()) => {
+    if (!deadline) return false;
+
+    // 如果传入了 dateKey，必须是今天
+    if (dateKey) {
+        const todayStr = getLocalDateKey(0, currentTime);
+        if (dateKey !== todayStr) return false;
+    }
+
+    const [deadlineHour, deadlineMinute] = deadline.split(':').map(Number);
+    if (isNaN(deadlineHour) || isNaN(deadlineMinute)) return false;
+
+    const currentHour = currentTime.getHours();
+    const currentMinute = currentTime.getMinutes();
+
+    const currentMinutes = currentHour * 60 + currentMinute;
+    const deadlineMinutes = deadlineHour * 60 + deadlineMinute;
+
+    return currentMinutes <= deadlineMinutes;
+};
+
+/**
+ * 随机生成 3 张神速抽卡卡牌（保证有悬念与暴击可能，打乱位置）
+ * @returns {Array} 3 张卡牌对象数组
+ */
+export const generateTimeRewardCards = () => {
+    const sampleOne = (excludeMultipliers = []) => {
+        const pool = TIME_REWARD_CARD_TYPES.filter(c => !excludeMultipliers.includes(c.multiplier));
+        const totalWeight = pool.reduce((sum, c) => sum + c.weight, 0);
+        let rnd = Math.random() * totalWeight;
+        for (const card of pool) {
+            rnd -= card.weight;
+            if (rnd <= 0) return card;
+        }
+        return pool[pool.length - 1];
+    };
+
+    const chosen = [];
+    // 保证至少有 1 张暴击卡 (2x/3x/5x)
+    chosen.push(sampleOne([1]));
+    // 其余 2 张从全池抽取
+    chosen.push(sampleOne([]));
+    chosen.push(sampleOne([]));
+
+    // Fisher-Yates 洗牌
+    for (let i = chosen.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [chosen[i], chosen[j]] = [chosen[j], chosen[i]];
+    }
+
+    return chosen.map((c, index) => ({
+        id: `card_${index}_${Math.random().toString(36).substring(2, 7)}`,
+        index,
+        ...c
+    }));
+};
+
+/**
+ * 纯 Web Audio API 合成翻牌音效（极轻量顺滑）
+ */
+export const playCardFlipSound = () => {
+    try {
+        if (typeof window === 'undefined') return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(350, now);
+        osc.frequency.exponentialRampToValueAtTime(750, now + 0.1);
+        
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        
+        osc.start(now);
+        osc.stop(now + 0.15);
+    } catch (e) {}
+};
+
+/**
+ * 纯 Web Audio API 合成抽中大奖短号欢庆音效
+ * @param {number} multiplier 倍数
+ */
+export const playCardFanfareSound = (multiplier = 2) => {
+    try {
+        if (typeof window === 'undefined') return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        
+        const notes = multiplier >= 5 
+            ? [523.25, 659.25, 783.99, 1046.50, 1318.51] 
+            : multiplier >= 3 
+                ? [523.25, 659.25, 783.99, 1046.50]
+                : [523.25, 659.25, 783.99];
+
+        notes.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.type = multiplier >= 5 ? 'triangle' : 'sine';
+            const noteStart = now + idx * 0.08;
+            osc.frequency.setValueAtTime(freq, noteStart);
+            gain.gain.setValueAtTime(0.14, noteStart);
+            gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.25);
+            
+            osc.start(noteStart);
+            osc.stop(noteStart + 0.25);
+        });
+    } catch (e) {}
+};

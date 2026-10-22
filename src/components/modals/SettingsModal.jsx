@@ -2702,6 +2702,8 @@ const CopyIcon = (props) => (
 												{task.isNew && <span className="blink-reminder shrink-0 text-[10px] text-amber-600 font-black">新</span>}
 												{task.onCheckinReward === 'wheel_gold' && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-amber-50 text-amber-600 font-bold border border-amber-200">🎡金币转盘</span>}
 												{task.onCheckinReward === 'wheel_xp' && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-indigo-50 text-indigo-600 font-bold border border-indigo-200">🎡经验转盘</span>}
+												{task.timeRewardOption === 'custom' && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-sky-50 text-sky-600 font-bold border border-sky-200">⏰{task.timeRewardDeadline || '09:00'}抽卡</span>}
+												{task.timeRewardOption === 'disabled' && <span className="shrink-0 px-1.5 py-0.2 text-[9px] rounded-md bg-slate-50 text-slate-500 font-bold border border-slate-200">⏰无抽卡</span>}
 												<span className={`shrink-0 ml-auto px-2 py-0.5 rounded-full border text-[10px] font-bold ${fl.cls}`}>
 													{fl.text}
 												</span>
@@ -3166,6 +3168,58 @@ const CopyIcon = (props) => (
 														</button>
 													</div>
 													<p className="text-[10px] text-slate-400">打卡确认后将立即触发所选转盘进行额外奖励抽奖（定量生活习惯在达成当日目标时触发）。</p>
+												</>
+											))}
+
+											{/* ⏰ 打卡时间抽卡配置 */ advSec('timeReward', '⏰ 打卡时间抽卡', task.timeRewardOption && task.timeRewardOption !== 'default', (
+												<>
+													<div className="flex flex-wrap gap-1.5">
+														<button 
+															type="button" 
+															onClick={() => updateTaskSetting(task.id, 'timeRewardOption', 'default')}
+															className={`px-3 py-1 rounded-full border text-[11px] font-bold transition-all cursor-pointer ${
+																!task.timeRewardOption || task.timeRewardOption === 'default' 
+																	? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' 
+																	: 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+															}`}
+														>
+															跟随全局设置（{gamificationConfig?.timeRewardDeadline || '09:00'}）
+														</button>
+														<button 
+															type="button" 
+															onClick={() => updateTaskSetting(task.id, 'timeRewardOption', 'custom')}
+															className={`px-3 py-1 rounded-full border text-[11px] font-bold transition-all cursor-pointer ${
+																task.timeRewardOption === 'custom' 
+																	? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' 
+																	: 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+															}`}
+														>
+															⏰ 单独设置时间点
+														</button>
+														<button 
+															type="button" 
+															onClick={() => updateTaskSetting(task.id, 'timeRewardOption', 'disabled')}
+															className={`px-3 py-1 rounded-full border text-[11px] font-bold transition-all cursor-pointer ${
+																task.timeRewardOption === 'disabled' 
+																	? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' 
+																	: 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+															}`}
+														>
+															不参与抽卡
+														</button>
+													</div>
+													{task.timeRewardOption === 'custom' && (
+														<div className="flex items-center gap-2 pt-1">
+															<span className="text-[11px] text-slate-500 font-medium">截止时间:</span>
+															<input 
+																type="time" 
+																value={task.timeRewardDeadline || '09:00'}
+																onChange={(e) => updateTaskSetting(task.id, 'timeRewardDeadline', e.target.value || '09:00')}
+																className="px-2 py-0.5 rounded border border-indigo-300 text-xs font-mono font-bold text-indigo-700 bg-white"
+															/>
+														</div>
+													)}
+													<p className="text-[10px] text-slate-400">完成该任务时若在截止时间前，触发三选一抽取 2倍/3倍/5倍/再接再厉金元宝暴击。</p>
 												</>
 											))}
 
@@ -4749,6 +4803,96 @@ const CopyIcon = (props) => (
                                        </div>
                                    )}
                                </section>
+
+                                {/* 模块五：⏰ 打卡时间抽卡奖励 (Time-based Card Draw Reward) */}
+                                <section className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-lg">⏰</span>
+                                                <h4 className="font-bold text-white text-sm">打卡时间抽卡奖励（准时神速激励）</h4>
+                                                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/30">
+                                                    最高 5 倍暴击
+                                                </span>
+                                            </div>
+                                            <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                                                孩子在指定时间点及之前完成打卡，即可触发三选一暴击抽卡弹窗，抽取 2倍、3倍、5倍金币翻倍或再接再厉（原收益）。若任务附带即时奖励，抽卡将在即时奖励前优先执行。
+                                            </p>
+                                        </div>
+                                        <ToggleSwitch 
+                                            checked={gamificationConfig?.timeRewardEnabled !== false}
+                                            onChange={() => setGamificationConfig(prev => ({
+                                                ...(prev || {}),
+                                                timeRewardEnabled: !(prev?.timeRewardEnabled !== false)
+                                            }))}
+                                            activeColor="bg-amber-500"
+                                        />
+                                    </div>
+
+                                    {gamificationConfig?.timeRewardEnabled !== false && (
+                                        <div className="mt-2 pt-3 border-t border-slate-800 space-y-3 text-xs">
+                                            {/* 截止时间配置 */}
+                                            <div className="p-3.5 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2.5">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-slate-200 font-bold block">
+                                                        抽卡截止时间点（当天此时间点及之前打卡有效）
+                                                    </label>
+                                                    <input 
+                                                        type="time" 
+                                                        value={gamificationConfig?.timeRewardDeadline || '09:00'}
+                                                        onChange={(e) => setGamificationConfig(prev => ({
+                                                            ...(prev || {}),
+                                                            timeRewardDeadline: e.target.value || '09:00'
+                                                        }))}
+                                                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-amber-500/50 text-amber-300 font-mono font-bold text-sm focus:outline-none focus:border-amber-400"
+                                                    />
+                                                </div>
+
+                                                {/* 快捷推荐时间预设 */}
+                                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                                    <span className="text-[11px] text-slate-400 mr-1">快捷预设:</span>
+                                                    {['07:30', '08:00', '08:30', '09:00', '10:00', '12:00'].map(t => (
+                                                        <button
+                                                            key={t}
+                                                            type="button"
+                                                            onClick={() => setGamificationConfig(prev => ({
+                                                                ...(prev || {}),
+                                                                timeRewardDeadline: t
+                                                            }))}
+                                                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors cursor-pointer ${
+                                                                (gamificationConfig?.timeRewardDeadline || '09:00') === t
+                                                                    ? 'bg-amber-500 text-amber-950 border-amber-400'
+                                                                    : 'bg-slate-900/80 text-slate-300 border-slate-700 hover:border-slate-500'
+                                                            }`}
+                                                        >
+                                                            {t}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* 规则倍率说明 */}
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                <div className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/60 text-center">
+                                                    <div className="text-emerald-400 font-bold text-[11px]">🌱 再接再厉</div>
+                                                    <div className="text-white font-black text-sm">1x 原额</div>
+                                                </div>
+                                                <div className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/60 text-center">
+                                                    <div className="text-blue-400 font-bold text-[11px]">⚡ 双倍暴击</div>
+                                                    <div className="text-white font-black text-sm">2x 翻倍</div>
+                                                </div>
+                                                <div className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/60 text-center">
+                                                    <div className="text-amber-400 font-bold text-[11px]">🔥 三倍大奖</div>
+                                                    <div className="text-white font-black text-sm">3x 惊喜</div>
+                                                </div>
+                                                <div className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/60 text-center">
+                                                    <div className="text-fuchsia-400 font-bold text-[11px]">👑 五倍锦鲤</div>
+                                                    <div className="text-white font-black text-sm">5x 狂欢</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </section>
                            </div>
                        )}
                     </div>
