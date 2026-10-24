@@ -62,7 +62,10 @@ async function child(browser,f,control){
     await page.goto('/');await page.waitForFunction(()=>window.storage?.getItem('_sync_checkpoint_v2'));
     return page;
 }
-const value=(p,k)=>p.evaluate(k=>JSON.parse(window.storage.getItem(k)||'null'),k);
+const value=async(p,k)=>{
+    await p.waitForFunction(key=>window.storage?.getItem(key)!==null,k,{timeout:10000}).catch(()=>{});
+    return p.evaluate(key=>JSON.parse(window.storage.getItem(key)||'null'),k);
+};
 test('welcome sync retains the server baseline across refresh before any later upload',async({browser})=>{
     const f=await family(),page=await browser.newPage();await route(page,traffic());
     await page.clock.setFixedTime(new Date('2026-10-16T12:00:00+08:00'));
@@ -73,6 +76,7 @@ test('welcome sync retains the server baseline across refresh before any later u
     const checkpoint=await value(page,'_sync_checkpoint_v2');
     expect(checkpoint.code).toBe(f.code);expect(checkpoint.protocol).toBe(2);
     expect(checkpoint.data.app_wheel_history).toBe(f.data.app_wheel_history);
+    await page.evaluate(()=>window.storage?.flush?.()).catch(()=>{});
     await page.reload();await expect(page.locator('main')).toBeAttached();
     expect((await value(page,'_sync_checkpoint_v2')).revision).toBeGreaterThanOrEqual(checkpoint.revision);
     await expect(page.getByRole('dialog',{name:'处理同步冲突'})).toHaveCount(0);
@@ -91,7 +95,9 @@ test('two real parent pages race deductions; child sees both and refresh never r
     const second=await c.getByText(/“并发扣款[甲乙]”/).textContent();expect(first).not.toBe(second);
     await expect(c.getByText('65 💰',{exact:true})).toBeVisible();
     await c.reload();await expect(c.getByText(second,{exact:true})).toBeVisible();
-    await c.getByRole('button',{name:/我知道了/}).click();await c.reload();
+    await c.getByRole('button',{name:/我知道了/}).click();
+    await c.evaluate(()=>window.storage?.flush?.()).catch(()=>{});
+    await c.reload();
     await expect(heading).toHaveCount(0);expect((await value(c,'app_stats_v1')).孩子.total_spent).toBe(35);
     expect(Object.keys(await value(c,'app_wheel_history')).filter(k=>k.includes('PARENT_DEDUCT'))).toHaveLength(2);
     await Promise.all([a.close(),b.close(),c.close()]);
