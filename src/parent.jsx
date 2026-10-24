@@ -371,8 +371,6 @@ export const ParentApp = () => {
                 localStorage.removeItem('parent_device_id');
                 localStorage.removeItem('parent_pair_token');
                 localStorage.removeItem('parent_is_bound');
-                localStorage.removeItem('parent_sync_code');
-                setSyncCode('');
                 setIsBound(false);
                 if (!silent) showToast('warning', '本设备未授权或已被解除绑定。');
                 return null;
@@ -557,8 +555,6 @@ export const ParentApp = () => {
                 localStorage.removeItem('parent_device_id');
                 localStorage.removeItem('parent_pair_token');
                 localStorage.removeItem('parent_is_bound');
-                localStorage.removeItem('parent_sync_code');
-                setSyncCode('');
                 setIsBound(false);
                 if (!silent) showToast('warning', '本设备未授权或已被解除绑定。');
                 return null;

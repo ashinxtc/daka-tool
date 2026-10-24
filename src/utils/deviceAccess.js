@@ -60,15 +60,27 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         if(target.origin!==origin)throw new DeviceAccessError('拒绝向其他服务发送家庭凭据。','WRONG_ORIGIN',400);
         const code=target.searchParams.get('code')||'',saved=credential(code,role);
         const headers=new Headers(options.headers);
-        headers.set('X-Device-Id',saved.id);
-        headers.set('X-Device-Role',role);
-        headers.set('Authorization',`Bearer ${saved.token||saved.id}`);
-        try {
-            const fp = getDeviceFingerprint();
-            if (fp) headers.set('X-Device-Fingerprint', fp);
-        } catch(e) {}
         const isBrowser = typeof window !== 'undefined';
-        return await fetchImpl(url,{...options,headers,redirect:isBrowser?'follow':'error'});
+        const hasPairedToken = Boolean(saved.token && saved.token !== saved.id);
+
+        if (!isBrowser || hasPairedToken) {
+            headers.set('X-Device-Id',saved.id);
+            headers.set('X-Device-Role',role);
+            headers.set('Authorization',`Bearer ${saved.token||saved.id}`);
+            try {
+                const fp = getDeviceFingerprint();
+                if (fp) headers.set('X-Device-Fingerprint', fp);
+            } catch(e) {}
+        }
+        try {
+            return await fetchImpl(url,{...options,headers,redirect:isBrowser?'follow':'error'});
+        } catch(err) {
+            if (isBrowser && (!options.headers || !new Headers(options.headers).has('Authorization'))) {
+                const plainHeaders = new Headers(options.headers);
+                return await fetchImpl(url,{...options,headers:plainHeaders,redirect:'follow'});
+            }
+            throw err;
+        }
     };
     const pair=async(code,role,invite)=>{
         if(!invite){
