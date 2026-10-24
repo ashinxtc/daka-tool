@@ -981,12 +981,29 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
             const syncDebounceRef = React.useRef(null);
             const syncDownloadingRef = React.useRef(false);
-            const [syncConflict, setSyncConflict] = React.useState(null);
-            const syncConflictRef = React.useRef(null);
+            const [syncConflict, setSyncConflict] = React.useState(() => {
+                try {
+                    const saved = storage.getItem('_sync_pending_conflict_v2');
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && (!syncCode || parsed.code === syncCode) && parsed.conflicts?.length) {
+                            return parsed;
+                        }
+                    }
+                } catch (e) {}
+                return null;
+            });
+            const syncConflictRef = React.useRef(syncConflict);
             const syncCheckpointCacheRef = React.useRef({raw:null,value:null});
             const currentSyncCodeRef = React.useRef(syncCode);
             currentSyncCodeRef.current = syncCode;
-            React.useEffect(() => { syncConflictRef.current = null; setSyncConflict(null); }, [syncCode]);
+            React.useEffect(() => {
+                if (syncConflictRef.current && syncConflictRef.current.code !== syncCode) {
+                    syncConflictRef.current = null;
+                    setSyncConflict(null);
+                    try { storage.removeItem('_sync_pending_conflict_v2'); } catch (e) {}
+                }
+            }, [syncCode]);
 
             // --- 企业微信亲子互动状态 ---
             const [wecomEnabled, setWecomEnabled] = useStickyState(false, 'app_wecom_enabled');
@@ -5647,16 +5664,22 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                         if (Object.keys(writes).length || deleted.length) window.dispatchEvent(new CustomEvent('_syncDataMerged'));
                     },
                     onConflict:context => {
-                        const next={...context,code:syncCode};syncConflictRef.current=next;setSyncConflict(next);
+                        const next={...context,code:syncCode};
+                        syncConflictRef.current=next;
+                        setSyncConflict(next);
+                        try { storage.setItem('_sync_pending_conflict_v2', JSON.stringify(next)); } catch (e) {}
                     }
                 });
             };
             const resolveSyncConflict = async side => {
-                if (!syncConflictRef.current || !acquireSyncLock()) return;
+                const activeConflict = syncConflictRef.current || syncConflict;
+                if (!activeConflict || !acquireSyncLock()) return;
                 try {
                     const coordinator=makeSyncCoordinator();
-                    const result=await coordinator.resolveConflict(syncConflictRef.current,side);
-                    syncConflictRef.current=null;setSyncConflict(null);
+                    const result=await coordinator.resolveConflict(activeConflict,side);
+                    syncConflictRef.current=null;
+                    setSyncConflict(null);
+                    try { storage.removeItem('_sync_pending_conflict_v2'); } catch (e) {}
                     if(result.needUpload)await coordinator.push();
                     setSyncLastTime(Date.now());setSyncStatus('success');
                 } catch(e) { showToast('error',e.message);setSyncStatus('error'); }
@@ -5787,6 +5810,11 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     if (meta.protocol === 2) {
                         const data = resp.status === 404 ? {} : stripTesterDataFromPayload(await checkedSyncJson(resp));
                         const result = await makeSyncCoordinator(storageEpoch).pull({...meta,data,exists:resp.status!==404});
+                        if (syncConflictRef.current || syncConflict) {
+                            syncConflictRef.current = null;
+                            setSyncConflict(null);
+                            try { storage.removeItem('_sync_pending_conflict_v2'); } catch (e) {}
+                        }
                         if (result.needUpload) await makeSyncCoordinator(storageEpoch).push();
                         setSyncLastTime(Date.now());setSyncStatus('success');
                         setTimeout(() => setSyncStatus(''), 3000);
@@ -5892,11 +5920,15 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
             };
 
-            // 防抖上传：操作后 2 秒自动上传（修复 Bug3：不再提前清除 hash）
-            const triggerSyncUpload = React.useCallback(() => {
+            // 防抖上传：操作后 2 秒自动上传，支持 immediate = true 立即执行
+            const triggerSyncUpload = React.useCallback((immediate = false) => {
                 if (!syncCode) return;
                 if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
-                syncDebounceRef.current = setTimeout(() => syncToCloud(), 2000);
+                if (immediate) {
+                    syncToCloud();
+                } else {
+                    syncDebounceRef.current = setTimeout(() => syncToCloud(), 2000);
+                }
             }, [syncCode]);
             window.triggerSyncUpload = triggerSyncUpload;
 

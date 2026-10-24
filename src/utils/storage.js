@@ -30,6 +30,7 @@ export const FAST_BOOT_KEYS = new Set([
     '_sync_last_hash',
     '_key_versions',
     '_storage_migrated_v1',
+    '_sync_pending_conflict_v2',
     'app_pending_evil_penalties_v2',
     'app_evil_penalty_log_v1',
     'app_evil_auto_trigger',

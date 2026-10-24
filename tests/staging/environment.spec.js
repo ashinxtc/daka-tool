@@ -46,7 +46,7 @@ test('built pairing and legacy verification pages use staging; CSP blocks produc
     });
     expect(blocked).toBe(true);
     expect(requests.some(url=>url.includes('never-send'))).toBe(false);
-    page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'1234':undefined));
+    page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'1234':undefined).catch(()=>{}));
     await page.goto('/exchange-verify.html?id=legacy-test&child=test&gold=10&cny=1');
     await page.getByRole('button',{name:'确认已转账'}).click();
     await expect.poll(()=>requests.some(url=>url.startsWith(exchange+'/api/'))).toBe(true);

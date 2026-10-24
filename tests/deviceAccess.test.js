@@ -196,4 +196,97 @@ test('consolidateLegacyDevices automatically fuses existing duplicate bindings a
     assert.equal(isAuthorizedParentDevice(authConfig, { deviceId: 'dev_legacy_safari' }), true);
 });
 
+test('browser syncFetch distinguishes safe GET from POST, prevents unsafe POST retries and handles CORS fallback', async () => {
+    // Mock browser environment
+    globalThis.window = {};
+    try {
+        const storage = memory();
+        
+        // 1. Frictionless un-paired device in browser does not inject Authorization headers
+        const callsFrictionless = [];
+        const client1 = createDeviceAccess({
+            storage,
+            fetchImpl: async (url, opts) => {
+                callsFrictionless.push(opts);
+                return response({ ok: true });
+            }
+        });
+        await client1.syncFetch('https://sync.daka-tool.top/?code=fam1', {}, 'main');
+        assert.equal(callsFrictionless.length, 1);
+        assert.equal(callsFrictionless[0].headers.get('Authorization'), null);
+        assert.equal(callsFrictionless[0].headers.get('X-Device-Id'), null);
+
+        // 2. Paired device with voucher token in browser DOES inject Authorization headers
+        storage.setItem('daka_device_access_v1:parent:fam1', JSON.stringify({
+            id: 'dev_paired_001',
+            role: 'parent',
+            token: 'a'.repeat(64),
+            label: '妈妈手机'
+        }));
+        const callsPaired = [];
+        const client2 = createDeviceAccess({
+            storage,
+            fetchImpl: async (url, opts) => {
+                callsPaired.push(opts);
+                return response({ ok: true });
+            }
+        });
+        await client2.syncFetch('https://sync.daka-tool.top/?code=fam1', {}, 'parent');
+        assert.equal(callsPaired.length, 1);
+        assert.equal(callsPaired[0].headers.get('Authorization'), `Bearer ${'a'.repeat(64)}`);
+        assert.equal(callsPaired[0].headers.get('X-Device-Id'), 'dev_paired_001');
+
+        // 3. GET with injected auth failing with TypeError (CORS preflight) falls back to plain fetch
+        const getAttempts = [];
+        const client3 = createDeviceAccess({
+            storage,
+            fetchImpl: async (url, opts) => {
+                getAttempts.push(opts);
+                if (getAttempts.length === 1) {
+                    throw new TypeError('Failed to fetch'); // Simulated browser CORS preflight failure
+                }
+                return response({ ok: true, fallback: true });
+            }
+        });
+        const getRes = await client3.syncFetch('https://sync.daka-tool.top/?code=fam1', { method: 'GET' }, 'parent');
+        assert.equal(getAttempts.length, 2);
+        assert.equal(getAttempts[0].headers.get('Authorization'), `Bearer ${'a'.repeat(64)}`);
+        assert.equal(getAttempts[1].headers.get('Authorization'), null);
+        assert.equal(getAttempts[1].headers.get('X-Device-Id'), null);
+
+        // 4. POST with injected auth failing with TypeError NEVER retries (prevents duplicate write)
+        const postAttempts = [];
+        const client4 = createDeviceAccess({
+            storage,
+            fetchImpl: async (url, opts) => {
+                postAttempts.push(opts);
+                throw new TypeError('Failed to fetch');
+            }
+        });
+        await assert.rejects(
+            client4.syncFetch('https://sync.daka-tool.top/?code=fam1', { method: 'POST', body: '{"amount":10}' }, 'parent'),
+            TypeError
+        );
+        assert.equal(postAttempts.length, 1, 'POST must never be retried automatically');
+
+        // 5. Explicit caller-provided Authorization header NEVER falls back even on GET
+        const explicitAttempts = [];
+        const client5 = createDeviceAccess({
+            storage,
+            fetchImpl: async (url, opts) => {
+                explicitAttempts.push(opts);
+                throw new TypeError('Failed to fetch');
+            }
+        });
+        await assert.rejects(
+            client5.syncFetch('https://sync.daka-tool.top/?code=fam1', { headers: { 'Authorization': 'Bearer explicit-caller-token' } }, 'parent'),
+            TypeError
+        );
+        assert.equal(explicitAttempts.length, 1, 'Explicit authorization must never be stripped');
+
+    } finally {
+        delete globalThis.window;
+    }
+});
+
 

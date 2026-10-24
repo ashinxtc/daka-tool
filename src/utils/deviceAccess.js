@@ -62,11 +62,15 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         const headers=new Headers(options.headers);
         const isBrowser = typeof window !== 'undefined';
         const hasPairedToken = Boolean(saved.token && saved.token !== saved.id);
+        const method = (options.method || 'GET').toUpperCase();
+        const isSafeMethod = method === 'GET' || method === 'HEAD';
 
+        let injectedAuth = false;
         if (!isBrowser || hasPairedToken) {
             headers.set('X-Device-Id',saved.id);
             headers.set('X-Device-Role',role);
             headers.set('Authorization',`Bearer ${saved.token||saved.id}`);
+            injectedAuth = true;
             try {
                 const fp = getDeviceFingerprint();
                 if (fp) headers.set('X-Device-Fingerprint', fp);
@@ -75,7 +79,9 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         try {
             return await fetchImpl(url,{...options,headers,redirect:isBrowser?'follow':'error'});
         } catch(err) {
-            if (isBrowser && (!options.headers || !new Headers(options.headers).has('Authorization'))) {
+            if (isBrowser && isSafeMethod && injectedAuth &&
+                (!options.headers || !new Headers(options.headers).has('Authorization')) &&
+                err instanceof TypeError) {
                 const plainHeaders = new Headers(options.headers);
                 return await fetchImpl(url,{...options,headers:plainHeaders,redirect:'follow'});
             }

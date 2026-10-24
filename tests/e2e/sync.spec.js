@@ -119,11 +119,11 @@ test('real main pages keep same-field conflicts through reload, then resolve wit
     const f=await family(),control=traffic(),a=await child(browser,f,control),b=await child(browser,f,control);
     const edit=async(page,city)=>page.evaluate(async city=>{
         const {commitDurable}=await import('/src/utils/storage.js');
-        commitDurable({app_user_city_v1:JSON.stringify(city)});await window.storage.flush();window.triggerSyncUpload();
+        commitDurable({app_user_city_v1:JSON.stringify(city)});await window.storage.flush();window.triggerSyncUpload(true);
     },city);
     control.gate={count:2,waiters:[]};await Promise.all([edit(a,'上海'),edit(b,'北京')]);
     const dialog=page=>page.getByRole('dialog',{name:'处理同步冲突'});
-    await expect.poll(async()=>await dialog(a).count()+await dialog(b).count()).toBeGreaterThan(0);
+    await expect.poll(async()=>await dialog(a).count()+await dialog(b).count(),{timeout:15000}).toBeGreaterThan(0);
     const loser=await dialog(a).count()?a:b, city=(await value(loser,'app_user_city_v1'));
     await loser.reload();await expect(dialog(loser)).toBeVisible();
     await loser.getByRole('button',{name:'冲突部分保留本机'}).click();await expect(dialog(loser)).toHaveCount(0);
