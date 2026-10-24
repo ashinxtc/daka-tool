@@ -3183,7 +3183,7 @@ const CopyIcon = (props) => (
 																	: 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
 															}`}
 														>
-															跟随全局设置（{(gamificationConfig?.timeRewardMode || 'tiered') === 'tiered' ? '分时段阶梯' : (gamificationConfig?.timeRewardDeadline || '09:00')}）
+															跟随全局设置（{(gamificationConfig?.timeRewardMode !== undefined ? gamificationConfig.timeRewardMode : (gamificationConfig?.timeRewardDeadline ? 'single' : 'tiered')) === 'tiered' ? '分时段阶梯' : (gamificationConfig?.timeRewardDeadline || '09:00')}）
 														</button>
 														<button 
 															type="button" 
@@ -4840,7 +4840,7 @@ const CopyIcon = (props) => (
                                                         timeRewardMode: 'tiered'
                                                     }))}
                                                     className={`flex-1 py-1.5 px-3 rounded-lg font-bold border text-xs transition-colors cursor-pointer ${
-                                                        (gamificationConfig?.timeRewardMode || 'tiered') === 'tiered'
+                                                        (gamificationConfig?.timeRewardMode !== undefined ? gamificationConfig.timeRewardMode : (gamificationConfig?.timeRewardDeadline ? 'single' : 'tiered')) === 'tiered'
                                                             ? 'bg-amber-500 text-amber-950 border-amber-400'
                                                             : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                                                     }`}
@@ -4854,7 +4854,7 @@ const CopyIcon = (props) => (
                                                         timeRewardMode: 'single'
                                                     }))}
                                                     className={`flex-1 py-1.5 px-3 rounded-lg font-bold border text-xs transition-colors cursor-pointer ${
-                                                        gamificationConfig?.timeRewardMode === 'single'
+                                                        (gamificationConfig?.timeRewardMode !== undefined ? gamificationConfig.timeRewardMode : (gamificationConfig?.timeRewardDeadline ? 'single' : 'tiered')) === 'single'
                                                             ? 'bg-amber-500 text-amber-950 border-amber-400'
                                                             : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                                                     }`}
@@ -4863,9 +4863,43 @@ const CopyIcon = (props) => (
                                                 </button>
                                             </div>
 
-                                            {(gamificationConfig?.timeRewardMode || 'tiered') === 'tiered' ? (
+                                            {(gamificationConfig?.timeRewardMode !== undefined ? gamificationConfig.timeRewardMode : (gamificationConfig?.timeRewardDeadline ? 'single' : 'tiered')) === 'tiered' ? (
                                                 /* 分时段阶梯配置列表 */
                                                 <div className="space-y-3">
+                                                    {/* 时段顺序防护提示 */}
+                                                    {(() => {
+                                                        const t1 = gamificationConfig?.timeRewardTiers?.[0]?.deadline || '13:00';
+                                                        const t2 = gamificationConfig?.timeRewardTiers?.[1]?.deadline || '22:00';
+                                                        if (t1 >= t2) {
+                                                            return (
+                                                                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 text-[11px] text-amber-300 flex items-center justify-between gap-2">
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        <span className="shrink-0 text-sm">⚠️</span>
+                                                                        <span>
+                                                                            提示：第一时段截止（{t1}）需早于第二时段（{t2}）。系统算法已自动保障早起高倍率，建议调整第二时段晚于第一时段。
+                                                                        </span>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const prevTiers = gamificationConfig?.timeRewardTiers || [
+                                                                                { id: 'tier_early', name: '晨光黄金时段', deadline: '13:00', maxMultiplier: 5, icon: '🌅' },
+                                                                                { id: 'tier_evening', name: '晚间冲刺时段', deadline: '22:00', maxMultiplier: 2, icon: '🌙' }
+                                                                            ];
+                                                                            const nextTiers = [...prevTiers];
+                                                                            nextTiers[0] = { ...nextTiers[0], deadline: '13:00' };
+                                                                            nextTiers[1] = { ...nextTiers[1], deadline: '22:00' };
+                                                                            setGamificationConfig(prev => ({ ...prev, timeRewardTiers: nextTiers }));
+                                                                        }}
+                                                                        className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold shrink-0 cursor-pointer text-[10px]"
+                                                                    >
+                                                                        恢复推荐时段
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
                                                     {/* 时段一：晨光黄金时段 */}
                                                     <div className="p-3.5 rounded-xl bg-slate-800/80 border border-amber-500/30 space-y-2.5">
                                                         <div className="flex items-center justify-between">

@@ -527,6 +527,74 @@ export const generateTimeRewardCards = (maxMultiplier = 5) => {
 };
 
 /**
+ * 规范化时段阶梯配置，防止截止时间相等、倒挂，并保障早时段享高倍率
+ * @param {Array} rawTiers 
+ * @returns {Array} 规范化后的阶梯列表
+ */
+export const normalizeTimeRewardTiers = (rawTiers = DEFAULT_TIME_REWARD_TIERS) => {
+    if (!Array.isArray(rawTiers) || rawTiers.length === 0) {
+        return DEFAULT_TIME_REWARD_TIERS;
+    }
+
+    const parseMinutes = (timeStr, fallback = 0) => {
+        if (!timeStr || typeof timeStr !== 'string') return fallback;
+        const [h, m] = timeStr.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return fallback;
+        return Math.max(0, Math.min(23 * 60 + 59, h * 60 + m));
+    };
+
+    if (rawTiers.length === 1) {
+        return rawTiers;
+    }
+
+    if (rawTiers.length === 2) {
+        const t1 = { ...rawTiers[0] };
+        const t2 = { ...rawTiers[1] };
+        const m1 = parseMinutes(t1.deadline, 13 * 60);
+        const m2 = parseMinutes(t2.deadline, 22 * 60);
+
+        if (m1 === m2) {
+            // 两时段截止时间相等：合并为单一有效时段（保留较高倍率）
+            return [{
+                ...t1,
+                maxMultiplier: Math.max(t1.maxMultiplier || 5, t2.maxMultiplier || 2)
+            }];
+        }
+
+        if (m1 > m2) {
+            // 顺序倒置（例如第一时段写了 22:00，第二时段写了 13:00）：
+            // 纠正时间分配：较早时间赋予第一时段（高倍率），较晚时间赋予第二时段
+            const tempDeadline = t1.deadline;
+            t1.deadline = t2.deadline;
+            t2.deadline = tempDeadline;
+            return [t1, t2];
+        }
+
+        return [t1, t2];
+    }
+
+    // 多个时段通用处理：按截止时间升序排序
+    const sorted = [...rawTiers].sort((a, b) => {
+        return parseMinutes(a.deadline, 23 * 60 + 59) - parseMinutes(b.deadline, 23 * 60 + 59);
+    });
+
+    // 剔除时间完全相同的重复项（保留高倍率）
+    const deduped = [];
+    for (const tier of sorted) {
+        const last = deduped[deduped.length - 1];
+        if (last && parseMinutes(last.deadline) === parseMinutes(tier.deadline)) {
+            if ((tier.maxMultiplier || 0) > (last.maxMultiplier || 0)) {
+                deduped[deduped.length - 1] = tier;
+            }
+        } else {
+            deduped.push(tier);
+        }
+    }
+
+    return deduped;
+};
+
+/**
  * 获取当前时间命中的抽卡时段阶梯配置
  * @param {Object} config - gamificationConfig
  * @param {string} [dateKey] - 打卡日期（当天）
@@ -534,7 +602,18 @@ export const generateTimeRewardCards = (maxMultiplier = 5) => {
  * @returns {Object|null} 命中的时段配置对象，若未命中或超时返回 null
  */
 export const getActiveTimeRewardTier = (config = DEFAULT_GAMIFICATION_CONFIG, dateKey = null, currentTime = new Date()) => {
-    const effective = { ...DEFAULT_GAMIFICATION_CONFIG, ...(config || {}) };
+    // 关键向后兼容逻辑：
+    // 若已有配置包含历史 timeRewardDeadline，且未显式指定 timeRewardMode 时，严格保持历史的 'single' 模式
+    const resolvedMode = config?.timeRewardMode !== undefined
+        ? config.timeRewardMode
+        : (config?.timeRewardDeadline ? 'single' : (DEFAULT_GAMIFICATION_CONFIG.timeRewardMode || 'tiered'));
+
+    const effective = {
+        ...DEFAULT_GAMIFICATION_CONFIG,
+        ...(config || {}),
+        timeRewardMode: resolvedMode
+    };
+
     if (effective.timeRewardEnabled === false) return null;
 
     // 仅限当天实时打卡
@@ -562,18 +641,13 @@ export const getActiveTimeRewardTier = (config = DEFAULT_GAMIFICATION_CONFIG, da
     }
 
     // 2. 分时段阶梯模式 (tiered)
-    const tiers = Array.isArray(effective.timeRewardTiers) && effective.timeRewardTiers.length > 0
-        ? effective.timeRewardTiers
-        : DEFAULT_TIME_REWARD_TIERS;
+    const tiers = normalizeTimeRewardTiers(
+        Array.isArray(effective.timeRewardTiers) && effective.timeRewardTiers.length > 0
+            ? effective.timeRewardTiers
+            : DEFAULT_TIME_REWARD_TIERS
+    );
 
-    // 按截止时间升序排序
-    const sortedTiers = [...tiers].sort((a, b) => {
-        const [ah, am] = (a.deadline || '23:59').split(':').map(Number);
-        const [bh, bm] = (b.deadline || '23:59').split(':').map(Number);
-        return (ah * 60 + am) - (bh * 60 + bm);
-    });
-
-    for (const tier of sortedTiers) {
+    for (const tier of tiers) {
         const [dh, dm] = (tier.deadline || '23:59').split(':').map(Number);
         const deadlineMinutes = dh * 60 + dm;
         if (currentMinutes <= deadlineMinutes) {

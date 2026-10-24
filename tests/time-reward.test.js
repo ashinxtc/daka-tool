@@ -4,6 +4,7 @@ import {
     isBeforeTimeDeadline, 
     generateTimeRewardCards, 
     getActiveTimeRewardTier,
+    normalizeTimeRewardTiers,
     DEFAULT_GAMIFICATION_CONFIG,
     DEFAULT_TIME_REWARD_TIERS,
     TIME_REWARD_CARD_TYPES 
@@ -305,4 +306,111 @@ test('Time Reward: generateTimeRewardCards respects maxMultiplier for tiers', ()
             assert.ok(c.multiplier <= 5, `Card multiplier ${c.multiplier} must not exceed 5`);
         });
     }
+});
+
+
+test('Time Reward: legacy configurations without timeRewardMode strictly maintain single mode', () => {
+    // 1. Legacy config with default 09:00 deadline (no timeRewardMode field)
+    const legacyDefaultConfig = {
+        timeRewardEnabled: true,
+        timeRewardDeadline: '09:00'
+    };
+
+    // 08:30 AM -> Hit single deadline
+    const morning830 = new Date('2026-10-24T08:30:00');
+    const hitTier = getActiveTimeRewardTier(legacyDefaultConfig, null, morning830);
+    assert.ok(hitTier, 'Legacy config should hit deadline before 09:00');
+    assert.equal(hitTier.id, 'single');
+    assert.equal(hitTier.deadline, '09:00');
+
+    // 09:01 AM -> Overdue (must NOT bleed into tiered mode morning tier!)
+    const morning901 = new Date('2026-10-24T09:01:00');
+    const missTier901 = getActiveTimeRewardTier(legacyDefaultConfig, null, morning901);
+    assert.equal(missTier901, null, '09:01 must be overdue for legacy 09:00 config');
+
+    // 11:00 AM -> Must NOT grant 5x tiered reward
+    const morning1100 = new Date('2026-10-24T11:00:00');
+    const missTier1100 = getActiveTimeRewardTier(legacyDefaultConfig, null, morning1100);
+    assert.equal(missTier1100, null, '11:00 AM must be overdue; cannot erroneously trigger 13:00 tiered reward');
+
+    // 21:00 PM -> Must NOT grant 2x evening reward
+    const evening2100 = new Date('2026-10-24T21:00:00');
+    const missTier2100 = getActiveTimeRewardTier(legacyDefaultConfig, null, evening2100);
+    assert.equal(missTier2100, null, '21:00 PM must be overdue for legacy config');
+
+    // 2. Legacy custom deadline 08:00
+    const legacyCustomConfig = {
+        timeRewardEnabled: true,
+        timeRewardDeadline: '08:00'
+    };
+    assert.ok(getActiveTimeRewardTier(legacyCustomConfig, null, new Date('2026-10-24T07:59:00')));
+    assert.equal(getActiveTimeRewardTier(legacyCustomConfig, null, new Date('2026-10-24T08:01:00')), null);
+
+    // 3. User explicitly opts into tiered mode
+    const explicitTiered = {
+        timeRewardEnabled: true,
+        timeRewardMode: 'tiered',
+        timeRewardDeadline: '09:00',
+        timeRewardTiers: DEFAULT_TIME_REWARD_TIERS
+    };
+    const tierResult = getActiveTimeRewardTier(explicitTiered, null, morning1100);
+    assert.ok(tierResult, 'Explicit tiered mode should grant reward at 11:00 AM');
+    assert.equal(tierResult.id, 'tier_early');
+    assert.equal(tierResult.maxMultiplier, 5);
+});
+
+test('Time Reward: handles equal, inverted, and custom deadline tiers consistently without reward inversion', () => {
+    // 1. Inverted tiers: Tier 1 has 22:00 (5x), Tier 2 has 13:00 (2x)
+    const invertedConfig = {
+        timeRewardEnabled: true,
+        timeRewardMode: 'tiered',
+        timeRewardTiers: [
+            { id: 'tier_early', name: '晨光黄金时段', deadline: '22:00', maxMultiplier: 5, icon: '🌅' },
+            { id: 'tier_evening', name: '晚间冲刺时段', deadline: '13:00', maxMultiplier: 2, icon: '🌙' }
+        ]
+    };
+
+    // Morning checkin (10:00 AM) must get early tier (5x), NOT evening tier (2x)!
+    const morningTime = new Date('2026-10-24T10:00:00');
+    const earlyHit = getActiveTimeRewardTier(invertedConfig, null, morningTime);
+    assert.ok(earlyHit);
+    assert.equal(earlyHit.id, 'tier_early');
+    assert.equal(earlyHit.maxMultiplier, 5, 'Early bird checkin must receive higher multiplier even if parent reversed deadlines');
+
+    // Afternoon checkin (15:00 PM) gets evening tier (2x)
+    const afternoonTime = new Date('2026-10-24T15:00:00');
+    const lateHit = getActiveTimeRewardTier(invertedConfig, null, afternoonTime);
+    assert.ok(lateHit);
+    assert.equal(lateHit.id, 'tier_evening');
+    assert.equal(lateHit.maxMultiplier, 2);
+
+    // Night overdue (22:30 PM) gets null
+    const nightTime = new Date('2026-10-24T22:30:00');
+    assert.equal(getActiveTimeRewardTier(invertedConfig, null, nightTime), null);
+
+    // 2. Equal tiers: Tier 1 has 13:00 (5x), Tier 2 has 13:00 (2x)
+    const equalConfig = {
+        timeRewardEnabled: true,
+        timeRewardMode: 'tiered',
+        timeRewardTiers: [
+            { id: 'tier_early', name: '晨光黄金时段', deadline: '13:00', maxMultiplier: 5, icon: '🌅' },
+            { id: 'tier_evening', name: '晚间冲刺时段', deadline: '13:00', maxMultiplier: 2, icon: '🌙' }
+        ]
+    };
+    const equalHit = getActiveTimeRewardTier(equalConfig, null, morningTime);
+    assert.ok(equalHit);
+    assert.equal(equalHit.maxMultiplier, 5, 'Equal deadlines must resolve to highest multiplier tier');
+    assert.equal(getActiveTimeRewardTier(equalConfig, null, afternoonTime), null, 'Overdue after 13:00');
+
+    // 3. normalizeTimeRewardTiers directly
+    const normalizedInverted = normalizeTimeRewardTiers(invertedConfig.timeRewardTiers);
+    assert.equal(normalizedInverted[0].deadline, '13:00');
+    assert.equal(normalizedInverted[0].maxMultiplier, 5);
+    assert.equal(normalizedInverted[1].deadline, '22:00');
+    assert.equal(normalizedInverted[1].maxMultiplier, 2);
+
+    const normalizedEqual = normalizeTimeRewardTiers(equalConfig.timeRewardTiers);
+    assert.equal(normalizedEqual.length, 1);
+    assert.equal(normalizedEqual[0].deadline, '13:00');
+    assert.equal(normalizedEqual[0].maxMultiplier, 5);
 });
