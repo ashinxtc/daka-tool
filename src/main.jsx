@@ -5613,6 +5613,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 const mergeAccountingKey = (key, local, remote) => {
                     if (key === RECEIPTS_KEY) return JSON.stringify(mergeReceipts(JSON.parse(local), JSON.parse(remote)));
                     if (key === ESCROWS_KEY) return JSON.stringify(mergeEscrows(JSON.parse(local), JSON.parse(remote)));
+                    if (key.startsWith('app_exchange_records_history_')) { const m = tryMergeSyncKey(key, local, remote); if (m && m.value) return m.value; }
                 };
                 const metadata = cp => ({ [SYNC_CHECKPOINT_KEY]: JSON.stringify(cp),
                     _sync_local_ts: String(cp.data._syncTs || 0), _sync_last_hash: hashSyncPayload(syncValues(cp.data)), _sync_has_pulled_v1: '1' });
