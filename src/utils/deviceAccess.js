@@ -1,6 +1,8 @@
 import {SYNC_WORKER_URL} from '../constants/api.js';
 import {getDeviceFingerprint} from './deviceFingerprint.js';
 export const ACCESS_ENDPOINT=SYNC_WORKER_URL;
+const tokenPattern=/^[a-f0-9]{64}$/;
+const roles=new Set(['main','parent']);
 export class DeviceAccessError extends Error {
     constructor(message,code='AUTH_REQUIRED',status=401){super(message);Object.assign(this,{code,status});}
 }
@@ -9,7 +11,21 @@ export const newDeviceToken=()=>Array.from(crypto.getRandomValues(new Uint8Array
 
 export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>fetch(...args),endpoint=ACCESS_ENDPOINT}={}){
     const deviceIdKey=(code,role)=>`daka_device_id_v2:${role}:${code}`;
+    const accessKey=(code,role)=>`daka_device_access_v1:${role}:${code}`;
+    const pendingKey=(code,role)=>`daka_pair_pending_v1:${role}:${code}`;
+    const parse=raw=>{try{return JSON.parse(raw||'null');}catch{return null;}};
+
     const credential=(code,role='main')=>{
+        const access=parse(storage?.getItem(accessKey(code,role)));
+        if(access&&access.token&&access.id){
+            return {
+                id:access.id,
+                role:access.role||role,
+                token:access.token,
+                label:access.label||(role==='parent'?'家长手机':'主程序')
+            };
+        }
+
         let id=storage?.getItem(deviceIdKey(code,role));
         if(!id){
             if(role==='parent'){
@@ -44,20 +60,62 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         if(target.origin!==origin)throw new DeviceAccessError('拒绝向其他服务发送家庭凭据。','WRONG_ORIGIN',400);
         const code=target.searchParams.get('code')||'',saved=credential(code,role);
         const headers=new Headers(options.headers);
+        headers.set('X-Device-Id',saved.id);
+        headers.set('X-Device-Role',role);
+        headers.set('Authorization',`Bearer ${saved.token||saved.id}`);
+        try {
+            const fp = getDeviceFingerprint();
+            if (fp) headers.set('X-Device-Fingerprint', fp);
+        } catch(e) {}
         const isBrowser = typeof window !== 'undefined';
-        if (!isBrowser) {
-            headers.set('X-Device-Id',saved.id);
-            headers.set('X-Device-Role',role);
-            headers.set('Authorization',`Bearer ${saved.id}`);
-            try {
-                const fp = getDeviceFingerprint();
-                if (fp) headers.set('X-Device-Fingerprint', fp);
-            } catch(e) {}
-        }
         return await fetchImpl(url,{...options,headers,redirect:isBrowser?'follow':'error'});
     };
-    const pair=async(code,role)=>credential(code,role);
-    const revokeSelf=async()=>({ok:true});
+    const pair=async(code,role,invite)=>{
+        if(!invite){
+            return credential(code,role);
+        }
+        if(!roles.has(role)||!tokenPattern.test(invite))throw new DeviceAccessError('邀请链接无效。','INVALID_INVITE',400);
+        if(!storage)throw new DeviceAccessError('请允许浏览器存储后再配对。','STORAGE_REQUIRED');
+        const pKey=pendingKey(code,role);
+        let pending=parse(storage.getItem(pKey));
+        if(pending&&pending.invite!==invite)throw new DeviceAccessError('已有待确认配对，请先重试或明确放弃。','PAIR_PENDING',409);
+        if(!pending){
+            pending={invite,token:newDeviceToken()};
+            storage.setItem(pKey,JSON.stringify(pending));
+        }
+        const result=await request(code,'/auth/redeem',{body:pending});
+        if(result.ok!==true||result.role!==role||typeof result.id!=='string')throw new DeviceAccessError('邀请角色与页面不一致，未保存设备身份。','INVALID_RECEIPT',502);
+        const saved={token:pending.token,id:result.id,role:result.role,label:result.label};
+        storage.setItem(accessKey(code,role),JSON.stringify(saved));
+        storage.setItem(deviceIdKey(code,role),result.id);
+        if(role==='parent'){
+            try{
+                storage.setItem('parent_device_id',result.id);
+                storage.setItem('parent_role',result.label);
+                storage.setItem('parent_is_bound','true');
+            }catch(e){}
+        }
+        storage.removeItem(pKey);
+        return saved;
+    };
+    const revokeSelf=async(code,role)=>{
+        const saved=parse(storage?.getItem(accessKey(code,role)));
+        if(saved?.token&&saved?.id){
+            try{
+                await request(code,'/auth/revoke',{token:saved.token,body:{id:saved.id}});
+            }catch(e){}
+            storage?.removeItem(accessKey(code,role));
+        }
+        storage?.removeItem(deviceIdKey(code,role));
+        if(role==='parent'){
+            try{
+                storage?.removeItem('parent_device_id');
+                storage?.removeItem('parent_role');
+                storage?.removeItem('parent_is_bound');
+            }catch(e){}
+        }
+        return {ok:true};
+    };
     return {
         credential,
         required,
@@ -66,8 +124,8 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         pair,
         revokeSelf,
         rememberRequired:markRequired,
-        pending:()=>null,
-        discardPending:()=>{}
+        pending:(code,role)=>parse(storage?.getItem(pendingKey(code,role))),
+        discardPending:(code,role)=>storage?.removeItem(pendingKey(code,role))
     };
 }
 export const deviceAccess=createDeviceAccess();

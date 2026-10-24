@@ -1,6 +1,7 @@
 import {exchangeRequest} from './utils/exchangeTransport.js';
 import {SYNC_WORKER_URL, EXCHANGE_WORKER_URL} from './constants/api.js';
 import {getDeviceFingerprint} from './utils/deviceFingerprint.js';
+import {parentFetch} from './utils/deviceAccess.js';
 
 const params=new URLSearchParams(location.search),family=params.get('family'),id=params.get('id');
 if(family||params.get('secure')==='1'||id?.startsWith('exs_')){
@@ -17,14 +18,15 @@ if(family||params.get('secure')==='1'||id?.startsWith('exs_')){
     const checkParentDevice=async()=>{
         if(!family)return;
         try{
-            const res=await fetch(`${SYNC_WORKER_URL}?code=${encodeURIComponent(family)}`,{cache:'no-store'});
+            const res=await parentFetch(`${SYNC_WORKER_URL}?code=${encodeURIComponent(family)}`,{cache:'no-store'});
             if(res.ok){
                 const data=await res.json();
                 let authConfig={devices:[],revokedDevices:{}};
                 try{if(data.app_authorized_parents_v1)authConfig=JSON.parse(data.app_authorized_parents_v1);}catch(e){}
                 const devices=authConfig.devices||[];
                 if(devices.length>0){
-                    const localDevId=localStorage.getItem('parent_device_id')||'';
+                    let legacyId='';try{legacyId=JSON.parse(localStorage.getItem(`daka_device_access_v1:parent:${family}`)||'{}')?.id||'';}catch(e){}
+                    const localDevId=localStorage.getItem('parent_device_id')||localStorage.getItem(`daka_device_id_v2:parent:${family}`)||legacyId||'';
                     const localFp=getDeviceFingerprint();
                     const matched=devices.find(d=>{
                         if(!d)return false;
@@ -37,12 +39,24 @@ if(family||params.get('secure')==='1'||id?.startsWith('exs_')){
                         button.disabled=true;
                         button.style.display='none';
                         message.style.color='#ef4444';
-                        message.textContent='🔒 未受信任的家长设备：扫码核销仅限已绑定的家长手机。当前设备尚未完成家长绑定，无权执行核销。请使用电脑主程序【设置】→【家长专属手机看板】扫描绑定本手机后重试。';
+                        message.textContent='🔒 未受信任的家长设备：扫码核销仅限已绑定的家长手机。当前设备尚未完成家长绑定授权，无权执行核销。请使用电脑主程序【设置】→【家长专属手机看板】扫描绑定本手机后重试。';
                         return false;
                     }
                 }
+            }else{
+                button.disabled=true;
+                button.style.display='none';
+                message.style.color='#ef4444';
+                message.textContent='🔒 未授权设备：此设备未通过家庭授权，无权核销。';
+                return false;
             }
-        }catch(e){}
+        }catch(e){
+            button.disabled=true;
+            button.style.display='none';
+            message.style.color='#ef4444';
+            message.textContent='🔒 未受信任的家长设备：校验授权失败，无权核销。';
+            return false;
+        }
         return true;
     };
     const load=async()=>{

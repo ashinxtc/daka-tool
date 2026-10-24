@@ -366,6 +366,17 @@ export const ParentApp = () => {
             const resp = await fetchParentCloud(codeToUse);
             const secureIdentity=deviceAccess.required(codeToUse)?deviceAccess.credential(codeToUse,'parent'):null;
             if(secureIdentity){setDeviceId(secureIdentity.id);setOperatorRole(secureIdentity.label);localStorage.setItem('parent_device_id',secureIdentity.id);localStorage.setItem('parent_role',secureIdentity.label);}
+            if (resp.status === 401) {
+                console.warn('设备未授权或已被吊销');
+                localStorage.removeItem('parent_device_id');
+                localStorage.removeItem('parent_pair_token');
+                localStorage.removeItem('parent_is_bound');
+                localStorage.removeItem('parent_sync_code');
+                setSyncCode('');
+                setIsBound(false);
+                if (!silent) showToast('warning', '本设备未授权或已被解除绑定。');
+                return null;
+            }
             if (resp.status === 404) {
                 console.warn('云端尚未上传该同步码数据，等待电脑主程序上传同步');
                 setCloudData(null);
@@ -541,6 +552,17 @@ export const ParentApp = () => {
         setAuthLoading(true);
         try {
             const resp = await fetchParentCloud(trimmedCode);
+            if (resp.status === 401) {
+                console.warn('设备未授权或已被吊销');
+                localStorage.removeItem('parent_device_id');
+                localStorage.removeItem('parent_pair_token');
+                localStorage.removeItem('parent_is_bound');
+                localStorage.removeItem('parent_sync_code');
+                setSyncCode('');
+                setIsBound(false);
+                if (!silent) showToast('warning', '本设备未授权或已被解除绑定。');
+                return null;
+            }
             if (resp.status === 404) {
                 throw new Error('未找到该同步码对应的数据，请核对是否与电脑主程序一致！');
             }

@@ -2,7 +2,7 @@ import { json } from './server/sync-family.js';
 export { SyncFamily } from './server/sync-family.js';
 const cors = {
     'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, If-Match, Idempotency-Key, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, If-Match, Idempotency-Key, Authorization, X-Device-Id, X-Device-Role, X-Device-Fingerprint',
     'Access-Control-Expose-Headers': 'ETag, X-Sync-Protocol, X-Sync-Revision, X-Family-Auth', 'Cache-Control': 'no-store',
 };
 const withCors = response => {

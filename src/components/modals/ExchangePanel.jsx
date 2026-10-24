@@ -114,7 +114,7 @@ export const ExchangePanel = ({
     const protectedFamily=!!(syncCode && secureLimits?.rateMicros);
     const fetchWithTimeout=async(url,options={},timeoutMs=8000)=>{
         const target=new URL(url,location.origin),match=/^\/api\/exchange\/(apply|verify|cancel|order|status)$/.exec(target.pathname);
-        if(!match||!protectedFamily){
+        if(!match||!syncCode){
             return await legacyFetchWithTimeout(url,options,timeoutMs);
         }
         const op=match[1],controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -904,6 +904,11 @@ export const ExchangePanel = ({
                 setApplying(false);
             }
         } catch (e) {
+            if (syncCode) {
+                showToast('error', `${e.message || '网络连接失败'}，未确认撤销云端申请；订单仍保留待核销。`);
+                setApplying(false);
+                return;
+            }
             clearLocal();
         }
     };
