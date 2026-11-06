@@ -56,9 +56,10 @@ import { useStickyState, markKeyVersion } from './hooks/useStickyState';
 import { storage, commitDurable, canSyncStorage, getStorageState, flushPendingState } from './utils/storage';
 import StorageGate from './components/common/StorageGate';
 import { selectAndRestoreBackup } from './utils/backup';
-import { readSyncSnapshot, writeSyncSnapshot, syncMetadata, checkedSyncJson, SyncRequestError } from './utils/syncTransport';
+import { readSyncSnapshot, readSyncVersion, writeSyncSnapshot, syncMetadata, checkedSyncJson, SyncRequestError } from './utils/syncTransport';
 import { mergeSyncSnapshots, syncValues,protectedSnapshot } from './utils/syncMerge';
 import { createSyncCoordinator, SYNC_CHECKPOINT_KEY } from './utils/syncCoordinator';
+import { startVisibleSyncPoll } from './utils/visibleSyncPoll';
 import SyncConflictDialog from './components/common/SyncConflictDialog';
 import { useNightMode } from './hooks/useNightMode';
 import { PerformanceContext, PerformanceProvider } from './context/PerformanceContext';
@@ -5619,18 +5620,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const acquireSyncLock = () => { if (syncLockRef.current) return false; syncLockRef.current = true; return true; };
             const releaseSyncLock = () => { syncLockRef.current = false; };
 
-            // 记录最近一次用户操作时间（自适应轮询用：活跃期 15s，闲置期 60s）
-            const lastActivityRef = React.useRef(Date.now());
-            React.useEffect(() => {
-                const markActivity = () => { lastActivityRef.current = Date.now(); };
-                window.addEventListener('pointerdown', markActivity, { passive: true });
-                window.addEventListener('keydown', markActivity, { passive: true });
-                return () => {
-                    window.removeEventListener('pointerdown', markActivity);
-                    window.removeEventListener('keydown', markActivity);
-                };
-            }, []);
-
             const loadSyncCheckpoint = () => {
                 const raw = storage.getItem(SYNC_CHECKPOINT_KEY);
                 if (syncCheckpointCacheRef.current.raw === raw) return syncCheckpointCacheRef.current.value;
@@ -5879,9 +5868,13 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                     const cloudHash = hashSyncPayload(cloudData);
                     const lastHash = storage.getItem('_sync_last_hash');
+                    const cloudTs = Number(cloudData._syncTs) || 0;
+                    const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10) || 0;
 
                     // 哈希相同 = 数据未变化，跳过
                     if (cloudHash === lastHash) {
+                        // Record a newer server timestamp even when only metadata changed.
+                        if (cloudTs > localTs) storage.setItem('_sync_local_ts', String(cloudTs));
                         setSyncLastTime(Date.now());
                         setSyncStatus('success');
                         setTimeout(() => setSyncStatus(''), 3000);
@@ -5892,9 +5885,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     // 追加型字典 → 并集合并；其余 key → 逐 key 比修改版本，新者胜。
                     // 不再整包"谁新用谁"：平板改打卡、手机改任务，两边修改都能保住。
                     // 本地未同步过（localTs === 0）：所有本地版本视为可信但通常为空表 → 云端值全收
-                    const cloudTs = cloudData._syncTs || 0;
-                    const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
-
                     const { snapshot, versions } = buildLocalSnapshot(cloudData);
                     const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, localTs);
                     const written = applySyncMerge(mergeResult);
@@ -5945,59 +5935,49 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             }, [syncCode]);
             window.triggerSyncUpload = triggerSyncUpload;
 
-            // 页面加载时自动同步 + 轻量时间戳轮询（自适应间隔）+ 回到前台兜底拉取
+            const pullForPollRef = React.useRef(syncFromCloud);
+            pullForPollRef.current = syncFromCloud;
             React.useEffect(() => {
                 if (!syncCode) return;
-                const timer = setTimeout(() => syncFromCloud(), 1500);
-
-                // === 轻量 ts 轮询：GET /ts 只返回云端时间戳（几十字节），变化时才做完整拉取 ===
-                // 活跃期（2 分钟内有操作）每 3.5 秒查一次；闲置期每 8 秒；页面不可见时不查
-                let pollTimer = null;
-                let stopped = false;
-                const schedulePoll = () => {
-                    if (stopped) return;
-                    const active = Date.now() - lastActivityRef.current < 120000;
-                    const delay = active ? 3500 : 8000;
-                    pollTimer = setTimeout(async () => {
-                        if (stopped) return;
-                        if (document.visibilityState === 'visible' && canSyncStorage() && !syncLockRef.current && !syncConflictRef.current) {
-                            try {
-                                const resp = await syncFetch(`${SYNC_URL.replace(/\/$/, '')}/ts?code=${encodeURIComponent(syncCode)}`);
-                                if (resp.ok) {
-                                    const { ts, revision, protocol } = await resp.json();
-                                    const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
-                                    const cp = loadSyncCheckpoint();
-                                    if (protocol === 2 ? cp?.code !== syncCode || cp?.revision !== revision : ts && ts > localTs) await syncFromCloud();
-                                }
-                            } catch (e) {if(e.code==='AUTH_REQUIRED'||e.code==='AUTH_DOWNGRADE')setSyncStatus('error');} // 保留本机数据，下轮或重新配对后恢复
+                let needsInitialPull = true;
+                let lastFullPull = 0;
+                const pull = async () => {
+                    needsInitialPull = false;
+                    lastFullPull = Date.now();
+                    await pullForPollRef.current();
+                };
+                const stop = startVisibleSyncPoll({
+                    initialDelay: 1500,
+                    interval: idleFor => idleFor < 120000 ? 3500 : 8000,
+                    run: async signal => {
+                        if (currentSyncCodeRef.current !== syncCode || !canSyncStorage() ||
+                            syncLockRef.current || syncConflictRef.current) return;
+                        if (needsInitialPull) return pull();
+                        const fallbackDue = Date.now() - lastFullPull >= 600000;
+                        let version;
+                        try {
+                            version = await readSyncVersion(syncCode, { signal });
+                        } catch (error) {
+                            if (signal.aborted || currentSyncCodeRef.current !== syncCode) throw error;
+                            if (error.code === 'AUTH_REQUIRED' || error.code === 'AUTH_DOWNGRADE') {
+                                setSyncStatus('error');
+                            } else if (fallbackDue) {
+                                await pull();
+                            }
+                            throw error;
                         }
-                        schedulePoll();
-                    }, delay);
-                };
-                schedulePoll();
-
-                // 兜底：每 10 分钟做一次完整拉取（防 ts 接口异常时长期不同步）
-                const fullInterval = setInterval(() => {
-                    if (document.visibilityState === 'visible') syncFromCloud();
-                }, 600000);
-
-                // 回到前台时拉取云端最新数据（5 秒节流）
-                let lastVisibilityPull = 0;
-                const visibilityHandler = () => {
-                    if (document.visibilityState !== 'visible') return;
-                    const now = Date.now();
-                    if (now - lastVisibilityPull < 5000) return;
-                    lastVisibilityPull = now;
-                    syncFromCloud();
-                };
-                document.addEventListener('visibilitychange', visibilityHandler);
+                        if (signal.aborted || currentSyncCodeRef.current !== syncCode) return;
+                        const localTs = parseInt(storage.getItem('_sync_local_ts') || '0', 10);
+                        const checkpoint = loadSyncCheckpoint();
+                        const changed = version.protocol === 2
+                            ? checkpoint?.code !== syncCode || checkpoint?.revision !== version.revision
+                            : version.ts > localTs;
+                        if (changed || fallbackDue) await pull();
+                    },
+                });
 
                 return () => {
-                    stopped = true;
-                    clearTimeout(timer);
-                    if (pollTimer) clearTimeout(pollTimer);
-                    clearInterval(fullInterval);
-                    document.removeEventListener('visibilitychange', visibilityHandler);
+                    stop();
                     if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
                 };
             }, [syncCode]);

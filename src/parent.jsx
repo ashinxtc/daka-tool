@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import { updateSyncKeys, appendParentAction } from './utils/syncCoordinator';
-import { syncMetadata, SyncRequestError, newSyncOperationId } from './utils/syncTransport';
+import { readSyncVersion, syncMetadata, SyncRequestError, newSyncOperationId } from './utils/syncTransport';
 import SyncConflictDialog from './components/common/SyncConflictDialog';
+import { startVisibleSyncPoll } from './utils/visibleSyncPoll';
 import {deviceAccess,parentFetch,securityUrl} from './utils/deviceAccess';
 import { getDeviceFingerprint, getDevicePlatformInfo, mergeParentDevices, consolidateLegacyDevices } from './utils/deviceFingerprint';
 
@@ -618,23 +619,31 @@ export const ParentApp = () => {
         }
     }, [syncCode]);
 
-    // --- 4. 轻量云端轮询 (15s 查一次时间戳) ---
+    const parentPollRef = useRef(null);
+    parentPollRef.current = { ts: cloudData?._syncTs || 0, loadCloudData };
     useEffect(() => {
         if (!syncCode || !isBound) return;
-        const interval = setInterval(async () => {
-            try {
-                const resp = await parentFetch(`${SYNC_URL}/ts?code=${encodeURIComponent(syncCode)}`);
-                if (resp.ok) {
-                    const { ts } = await resp.json();
-                    const currentTs = cloudData?._syncTs || 0;
-                    if (ts && ts > currentTs) {
-                        loadCloudData(syncCode, true);
+        return startVisibleSyncPoll({
+            initialDelay: 15000,
+            interval: () => 15000,
+            run: async signal => {
+                try {
+                    const { ts } = await readSyncVersion(syncCode, { fetchImpl: parentFetch, signal });
+                    if (signal.aborted || parentCodeRef.current !== syncCode) return;
+                    const current = parentPollRef.current;
+                    if (ts > current.ts) await current.loadCloudData(syncCode, true);
+                } catch (error) {
+                    if (!signal.aborted && parentCodeRef.current === syncCode &&
+                        (error.code === 'AUTH_REQUIRED' || error.code === 'AUTH_DOWNGRADE')) {
+                        setIsBound(false);
+                        setCloudData(null);
+                        setAuthError(error.message);
                     }
+                    throw error;
                 }
-            } catch (e) {if(e.code==='AUTH_REQUIRED'||e.code==='AUTH_DOWNGRADE'){setIsBound(false);setCloudData(null);setAuthError(e.message);}}
-        }, 15000);
-        return () => clearInterval(interval);
-    }, [syncCode, isBound, cloudData]);
+            },
+        });
+    }, [syncCode, isBound]);
 
     // --- 5. 解析业务数据 ---
     const profiles = useMemo(() => {

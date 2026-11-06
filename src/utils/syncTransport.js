@@ -19,6 +19,15 @@ export async function checkedSyncJson(response) {
     if (!response.ok) throw new SyncRequestError(body.error || `同步失败 (${response.status})`,response.status,body.code,body);
     return body;
 }
+export async function readSyncVersion(code, { fetchImpl = syncFetch, endpoint = SYNC_ENDPOINT, signal } = {}) {
+    const url = `${endpoint.replace(/\/$/, '')}/ts?code=${encodeURIComponent(code)}`;
+    const response = await fetchImpl(url, { cache:'no-store', signal });
+    const { ts, protocol = 1, revision } = await checkedSyncJson(response);
+    if (!Number.isFinite(ts) || ts < 0 || (protocol === 2 && (!Number.isSafeInteger(revision) || revision < 0))) {
+        throw new SyncRequestError('服务器未返回有效同步版本。', 502, 'INVALID_REVISION');
+    }
+    return { ts, protocol, revision };
+}
 export async function readSyncSnapshot(code, { fetchImpl = syncFetch, endpoint = SYNC_ENDPOINT, minProtocol = 1 } = {}) {
     const response = await fetchImpl(`${endpoint}/?code=${encodeURIComponent(code)}`, {cache:'no-store'});
     const meta = syncMetadata(response);
