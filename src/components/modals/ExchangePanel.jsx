@@ -9,26 +9,30 @@ import { storage } from '../../utils/storage.js';
 import { readStoredString } from '../../utils/storedValues.js';
 import { XIcon, Coins, TrendingUp, Sparkles, CheckCircle2 } from '../icons.jsx';
 
-// 网络请求超时包装器（防止移动端弱网/断网时无限期挂起，强制穿透缓存获取实时最新数据）
-const legacyFetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+const withRequestTimeout = async (run, timeoutMs, signal) => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const abort = () => controller.abort();
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(abort, timeoutMs);
     try {
-        const response = await fetch(url, {
-            cache: 'no-store',
-            ...options,
-            headers: {
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                ...(options.headers || {})
-            },
-            signal: controller.signal
-        });
-        return response;
+        return await run(controller.signal);
     } finally {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
     }
 };
+
+const legacyFetchWithTimeout = (url, options = {}, timeoutMs = 8000) => withRequestTimeout(signal => fetch(url, {
+    cache: 'no-store',
+    ...options,
+    headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        ...(options.headers || {})
+    },
+    signal,
+}), timeoutMs, options.signal);
 
 // 生成兜底 7 天走势数据（确保手机端无网或首次冷启动时也能 100% 渲染平滑曲线）
 const generateFallbackHistory = (todayUsd, baseCentsPerGold = 1) => {
@@ -117,11 +121,11 @@ export const ExchangePanel = ({
         if(!match||!syncCode){
             return await legacyFetchWithTimeout(url,options,timeoutMs);
         }
-        const op=match[1],controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+        const op=match[1];
         try{
             let body=options.body?JSON.parse(options.body):undefined;
             if(op==='apply')body=pendingExchange(syncCode,activeChild,{childName:activeChild,goldAmount:body.goldAmount,rateMicros:secureLimits?.rateMicros,...(secureLimits?.quoteId?{quoteId:secureLimits.quoteId}:{})});
-            const data=await exchangeRequest(syncCode,op,{body,id:target.searchParams.get('id'),signal:controller.signal});
+            const data=await withRequestTimeout(signal => exchangeRequest(syncCode,op,{body,id:target.searchParams.get('id'),signal}),timeoutMs,options.signal);
             confirmExchangeIntent(syncCode,activeChild,data.records||(data.record?[data.record]:[]));
             if(op==='apply')clearExchangeIntent(syncCode,activeChild);
             return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
@@ -132,7 +136,7 @@ export const ExchangePanel = ({
                 exchangeRequest(syncCode,'limits').then(d=>setSecureLimits(d.limits)).catch(()=>{});
             }
             throw error;
-        }finally{clearTimeout(timer);}
+        }
     };
     React.useEffect(()=>{let active=true;if(show&&syncCode){setSecureLimits(null);exchangeRequest(syncCode,'limits').then(d=>{if(active&&d?.limits){setSecureLimits(d.limits);}}).catch(e=>{if(active)console.warn('获取兑换限额失败:',e.message);});}return()=>{active=false;};},[show,syncCode]);
     const [rate, setRate] = React.useState(null);
@@ -327,7 +331,7 @@ export const ExchangePanel = ({
     const settledOrderIdsRef = React.useRef(new Set());
     const refreshRecordsRef = React.useRef(null);
     const refreshRecords = React.useCallback(() => {
-        if (refreshRecordsRef.current) refreshRecordsRef.current();
+        refreshRecordsRef.current?.(true);
     }, []);
 
     // 核心核销结算器（幂等安全，无论由单单据极速轮询还是全量列表轮询触发，均只执行一次）
@@ -358,15 +362,10 @@ export const ExchangePanel = ({
         // 结清本地待核销离线缓存
         storage.removeItem(`app_offline_exchange_${targetChild}`);
 
-        // 如果当前显示的正是该订单（或相同核销码/金额），立即关闭待核销二维码
-        const isCurrentActive = applyResult && (
-            applyResult.applyId === rec.id || 
-            applyResult.id === rec.id || 
-            (applyResult.verifyCode && applyResult.verifyCode === rec.verifyCode) ||
-            (applyResult.goldAmount === rec.goldAmount && Math.abs(parseFloat(applyResult.cnyAmount || 0) - parseFloat(rec.cnyAmount || 0)) <= 0.2)
-        );
+        // Repeated exchanges for the same amount can belong to different orders.
+        const isCurrentActive = applyResult?.applyId === rec.id;
         if (isCurrentActive) {
-            setApplyResult(null);
+            setApplyResult(current => current?.applyId === rec.id ? null : current);
         }
 
         if (didDeduct || isCurrentActive) {
@@ -377,124 +376,159 @@ export const ExchangePanel = ({
         }
     }, [activeChild, applyResult, setWheelHistory, showToast, onExchangeComplete]);
 
-    // 3. 全局兑换记录轮询（背景刷新 + 历史记录更新）
+    const latestPollState = React.useRef(null);
+    latestPollState.current = { show, syncCode, activeChild, applyResult, protectedFamily, fetchWithTimeout, settleVerifiedOrder, showToast };
+    const pendingOrderId = applyResult?.isOffline ? null : applyResult?.applyId;
+
     React.useEffect(() => {
         if (!show || (!syncCode && !activeChild)) return;
         const effectiveCode = syncCode || 'local_' + activeChild;
-
-        const poll = () => {
-            fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
-                .then(r => r.json())
-                .then(d => {
-                    if (!d.records) return;
-                    // 严格隔离：仅过滤出当前选中孩子的记录，绝不带入没有孩子名或属于其他孩子的单据
-                    const childRecords = d.records.filter(r => r.childName === activeChild);
-                    setExchangeRecords(prev => {
-                        const merged = protectedFamily?childRecords:mergeExchangeRecords(prev, childRecords);
-                        try {
-                            storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged));
-                        } catch (e) {}
-                        return merged;
-                    });
-
-                    // 自动恢复当前孩子的待核销申请，确保手机端随时可见二维码与核销码
-                    const pendingOrder = childRecords.find(r => r.status === 'pending');
-                    if (pendingOrder) {
-                        setApplyResult({
-                            applyId: pendingOrder.id,
-                            verifyCode: pendingOrder.verifyCode,
-                            goldAmount: pendingOrder.goldAmount,
-                            cnyAmount: pendingOrder.cnyAmount,
-                            childName: pendingOrder.childName || activeChild,
-                            isOffline: false
-                        });
-                    } else {
-                        // 云端没有当前孩子的待核销单，检查本地是否有未过期的有效离线单；若无或已过期/已核销则彻底清理
-                        let localPending = null;
-                        try {
-                            const localSaved = storage.getItem(`app_offline_exchange_${activeChild}`);
-                            if (localSaved) {
-                                const parsed = JSON.parse(localSaved);
-                                if (parsed && parsed.applyId && (!parsed.childName || parsed.childName === activeChild)) {
-                                    if (!isStaleOrResolvedTicket(parsed, activeChild, childRecords)) {
-                                        localPending = { ...parsed, childName: parsed.childName || activeChild };
-                                    } else {
-                                        storage.removeItem(`app_offline_exchange_${activeChild}`);
-                                    }
-                                }
-                            }
-                        } catch (e) {}
-                        setApplyResult(localPending);
-                    }
-
-                    // 检查已核销订单自动扣减（仅针对当前孩子）
-                    childRecords.filter(r => r.status === 'verified').forEach(rec => {
-                        settleVerifiedOrder(rec);
-                    });
-                })
-                .catch(() => {});
+        const historyKey = `app_exchange_records_history_${activeChild}`;
+        const ticketKey = `app_offline_exchange_${activeChild}`;
+        let stopped = false;
+        let pageHidden = false;
+        let timer = null;
+        let request = null;
+        let refreshHistory = true;
+        let wakePending = false;
+        const visible = () => !stopped && !pageHidden && document.visibilityState !== 'hidden' &&
+            latestPollState.current.show && latestPollState.current.activeChild === activeChild &&
+            latestPollState.current.syncCode === syncCode;
+        const clearTimer = () => {
+            clearTimeout(timer);
+            timer = null;
+        };
+        const schedule = delay => {
+            if (visible() && !request && timer === null) timer = setTimeout(poll, delay);
+        };
+        const wake = (includeHistory = false) => {
+            if (includeHistory) refreshHistory = true;
+            wakePending = true;
+            clearTimer();
+            schedule(0);
         };
 
-        refreshRecordsRef.current = poll;
-        poll();
-        const interval = setInterval(poll, 8000);
-        return () => clearInterval(interval);
-    }, [show, syncCode, activeChild, settleVerifiedOrder]);
+        const applyHistory = (records, ticketAtStart) => {
+            const { protectedFamily, settleVerifiedOrder } = latestPollState.current;
+            const childRecords = records.filter(record => record.childName === activeChild);
+            setExchangeRecords(previous => {
+                const merged = protectedFamily ? childRecords : mergeExchangeRecords(previous, childRecords);
+                const serialized = JSON.stringify(merged);
+                if (serialized === JSON.stringify(previous)) return previous;
+                try { storage.setItem(historyKey, serialized); } catch {}
+                return merged;
+            });
 
-    // 4. 单笔待核销单“超高频自适应极速轮询”（1.5秒刷新 + 屏幕焦点唤醒，接近实时响应）
-    React.useEffect(() => {
-        if (!show || !applyResult?.applyId || applyResult.isOffline) return;
-        const currentApplyId = applyResult.applyId;
-        let isCancelled = false;
+            const pending = childRecords.find(record => record.status === 'pending');
+            let nextTicket = null;
+            if (pending) {
+                nextTicket = {
+                    applyId: pending.id, verifyCode: pending.verifyCode, goldAmount: pending.goldAmount,
+                    cnyAmount: pending.cnyAmount, childName: activeChild, isOffline: false,
+                };
+            } else {
+                try {
+                    const cached = JSON.parse(storage.getItem(ticketKey) || 'null');
+                    if (cached?.applyId && (!cached.childName || cached.childName === activeChild)) {
+                        if (isStaleOrResolvedTicket(cached, activeChild, childRecords)) storage.removeItem(ticketKey);
+                        else nextTicket = { ...cached, childName: activeChild };
+                    }
+                } catch {}
+            }
+            setApplyResult(current => {
+                // A list response started before a new application must not replace it.
+                if (current !== ticketAtStart || JSON.stringify(current) === JSON.stringify(nextTicket)) return current;
+                return nextTicket;
+            });
+            for (const record of childRecords) {
+                if (record.status === 'verified') settleVerifiedOrder(record);
+            }
+        };
 
-        const checkActiveOrder = async () => {
+        const poll = async () => {
+            timer = null;
+            if (!visible() || request) return;
+            const { applyResult: ticket, fetchWithTimeout } = latestPollState.current;
+            const id = !refreshHistory && !ticket?.isOffline ? ticket?.applyId : null;
+            refreshHistory = false;
+            wakePending = false;
+            request = new AbortController();
+            const { signal } = request;
+            const query = id ? `order?id=${encodeURIComponent(id)}` : `status?code=${encodeURIComponent(effectiveCode)}`;
+
             try {
-                const resp = await fetchWithTimeout(
-                    `${EXCHANGE_WORKER_URL}/api/exchange/order?id=${encodeURIComponent(currentApplyId)}&_t=${Date.now()}`,
-                    {},
-                    3000
-                );
-                if (!resp.ok) return;
-                const data = await resp.json();
-                if (isCancelled) return;
-
-                if (data.ok && data.record) {
-                    if (data.record.status === 'verified') {
-                        settleVerifiedOrder(data.record);
-                        refreshRecords();
-                    } else if (['cancelled','expired'].includes(data.record.status)) {
-                        storage.removeItem(`app_offline_exchange_${activeChild}`);
-                        setApplyResult(null);
-                        showToast('info', data.record.status==='expired'?'该兑换申请已过期，未扣款。':'该兑换申请已被撤销。');
-                        refreshRecords();
-                    }
+                const response = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/${query}&_t=${Date.now()}`,
+                    { signal }, id ? 3000 : 4000);
+                if (signal.aborted || !visible()) return;
+                if (!response.ok) {
+                    if (id && response.status === 404) refreshHistory = true;
+                    return;
                 }
-            } catch (e) {
-                // 弱网或偶发超时静默跳过
+                const data = await response.json();
+                if (signal.aborted || !visible()) return;
+                if (!id) {
+                    if (Array.isArray(data.records)) applyHistory(data.records, ticket);
+                    return;
+                }
+
+                const { record } = data;
+                if (!data.ok || record?.id !== id || record.childName !== activeChild ||
+                    latestPollState.current.applyResult?.applyId !== id) return;
+
+                if (record.status === 'verified') {
+                    latestPollState.current.settleVerifiedOrder(record);
+                    wake(true);
+                } else if (record.status === 'cancelled' || record.status === 'expired') {
+                    try {
+                        const cached = JSON.parse(storage.getItem(ticketKey) || 'null');
+                        if (cached?.applyId === id) storage.removeItem(ticketKey);
+                    } catch {}
+                    setApplyResult(current => current?.applyId === id ? null : current);
+                    latestPollState.current.showToast('info', record.status === 'expired' ? '该兑换申请已过期，未扣款。' : '该兑换申请已被撤销。');
+                    wake(true);
+                }
+            } catch (error) {
+                if (id && error.code === 'NOT_FOUND') refreshHistory = true;
+            } finally {
+                request = null;
+                const current = latestPollState.current.applyResult;
+                schedule(wakePending ? 0 : current?.applyId && !current.isOffline ? 1500 : 8000);
             }
         };
 
-        // 立即发起一次检查
-        checkActiveOrder();
-        // 1.5 秒超高频轮询（当且仅当展示待核销二维码时激活，秒级感知）
-        const timer = setInterval(checkActiveOrder, 1500);
-
-        // 手机屏幕唤醒或切回主程序时，毫秒级即时拉取最新状态
-        const handleFocusOrVisible = () => {
-            if (document.visibilityState === 'visible') {
-                checkActiveOrder();
+        let wasVisible = visible();
+        const onVisibility = () => {
+            const isVisible = visible();
+            if (wasVisible === isVisible) return;
+            wasVisible = isVisible;
+            if (isVisible) wake();
+            else {
+                clearTimer();
+                request?.abort();
             }
         };
-        window.addEventListener('focus', handleFocusOrVisible);
-        document.addEventListener('visibilitychange', handleFocusOrVisible);
+        const hide = () => { pageHidden = true; onVisibility(); };
+        const showPage = () => { pageHidden = false; onVisibility(); };
+        refreshRecordsRef.current = wake;
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('pagehide', hide);
+        window.addEventListener('pageshow', showPage);
+        schedule(0);
 
         return () => {
-            isCancelled = true;
-            clearInterval(timer);
-            window.removeEventListener('focus', handleFocusOrVisible);
-            document.removeEventListener('visibilitychange', handleFocusOrVisible);
+            stopped = true;
+            clearTimer();
+            request?.abort();
+            refreshRecordsRef.current = null;
+            document.removeEventListener('visibilitychange', onVisibility);
+            window.removeEventListener('pagehide', hide);
+            window.removeEventListener('pageshow', showPage);
         };
-    }, [show, applyResult?.applyId, applyResult?.isOffline, activeChild, settleVerifiedOrder, refreshRecords]);
+    }, [show, syncCode, activeChild]);
+
+    React.useEffect(() => {
+        if (pendingOrderId) refreshRecordsRef.current?.();
+    }, [pendingOrderId]);
 
     // 3. 汇率核心换算
     const currentRate = rate?.rates?.USD || 0.14918;
@@ -579,17 +613,20 @@ export const ExchangePanel = ({
         setExchangeMode(mode);
     };
 
-    // 5. 纯离线高性能生成核销二维码 Data URL（彻底告别外部失效第三方服务）
-    React.useEffect(() => {
-        if (!applyResult || !applyResult.applyId || (applyResult.childName && applyResult.childName !== activeChild)) {
-            setQrCodeDataUrl('');
-            return;
+    const verifyUrl = (() => {
+        if (!show || !applyResult?.applyId || (applyResult.childName && applyResult.childName !== activeChild)) return '';
+        if (protectedFamily) {
+            return `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1`;
         }
-        let active = true;
         const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-        const verifyUrl = protectedFamily 
-            ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` 
-            : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${syncCode ? `&family=${encodeURIComponent(syncCode)}` : ''}${offlineParam}`;
+        return `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${syncCode ? `&family=${encodeURIComponent(syncCode)}` : ''}${offlineParam}`;
+    })();
+
+    // Re-encode only when the link changes, not on every poll response.
+    React.useEffect(() => {
+        setQrCodeDataUrl('');
+        if (!verifyUrl) return;
+        let active = true;
 
         QRCode.toDataURL(verifyUrl, {
             width: 320,
@@ -603,7 +640,7 @@ export const ExchangePanel = ({
         });
 
         return () => { active = false; };
-    }, [applyResult, activeChild, neededGold, targetCny, cnyPerGold, syncCode]);
+    }, [verifyUrl]);
 
     // 6. 7天走势图数据装配（确保手机端 100% 具备 7 个有效数据点）
     const displayHistory = React.useMemo(() => {
@@ -708,20 +745,7 @@ export const ExchangePanel = ({
                     return merged;
                 });
                 showToast('success', `🎉 申请已提交！请家长扫码或当面核销 ¥${Number(newRecord.cnyAmount).toFixed(2)} 元零花钱`);
-                // 刷新记录列表
-                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
-                    .then(r => r.json())
-                    .then(d => { 
-                        if (d.records) {
-                            const childRecords = d.records.filter(r => r.childName === activeChild);
-                            setExchangeRecords(prev => {
-                                const merged = mergeExchangeRecords(prev, childRecords);
-                                try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch(e) {}
-                                return merged;
-                            });
-                        } 
-                    })
-                    .catch(() => {});
+                refreshRecords();
             } else if (data.error && data.error.includes('未核销')) {
                 // 如果发现之前已有未核销单，直接拉取并呈现该单的二维码与核销码，避免报错和重复卡死
                 const statusResp = await fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000);
@@ -886,19 +910,7 @@ export const ExchangePanel = ({
             const data = await resp.json().catch(() => ({}));
             if (data.ok || (data.error && (data.error.includes('不存在') || data.error.includes('过期') || data.error.includes('已处理')))) {
                 clearLocal();
-                fetchWithTimeout(`${EXCHANGE_WORKER_URL}/api/exchange/status?code=${encodeURIComponent(effectiveCode)}&_t=${Date.now()}`, {}, 4000)
-                    .then(r => r.json())
-                    .then(d => { 
-                        if (d.records) {
-                            const childRecords = d.records.filter(r => r.childName === activeChild);
-                            setExchangeRecords(prev => {
-                                const merged = mergeExchangeRecords(prev, childRecords);
-                                try { storage.setItem(`app_exchange_records_history_${activeChild}`, JSON.stringify(merged)); } catch(e){}
-                                return merged;
-                            });
-                        } 
-                    })
-                    .catch(() => {});
+                refreshRecords();
             } else {
                 showToast('error', data.error || '撤销失败，请重试');
                 setApplying(false);
@@ -1109,10 +1121,6 @@ export const ExchangePanel = ({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    const offlineParam = applyResult.isOffline ? `&offline=1&code=${applyResult.verifyCode}` : '';
-                                                    const verifyUrl = protectedFamily 
-                                                        ? `${location.origin}/exchange-verify.html?family=${encodeURIComponent(syncCode)}&id=${encodeURIComponent(applyResult.applyId)}&secure=1` 
-                                                        : `${verificationPageUrl('exchange-verify.html')}?id=${applyResult.applyId}&child=${encodeURIComponent(applyResult.childName || activeChild)}&gold=${applyResult.goldAmount || neededGold}&cny=${applyResult.cnyAmount || targetCny}&rate=${(cnyPerGold * 100).toFixed(2)}${syncCode ? `&family=${encodeURIComponent(syncCode)}` : ''}${offlineParam}`;
                                                     if (navigator.clipboard) {
                                                         navigator.clipboard.writeText(verifyUrl);
                                                         showToast('success', '已复制核销链接，可直接粘贴发给家长微信！');

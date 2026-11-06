@@ -37,6 +37,8 @@ test('real exchange UI recovers lost application response; QR details come from 
     expect(await c.evaluate(()=>Object.keys(localStorage).some(k=>k.startsWith('app_offline_exchange')&&(localStorage.getItem(k)||'').includes('ex_local_')))).toBe(false);
     control.dropApply=false;await c.reload();await c.locator('button[title="兑换零花钱"]:visible').first().click();
     await expect(c.getByText(order.verifyCode,{exact:true}).first()).toBeVisible();
+    const qr=c.getByAltText('核销二维码',{exact:true});
+    await expect(qr).toBeVisible();
     await expect.poll(()=>c.evaluate(code=>localStorage.getItem(`daka_exchange_intent_v1:${code}:孩子`),f.code)).toBe(null);
     const p=await browser.newPage(),pc={dropVerify:true};await route(p,pc);
     await p.addInitScript(f=>localStorage.setItem(`daka_device_access_v1:parent:${f.code}`,JSON.stringify(f.parent)),f);
@@ -45,6 +47,9 @@ test('real exchange UI recovers lost application response; QR details come from 
     p.on('dialog',d=>d.accept(order.verifyCode));await p.locator('#confirmBtn').click();
     await expect(p.getByRole('status')).toContainText('未确认成功');pc.dropVerify=false;await p.reload();
     await expect(p.getByRole('status')).toContainText('核销成功');
+    await expect(qr).toHaveCount(0);
+    await expect.poll(()=>c.evaluate(()=>Object.entries(JSON.parse(window.storage.getItem('app_wheel_history')))
+        .filter(([key])=>key.includes('-EXCHANGE-')))).toEqual([[`孩子-EXCHANGE-${order.id}`,-500]]);
     await c.reload();await c.waitForFunction(()=>JSON.parse(window.storage?.getItem('app_wheel_history')||'{}')&&Object.keys(JSON.parse(window.storage.getItem('app_wheel_history')||'{}')).some(k=>k.includes('-EXCHANGE-')));
     expect(await c.evaluate(()=>Object.values(JSON.parse(window.storage.getItem('app_wheel_history'))).reduce((s,v)=>s+v,0))).toBe(1000);
     await c.evaluate(async()=>{const {commitDurable}=await import('/src/utils/storage.js');const h=JSON.parse(window.storage.getItem('app_wheel_history'));for(const k of Object.keys(h))if(k.includes('-EXCHANGE-'))delete h[k];commitDurable({app_wheel_history:JSON.stringify(h)});await window.storage.flush();});
