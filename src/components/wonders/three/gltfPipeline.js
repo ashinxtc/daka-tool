@@ -7,7 +7,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
  * 【时空营造司 · 工业级 3D GLTF/GLB 资产载入管线】
  * 
  * 核心功能：
- * 1. 自动配置 DRACO 解码器 (本地 /draco/ 目录，0KB 外部网络依赖，支持压缩模型秒开)
+ * 1. 使用展厅的本地 DRACO 解码器加载压缩模型。
  * 2. 异步载入外部 .glb / .gltf 文件并提供进度监控
  * 3. 支持前端拖拽或选择本地 .glb 文件并即时解析为三维场景
  * 4. 模型深度拓扑自适应：
@@ -23,7 +23,7 @@ let dracoLoaderInstance = null;
 export function getDracoLoader() {
     if (!dracoLoaderInstance) {
         dracoLoaderInstance = new DRACOLoader();
-        dracoLoaderInstance.setDecoderPath('/draco/');
+        dracoLoaderInstance.setDecoderPath('/wonder-assets/draco/');
         dracoLoaderInstance.setDecoderConfig({ type: 'js' });
     }
     return dracoLoaderInstance;

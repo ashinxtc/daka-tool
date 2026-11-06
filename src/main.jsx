@@ -94,7 +94,6 @@ import { ReadingTransitionModal } from './components/reading/ReadingTransitionMo
 import { HabitFloatingButton, HabitPavilionModal, PRESET_HABITS } from './components/habits';
 import { ParentGiftModal } from './components/modals/ParentGiftModal';
 import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
-import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
         // ===== Toast 系统已迁移至 src/components/common/Toast.jsx =====
 
@@ -573,7 +572,6 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
             const callDeepSeekAPIRef = React.useRef(null);
             const handleLaunchEvilWheelRef = React.useRef(null);
             const [showThemeModal, setShowThemeModal] = useState(false);
-            const [showWonderShowcase, setShowWonderShowcase] = useState(false);
 
             const [showEvilWheel, setShowEvilWheel] = useState(false);
             const [evilWheelSpinning, setEvilWheelSpinning] = useState(false);
@@ -1675,6 +1673,33 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
                 }
                 return dates;
             }, [viewMode, dates, calendarViewMonth]);
+
+            const calendarVisible = viewMode === 'calendar' || viewMode === 'week';
+            const calendarCheckins = checkins[activeChild];
+            const calendarJoinDate = useMemo(() => {
+                if (!calendarVisible) return null;
+                const createdDate = profiles.find(profile => profile.name === activeChild)?.createdDate;
+                if (createdDate) return createdDate;
+
+                // Legacy profiles may have no join date. Find the minimum once for the whole calendar.
+                let firstCheckin = null;
+                for (const records of Object.values(calendarCheckins || {})) {
+                    for (const date of Object.keys(records || {})) {
+                        if (firstCheckin === null || date < firstCheckin) firstCheckin = date;
+                    }
+                }
+                return firstCheckin;
+            }, [calendarVisible, profiles, activeChild, calendarCheckins]);
+            const calendarColumns = useMemo(() => {
+                if (!calendarVisible) return [];
+                const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+                return calendarDates.map(date => {
+                    const [year, month, day] = date.split('-').map(Number);
+                    const dayOfWeek = new Date(year, month - 1, day).getDay();
+                    return { date, label: `${month}/${day}`, weekDayName: weekDays[dayOfWeek],
+                        isWeekend: dayOfWeek === 0 || dayOfWeek === 6 };
+                });
+            }, [calendarVisible, calendarDates]);
 
             const sortedTasks = useMemo(() => {
                 const currentTasks = [...ongoingTasks]; // 【修改】只拿进行中的任务去渲染首页卡片
@@ -10576,7 +10601,6 @@ ${context}
                                       <button onClick={() => { setStatsOpenMode(null); setShowStats(true); }} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="学习数据统计"><span className="text-base filter drop-shadow-sm">📊</span></button>
                                       <button onClick={() => setShowHomeworkExamModal(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform active:scale-95" title="作业与考试"><span className="text-base filter drop-shadow-sm">📝</span></button>
                                       <div className="w-px h-4 bg-white/20 mx-0.5"></div>
-                                      {/* WonderShowcase hidden */}
                                       <button onClick={() => setShowThemeModal(true)} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="切换主题"><span className="text-base filter drop-shadow-sm">🎨</span></button>
                                       <button onClick={handleOpenSettings} className="p-1.5 rounded-xl hover:bg-white/20 transition-colors transition-transform" title="设置"><span className="text-base filter drop-shadow-sm">⚙️</span></button>
                                    </div>
@@ -10745,16 +10769,20 @@ ${context}
                     </div>
                     </div>
 
-                    {(viewMode === 'calendar' || viewMode === 'week') ? (() => {
+                    {calendarVisible ? (() => {
                     const todayDateKey = getLocalDateKey(0);
                     const calendarOngoingTasks = ongoingTasks.filter(isCalendarTask);
                     const scheduledTodayList = calendarOngoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
-                    const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
+                    const completedTodayCount = scheduledTodayList.filter(t => calendarCheckins?.[t.id]?.[todayDateKey] !== undefined).length;
                     const globalTodayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
                     const isTodayInCalendar = calendarDates.includes(todayDateKey);
+                    const columns = calendarColumns.map(column => ({ ...column, isToday: column.date === todayDateKey }));
 
                     // 方案 B：精确计算能量液体上升高度（每次严格升一格，最后一格完成后连同日期格一起满上）
                     const totalScheduled = scheduledTodayList.length;
+                    const comboProgressPct = totalScheduled > 0 ? Math.min(100, Math.round((completedTodayCount / totalScheduled) * 100)) : 0;
+                    const nextComboBonus = calculateComboBonus(completedTodayCount + 1, gamificationConfig);
+                    const currentComboBonus = calculateComboBonus(completedTodayCount, gamificationConfig);
                     let liquidFillHeightStyle = '0%';
                     if (totalScheduled > 0 && completedTodayCount > 0) {
                       if (completedTodayCount >= totalScheduled) {
@@ -10819,35 +10847,12 @@ ${context}
                         ? (isLowPerf ? 'bg-slate-900 text-white border-r border-slate-700 shadow-[2px_0_8px_rgba(0,0,0,0.5)]' : 'bg-slate-900/80 backdrop-blur-md text-white/80 border-r border-white/15 shadow-[2px_0_8px_rgba(0,0,0,0.3)]') 
                         : 'bg-gray-50 text-gray-400 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]'
                     }`}>任务名称</th>
-                    {calendarDates.map(date => {
-                                    const currentProfile = profiles.find(p => p.name === activeChild);
-                                    const joinDate = currentProfile?.createdDate || (() => {
-                                      const allDates = [];
-                                      Object.values(checkins[activeChild] || {}).forEach(dates => allDates.push(...Object.keys(dates)));
-                                      return allDates.length > 0 ? allDates.sort()[0] : '9999-99-99';
-                                    })();
-                                    const dateParts = date.split('-');
-                                    const d = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
-                                    const dayOfWeek = d.getDay();
-                                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                                    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-                                    const weekDayName = weekDays[dayOfWeek];
-                                    
-                                    const todayStr = getLocalDateKey(0);
-                                    const isToday = date === todayStr;
-                                    const isPast = date < todayStr;
-                                    const calendarChildTasks = ongoingTasks.filter(isCalendarTask);
-                                    const hasAnyCheckin = calendarChildTasks.some(t => checkins[activeChild]?.[t.id]?.[date] !== undefined);
+                    {columns.map(({date, label, weekDayName, isWeekend, isToday}) => {
                                     const isExempted = exemptedDays[activeChild]?.includes(date);
-                                    const isMissed = isPast && date >= joinDate && !hasAnyCheckin && !isExempted;
+                                    const isMissed = date < todayDateKey && calendarJoinDate !== null && date >= calendarJoinDate && !isExempted &&
+                                        !calendarOngoingTasks.some(task => calendarCheckins?.[task.id]?.[date] !== undefined);
 
-                                    const todayScheduled = calendarChildTasks.filter(t => (!t.startDate || date >= t.startDate) && (!t.deadline || date <= t.deadline));
-                                    const todayCompleted = todayScheduled.filter(t => checkins[activeChild]?.[t.id]?.[date] !== undefined).length;
-                                    const todayTotal = todayScheduled.length;
-                                    const comboProgressPct = todayTotal > 0 ? Math.min(100, Math.round((todayCompleted / todayTotal) * 100)) : 0;
-                                    const comboInfo = isToday ? globalTodayComboInfo : getComboInfo(todayCompleted, todayTotal);
-                                    const nextComboBonus = calculateComboBonus(todayCompleted + 1, gamificationConfig);
-                                    const currentComboBonus = calculateComboBonus(todayCompleted, gamificationConfig);
+                                    const comboInfo = globalTodayComboInfo;
 
                                     return (
                                       <th 
@@ -10880,7 +10885,7 @@ ${context}
                                               className={`text-[10px] font-black tracking-tight whitespace-nowrap animate-pulse ${comboInfo.textColor}`}
                                               style={{ textShadow: comboInfo.textShadow }}
                                             >
-                                              {comboInfo.icon} {todayCompleted > 0 ? `${todayCompleted}连击` : '连胜'}
+                                              {comboInfo.icon} {completedTodayCount > 0 ? `${completedTodayCount}连击` : '连胜'}
                                             </span>
                                           </div>
                                         )}
@@ -10899,7 +10904,7 @@ ${context}
                                                 <span>今日连击 · {comboInfo.title}</span>
                                               </div>
                                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
-                                                {todayCompleted}/{todayTotal} 项
+                                                {completedTodayCount}/{totalScheduled} 项
                                               </span>
                                             </div>
                                             
@@ -10944,7 +10949,7 @@ ${context}
                                                 ? (hasActiveBg ? 'text-rose-200 font-black' : 'text-rose-600 font-black')
                                                 : (hasActiveBg ? 'text-white/85 font-bold' : 'text-gray-700 font-bold')
                                           }`}>
-                                            {d.getMonth() + 1}/{d.getDate()}
+                                            {label}
                                           </span>
                                         </div>
                                       </th>
@@ -10955,14 +10960,9 @@ ${context}
                               <tbody>
                                 {(() => {
                                   const weekRange = getCurrentWeekRange();
-                                  const todayDateKey = getLocalDateKey(0);
-                                  const calendarOngoingTasks = ongoingTasks.filter(isCalendarTask);
-                                  const scheduledTodayList = calendarOngoingTasks.filter(t => (!t.startDate || todayDateKey >= t.startDate) && (!t.deadline || todayDateKey <= t.deadline));
-                                  const completedTodayCount = scheduledTodayList.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] !== undefined).length;
-                                  const todayComboInfo = getComboInfo(completedTodayCount, scheduledTodayList.length);
+                                  const todayComboInfo = globalTodayComboInfo;
 
                                   // 方案 A：未完成任务在上方，已完成任务自动下沉至表格底部
-                                  const isTodayInCalendar = calendarDates.includes(todayDateKey);
                                   let calendarOrderedTasks;
                                   if (isTodayInCalendar) {
                                     const pendingTasks = calendarOngoingTasks.filter(t => checkins[activeChild]?.[t.id]?.[todayDateKey] === undefined);
@@ -10987,10 +10987,11 @@ ${context}
                                     const rowTypeStyle = hasActiveBg
                                       ? (freq === 'daily_must' ? 'border-l-4 border-l-red-400 bg-red-500/10' : freq === 'weekly_optional' ? 'border-l-4 border-l-sky-400 bg-sky-500/10' : 'border-l-4 border-l-amber-300/60 bg-amber-500/5')
                                       : (freq === 'daily_must' ? 'border-l-4 border-l-red-400 bg-red-50/20' : freq === 'weekly_optional' ? 'border-l-4 border-l-sky-400 bg-sky-50/20' : 'border-l-4 border-l-amber-200');
-                                    const taskRecordCount = Object.keys(checkins[activeChild]?.[task.id] || {}).length;
+                                    const record = calendarCheckins?.[task.id] || {};
+                                    const recordDates = Object.keys(record);
+                                    const taskRecordCount = recordDates.length;
                                     const taskTarget = task.targetCount || 1;
-                                    const record = checkins[activeChild]?.[task.id] || {};
-                                    const weekCheckins = Object.keys(record).filter(d => d >= weekRange.start && d <= weekRange.end).length;
+                                    const weekCheckins = recordDates.filter(d => d >= weekRange.start && d <= weekRange.end).length;
                                     const weeklyTarget = task.weeklyTargetCount ?? 3;
                                     const progressPct = freq === 'daily_must' ? Math.min(100, (weekCheckins / 7) * 100) : freq === 'weekly_optional' ? Math.min(100, (weekCheckins / weeklyTarget) * 100) : Math.min(100, (taskRecordCount / taskTarget) * 100);
                                     const barTrackCls = hasActiveBg
@@ -11013,15 +11014,10 @@ ${context}
                                         </div>
                                         <span className={`absolute -top-1 -right-1 z-20 min-w-[18px] h-4 px-1.5 rounded-full text-[9px] font-bold border-2 border-white shadow-sm flex items-center justify-center ${bubbleCls}`}>{bubbleContent}</span>
                                       </td>
-                                      {calendarDates.map(date => {
-                                      const dateParts = date.split('-');
-                                      const d = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
-                                      const dayOfWeek = d.getDay();
-                                      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                                      const rec = checkins[activeChild]?.[task.id]?.[date];
+                                      {columns.map(({date, isWeekend, isToday}) => {
+                                      const rec = record[date];
                                       const isChecked = rec !== undefined;
                                       const isSkipped = rec === '免';
-                                      const isToday = getLocalDateKey(0) === date;
                                       const isBeforeStart = task.startDate && date < task.startDate;
                                       const isAfterEnd = task.deadline && date > task.deadline;
                                       const needBreathe = freq === 'daily_must' && isToday && !isChecked && !isBeforeStart && !isAfterEnd;
@@ -12193,12 +12189,6 @@ ${context}
 						  setShowSettings(true);
 					  }}
 				  />				  
-
-				  {/* 【时空营造司】奇迹部件检视展厅 */}
-				  <WonderShowcaseModal
-					  isOpen={showWonderShowcase}
-					  onClose={() => setShowWonderShowcase(false)}
-				  />
 
                   <div className="fixed bottom-0 w-full bg-white/60 backdrop-blur-md border-t border-white/20 p-2 text-center text-[12px] text-Red-400 z-10">
                      张恒与&张又兮出品&nbsp; &nbsp; “不怕同学是学霸，就怕学霸放寒假“系列之2026年超强寒假学习打卡大计划 V2.8&nbsp; &nbsp; &nbsp; &nbsp; 灵感创意、产品小经理：张恒与&张又兮小朋友&nbsp; &nbsp; &nbsp; 大助理：爸爸&nbsp; &nbsp; &nbsp; Copyright ©2026&nbsp; 张恒与&张又兮（软件著作权注册中）&nbsp; &nbsp; &nbsp;  All right reserved.

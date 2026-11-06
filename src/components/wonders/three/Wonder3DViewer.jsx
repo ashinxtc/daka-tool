@@ -594,7 +594,7 @@ export const Wonder3DViewer = ({
                             zhouyuan_temple: 'zhouyuan_temple'
                         };
                         const bundledModel = bundledMap[wonderId] || 'banpo_f1_hall';
-                        const bundledUrl = `/models/${bundledModel}.glb`;
+                        const bundledUrl = `/wonder-assets/models/${bundledModel}.glb`;
                         gltf = await loadGLTFFromUrl(bundledUrl, (p) => {
                             if (!isCancelled) setLoadingProgress(p);
                         });
