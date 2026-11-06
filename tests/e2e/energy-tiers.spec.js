@@ -75,7 +75,11 @@ test('economy mounts no animated background in all themes and retains blur and b
 });
 test('balanced matrix pauses and caches glyphs while full and compatibility keep baseline drawing',async({page})=>{
     await load(page);
-    await page.evaluate(()=>document.fonts.ready);
+    await page.evaluate(async()=>{
+        // Canvas may not have requested this font yet when fonts.ready first resolves.
+        await document.fonts.load('30px "OracleBone"','甲');
+        await document.fonts.ready;
+    });
     // install() still advances with real time. Freeze it before measuring a full
     // animation phase, then remount after fonts settle so CI loading time cannot
     // consume or restart the sampled motion window. Keep the frame bounds strict.
@@ -89,6 +93,62 @@ test('balanced matrix pauses and caches glyphs while full and compatibility keep
     await bg(page,null);expect((await sample(page,1000)).raf).toBe(0);
     await mode(page,'balanced');expect((await sample(page,1000)).raf).toBe(0);
 });
+test('oracle sands stop drawing after settling and wake for input and resize',async({page})=>{
+    await load(page,{device_idle_energy_v1:'false'});
+    await page.evaluate(()=>document.fonts.load('30px "OracleBone"','甲'));
+    await page.clock.pauseAt(new Date('2026-10-16T12:01:00+08:00'));
+    await bg(page,'bg_oraclesands');
+    expect((await sample(page,4000)).paint).toBeGreaterThan(0);
+    expect(await sample(page,800)).toMatchObject({paint:0,raf:0});
+
+    await page.evaluate(()=>window.dispatchEvent(new MouseEvent('mousemove',{clientX:160,clientY:240})));
+    expect((await sample(page,300)).paint).toBeGreaterThan(0);
+    await sample(page,3000);
+    expect(await sample(page,800)).toMatchObject({paint:0,raf:0});
+
+    await page.setViewportSize({width:480,height:320});
+    await expect.poll(()=>page.locator('.atmosphere-layer canvas').getAttribute('width')).toBe('480');
+    expect((await sample(page,300)).paint).toBeGreaterThan(0);
+});
+test('balanced galaxy draws at a reduced cadence while full quality keeps animating',async({page})=>{
+    await load(page,{device_idle_energy_v1:'false'});
+    await page.clock.pauseAt(new Date('2026-10-16T12:01:00+08:00'));
+    await bg(page,'bg_galaxy');
+    const balanced=await sample(page,1000);
+    expect(balanced.paint).toBeGreaterThanOrEqual(15);
+    expect(balanced.paint).toBeLessThanOrEqual(24);
+    expect(balanced.raf).toBe(balanced.paint);
+    await mode(page,'full');
+    expect((await sample(page,1000)).paint).toBeGreaterThan(balanced.paint);
+});
+
+test('fireworks rest between shows, relaunch automatically and wake on a tap',async({page})=>{
+    await load(page,{device_idle_energy_v1:'false'});
+    await page.clock.pauseAt(new Date('2026-10-16T12:01:00+08:00'));
+    await bg(page,'bg_firework');
+    expect((await sample(page,400)).paint).toBeGreaterThan(0);
+    const waitForQuiet=async()=>{
+        for(let i=0;i<20;i++){
+            const counts=await sample(page,500);
+            if(counts.raf===0){expect(counts.paint).toBe(0);return;}
+        }
+        throw new Error('Fireworks never stopped drawing between launches');
+    };
+    await waitForQuiet();
+    await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));
+    expect(await sample(page,4000)).toMatchObject({paint:0,raf:0});
+    await page.evaluate(()=>window.dispatchEvent(new Event('pageshow')));
+    expect((await sample(page,2600)).paint).toBeGreaterThan(0);
+    await waitForQuiet();
+    await page.evaluate(()=>document.body.dispatchEvent(new PointerEvent('pointerdown',{
+        bubbles:true,pointerType:'touch',clientX:160,clientY:180,
+    })));
+    expect((await sample(page,160)).paint).toBeGreaterThan(0);
+    await waitForQuiet();
+    await bg(page,null);
+    expect(await sample(page,4000)).toMatchObject({paint:0,raf:0});
+});
+
 test('idle pauses CSS pseudo elements and Canvas; first click works; changing background wakes and disabling restores',async({page})=>{
     await load(page);
     // Keep the feedback button in view: an automated smooth scroll is real activity.
@@ -161,4 +221,40 @@ test('real settings migrate, persist locally, preserve equipped background and r
     await page.screenshot({path:info.outputPath('energy-settings.png')});
     await page.reload();await expect(page.locator('.atmosphere-layer')).toHaveAttribute('data-static','true');
     expect(await page.evaluate(()=>localStorage.getItem('device_graphics_quality_v1'))).toBe('economy');
+});
+
+test('homepage mounts only the current header and loads a static pet in economy mode',async({page})=>{
+    const animatedRequests=[];
+    await page.route('**/*',route=>{
+        const url=new URL(route.request().url());
+        if(url.pathname.endsWith('/lizard-idle.webp')) animatedRequests.push(url.pathname);
+        return url.hostname==='127.0.0.1'?route.continue():route.abort();
+    });
+    await page.setViewportSize({width:390,height:844});
+    await page.addInitScript(()=>{
+        const data={app_profiles_v1:[{id:'c1',name:'孩子',theme:'rose'}],app_tasks_v2:{孩子:[]},
+            app_active_pet_v1:{孩子:'lizard'},app_owned_pets_v1:{孩子:['lizard']},app_notified_levels:{孩子:1}};
+        for(const [key,value] of Object.entries(data)) localStorage.setItem(key,JSON.stringify(value));
+        localStorage.setItem('device_graphics_quality_v1','economy');
+    });
+    await page.goto('/');
+    const header=page.locator('header.app-header');
+    const settings=header.getByTitle('设置',{exact:true});
+    await expect(settings).toHaveCount(1);
+    await expect(settings).toBeVisible();
+    await expect(header.locator('img[src*="lizard"]')).toHaveCount(0);
+
+    await page.setViewportSize({width:1180,height:820});
+    const thumbnail=header.locator('img[src$="/lizard-thumb.png"]');
+    await expect(thumbnail).toBeVisible();
+    await expect(settings).toHaveCount(1);
+    expect(animatedRequests).toEqual([]);
+
+    await settings.click();
+    await page.getByRole('button',{name:'💾 数据',exact:true}).click();
+    await page.getByRole('button',{name:/^推荐均衡/}).click();
+    await expect(header.locator('img[src$="/lizard-idle.webp"]')).toBeAttached();
+    await page.setViewportSize({width:820,height:1180});
+    await expect(header.locator('img[src*="lizard"]')).toHaveCount(0);
+    await expect(settings).toHaveCount(1);
 });

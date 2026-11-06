@@ -4,8 +4,24 @@ import React, { useState, useEffect } from 'react';
 export const TimeDisplay = React.memo(({ headerTheme, variant, holiday, weather, userCity }) => {
     const [now, setNow] = useState(() => new Date());
     useEffect(() => {
-        const timer = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(timer);
+        let timer;
+        const pause = () => clearInterval(timer);
+        const refresh = () => {
+            pause();
+            if (document.visibilityState === 'hidden') return;
+            setNow(new Date());
+            timer = setInterval(() => setNow(new Date()), 1000);
+        };
+        refresh();
+        document.addEventListener('visibilitychange', refresh);
+        window.addEventListener('pagehide', pause);
+        window.addEventListener('pageshow', refresh);
+        return () => {
+            pause();
+            document.removeEventListener('visibilitychange', refresh);
+            window.removeEventListener('pagehide', pause);
+            window.removeEventListener('pageshow', refresh);
+        };
     }, []);
 
     const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });

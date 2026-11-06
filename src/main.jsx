@@ -300,6 +300,19 @@ import { WonderShowcaseModal } from './components/wonders/WonderShowcaseModal';
 
         const App = () => {
             const { isLowPerf } = React.useContext(PerformanceContext);
+            const [desktopHeader, setDesktopHeader] = useState(() => window.matchMedia('(min-width: 64rem)').matches);
+            useEffect(() => {
+                // Match Tailwind's lg breakpoint so hidden layouts never mount.
+                const media = window.matchMedia('(min-width: 64rem)');
+                const refresh = () => setDesktopHeader(media.matches);
+                if (media.addEventListener) media.addEventListener('change', refresh);
+                else media.addListener(refresh);
+                refresh();
+                return () => {
+                    if (media.removeEventListener) media.removeEventListener('change', refresh);
+                    else media.removeListener(refresh);
+                };
+            }, []);
             // ===== 多次打卡辅助函数 (Phase 2) — var declarations for hoisting =====
             
 
@@ -10409,7 +10422,7 @@ ${context}
                             {/* 容器 */}
                             <div className="app-header-content relative z-10 max-w-[1600px] mx-auto px-4 py-2">
                               {/* ===== Mobile: 两行紧凑布局 ===== */}
-                              <div className="flex flex-col lg:hidden w-full gap-1.5 py-1">
+                              {!desktopHeader && <div className="flex flex-col lg:hidden w-full gap-1.5 py-1">
                                 {/* Row 1: 天气 + 时间 + 设置 */}
                                 <div className="grid grid-cols-[auto_1fr_auto] items-center w-full">
                                   <span className="flex items-center gap-1 text-xs text-white/90 flex-shrink-0 drop-shadow-xs">
@@ -10468,9 +10481,9 @@ ${context}
                                     </div>
                                   </div>
                                 </div>
-                              </div>
+                              </div>}
                               {/* ===== Desktop: 3列网格布局 ===== */}
-                              <div className="hidden lg:grid lg:grid-cols-[1fr_auto_1fr] items-center gap-4">
+                              {desktopHeader && <div className="hidden lg:grid lg:grid-cols-[1fr_auto_1fr] items-center gap-4">
                                 
                                 {/* 左侧：用户卡片 (保持不变) */}
                                 <div className="w-full min-w-0 overflow-x-auto no-scrollbar order-2 lg:order-1 lg:justify-self-start py-2">
@@ -10597,7 +10610,7 @@ ${context}
                                       <div className="flex items-center gap-0.5 cursor-pointer hover:bg-white/10 px-1.5 py-1 rounded transition-colors" onClick={() => setShowStarHistory(true)}><span className="text-xs">⭐</span><span className="text-xs font-black text-yellow-100">{totalStars}</span></div>
                                    </div>
                                 </div>
-                              </div>
+                              </div>}
                             </div>
                         </header>
                       );

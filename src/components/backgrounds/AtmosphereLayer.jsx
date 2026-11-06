@@ -8,25 +8,18 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         const GalaxyEffect = ({ isActive = true, isLowPerf = false }) => {
             const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
-            const animationRef = useRef(null);
 
             useEffect(() => {
-                // 如果未激活，不启动动画
-                if (!isActive) {
-                    if (animationRef.current) {
-                        cancelAnimationFrame(animationRef.current);
-                        animationRef.current = null;
-                    }
-                    return;
-                }
-
                 const canvas = canvasRef.current;
+                if (!isActive || !canvas) return;
                 const ctx = canvas.getContext('2d');
+                if (!ctx) return;
                 let width = window.innerWidth;
                 let height = window.innerHeight;
                 let stars = [];
                 let animationFrameId;
-                let lastDrawTime = 0;
+                let lastDrawTime = null;
+                const frameDelay = isLowPerf ? 50 : isBalanced ? 1000 / 24 : 0;
 
                 canvas.width = width;
                 canvas.height = height;
@@ -40,36 +33,28 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                             x: Math.random() * width,
                             y: Math.random() * height,
                             radius: Math.random() * 1.5,
-                            alpha: Math.random(),
+                            phase: Math.random() * Math.PI * 2,
+                            twinkle: 0.0002 + Math.random() * 0.0004,
                             speed: Math.random() * 0.05 + 0.05 // 极慢的漂浮感
                         });
                     }
                 };
 
-                const draw = (timestamp) => {
-                    animationFrameId = requestAnimationFrame(draw);
-                    if (isLowPerf && timestamp && timestamp - lastDrawTime < 33) {
-                        return; // 低性能模式锁定 30 FPS，平稳节约设备算力
-                    }
-                    lastDrawTime = timestamp || 0;
-
+                const draw = timestamp => {
+                    const step = lastDrawTime === null ? 0 : (timestamp - lastDrawTime) / (1000 / 60);
+                    lastDrawTime = timestamp;
                     ctx.clearRect(0, 0, width, height);
-                    
-                    // 绘制星空
-                    stars.forEach(star => {
+                    ctx.fillStyle = '#fff';
+                    for (const star of stars) {
+                        star.y -= star.speed * step;
+                        if (star.y < 0) star.y = height + star.y % height;
+                        ctx.globalAlpha = 0.5 + 0.4 * Math.sin(timestamp * star.twinkle + star.phase);
                         ctx.beginPath();
                         ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
                         ctx.fill();
-                        
-                        // 简单的闪烁和移动逻辑
-                        star.alpha += (Math.random() - 0.5) * 0.02;
-                        if (star.alpha < 0) star.alpha = 0;
-                        if (star.alpha > 1) star.alpha = 1;
-                        
-                        star.y -= star.speed; // 缓慢向上漂浮
-                        if (star.y < 0) star.y = height; // 循环
-                    });
+                    }
+                    ctx.globalAlpha = 1;
+                    animationFrameId = requestAnimationFrame(draw, frameDelay);
                 };
 
                 const handleResize = () => {
@@ -814,184 +799,133 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         const MatrixOracleSands = ({ isActive = true, isLowPerf = false }) => {
             const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
-            const animationRef = useRef(null);
-
-            // 预设字符集
-            const ORACLE_CHARS = "之人刀少目土日云六左向白甲旦不止匕上鼻木月兵七又火乙昏步比大下舌禾星戈八南合丙正才保并小耳山米辰武九安豹册昌辰臭帝家雷旅娘明牛品".split("");
 
             useEffect(() => {
-                // 如果未激活，不启动动画
-                if (!isActive) {
-                    if (animationRef.current) {
-                        cancelAnimationFrame(animationRef.current);
-                        animationRef.current = null;
-                    }
-                    return;
-                }
-
                 const canvas = canvasRef.current;
-                if (!canvas) return;
+                if (!isActive || !canvas) return;
                 const ctx = canvas.getContext('2d');
+                if (!ctx) return;
 
-                // --- 配置参数 ---
-                const CONFIG = {
-                    font: isLowPerf ? '34px "OracleBone", sans-serif' : '30px "OracleBone", sans-serif',
-                    scale: 1,
-                    spacing: isLowPerf ? 68 : isBalanced ? 50 : 40, // 低性能模式以更舒缓的间距排布字符，节约 65% 计算负载，1:1 保留点金成石互动
-                    // 颜色配置
-                    baseColor: '#8c7853',   // 初始颜色：生锈的青铜 (暗淡但可见)
-                    activeColor: '#ffdd00', // 激活颜色：耀眼的赤金 (高亮)
-                    mouseRadius: 150        // 鼠标影响范围
-                };
-
-                let animationId;
+                const chars = '之人刀少目土日云六左向白甲旦不止匕上鼻木月兵七又火乙昏步比大下舌禾星戈八南合丙正才保并小耳山米辰武九安豹册昌辰臭帝家雷旅娘明牛品';
+                const spacing = isLowPerf ? 68 : isBalanced ? 50 : 40;
+                const radius = 150;
+                const baseColor = '#8c7853';
+                const activeColor = '#ffdd00';
+                const glyphs = createGlyphCache(document);
+                const admitFrame = createFrameGate(isLowPerf || isBalanced ? 30 : 0);
+                let width, height;
                 let shapes = [];
-                let width = window.innerWidth;
-                let height = window.innerHeight;
+                let frame = null;
+                let lastFrame = null;
+                let input = null;
+                let disposed = false;
 
-                const mouse = { x: width / 2, y: height / 2 };
-
-                // --- 辅助函数：颜色插值 (Lerp) ---
-                // 将 hex 颜色转换为 rgb 并混合
-                const hexToRgb = (hex) => {
-                    const bigint = parseInt(hex.slice(1), 16);
-                    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+                const schedule = () => {
+                    if (frame === null) frame = requestAnimationFrame(draw);
                 };
-
-                const baseRgb = hexToRgb(CONFIG.baseColor);
-                const activeRgb = hexToRgb(CONFIG.activeColor);
-
-                const getBlendedColor = (energy) => {
-                    // energy: 0.0 ~ 1.0
-                    const r = Math.round(baseRgb[0] + (activeRgb[0] - baseRgb[0]) * energy);
-                    const g = Math.round(baseRgb[1] + (activeRgb[1] - baseRgb[1]) * energy);
-                    const b = Math.round(baseRgb[2] + (activeRgb[2] - baseRgb[2]) * energy);
-                    return `rgb(${r}, ${g}, ${b})`;
-                };
-
-                // --- 形状类 ---
-                class Shape {
-                    constructor(x, y, i) {
-                        this.x = Math.random() * width; // 随机出生
-                        this.y = Math.random() * height;
-                        this.tx = x; // 目标位置
-                        this.ty = y;
-                        this.index = i;
-                        this.char = ORACLE_CHARS[Math.floor(Math.random() * ORACLE_CHARS.length)];
-
-                        const size = 20 + Math.random() * 20;
-                        this.font = `${size}px "OracleBone"`;
-
-                        // 能量值：0 = 青铜，1 = 赤金
-                        this.energy = 0;
+                const draw = timestamp => {
+                    frame = null;
+                    const admitted = admitFrame(timestamp);
+                    if (lastFrame !== null && !admitted) {
+                        schedule();
+                        return;
                     }
-
-                    update() {
-                        // 1. 飞入逻辑 (缓动追逐)
-                        const dx = this.tx - this.x;
-                        const dy = this.ty - this.y;
-                        this.x += dx * 0.05;
-                        this.y += dy * 0.05;
-
-                        // 2. 鼠标交互 + 能量注入
-                        const mouseDx = mouse.x - this.x;
-                        const mouseDy = mouse.y - this.y;
-                        const dist = Math.sqrt(mouseDx * mouseDx + mouseDy * mouseDy);
-
-                        if (dist < CONFIG.mouseRadius) {
-                            const angle = Math.atan2(mouseDy, mouseDx);
-                            const force = (CONFIG.mouseRadius - dist) / CONFIG.mouseRadius;
-                            const push = force * 20;
-
-                            this.x -= Math.cos(angle) * push;
-                            this.y -= Math.sin(angle) * push;
-
-                            // 【关键】被推开瞬间，能量瞬间拉满
-                            // force 越大（离鼠标越近），能量越强
-                            this.energy = Math.max(this.energy, force);
+                    const step = lastFrame === null ? 1 : Math.min(3, (timestamp - lastFrame) / (1000 / 60));
+                    const decay = 0.95 ** step;
+                    let moving = false;
+                    for (const shape of shapes) {
+                        shape.x = shape.tx + (shape.x - shape.tx) * decay;
+                        shape.y = shape.ty + (shape.y - shape.ty) * decay;
+                        // Consume each input once so a stationary pointer does not keep the effect alive.
+                        if (input) {
+                            const dx = input.x - shape.x;
+                            const dy = input.y - shape.y;
+                            const distance = Math.hypot(dx, dy);
+                            if (distance < radius) {
+                                const force = 1 - distance / radius;
+                                const angle = Math.atan2(dy, dx);
+                                shape.x -= Math.cos(angle) * force * 20;
+                                shape.y -= Math.sin(angle) * force * 20;
+                                shape.energy = Math.max(shape.energy, force);
+                            }
                         }
-
-                        // 3. 能量自然衰减 (模拟冷却)
-                        // 每一帧衰减 5%，让颜色慢慢变回青铜
-                        this.energy *= 0.95;
-                        if (this.energy < 0.01) this.energy = 0;
+                        shape.energy *= decay;
+                        if (shape.energy < 0.01) shape.energy = 0;
+                        if (Math.abs(shape.x - shape.tx) < 0.25) shape.x = shape.tx;
+                        if (Math.abs(shape.y - shape.ty) < 0.25) shape.y = shape.ty;
+                        if (shape.energy || shape.x !== shape.tx || shape.y !== shape.ty) moving = true;
                     }
+                    input = null;
 
-                    draw(context) {
-                        // 根据当前能量值计算颜色
-                        context.fillStyle = getBlendedColor(this.energy);
-
-                        // 如果能量很高，额外加一个发光效果（低性能模式略过阴影模糊）
-                        if (!isLowPerf && this.energy > 0.5) {
-                            context.shadowBlur = 10 * this.energy;
-                            context.shadowColor = CONFIG.activeColor;
-                        } else {
-                            context.shadowBlur = 0;
-                        }
-
-                        context.font = this.font;
-                        context.textAlign = 'center';
-                        context.textBaseline = 'middle';
-                        context.fillText(this.char, this.x, this.y);
-                    }
-                }
-
-                // --- 初始化与循环 ---
-                const init = () => {
-                    width = window.innerWidth;
-                    height = window.innerHeight;
-                    canvas.width = width;
-                    canvas.height = height;
-
-                    shapes = [];
-                    const cols = Math.floor(width / CONFIG.spacing);
-                    const rows = Math.floor(height / CONFIG.spacing);
-
-                    let index = 0;
-                    for (let r = 0; r < rows; r++) {
-                        for (let c = 0; c < cols; c++) {
-                            const x = (c * CONFIG.spacing) + (width - cols * CONFIG.spacing) / 2;
-                            const y = (r * CONFIG.spacing) + (height - rows * CONFIG.spacing) / 2;
-                            shapes.push(new Shape(x, y, index++));
-                        }
-                    }
-                };
-
-                let lastAnimateTime = 0;
-                const animate = (timestamp) => {
-                    animationId = requestAnimationFrame(animate);
-                    animationRef.current = animationId;
-                    if (isLowPerf && timestamp && timestamp - lastAnimateTime < 33) {
-                        return; // 低性能模式限制 30 FPS 刷新
-                    }
-                    lastAnimateTime = timestamp || 0;
-
-                    // 半透明拖尾
-                    ctx.fillStyle = 'rgba(13, 13, 13, 0.1)';
+                    // Clear the remaining trails on the last frame, then leave the canvas untouched.
+                    ctx.fillStyle = moving && lastFrame !== null ? `rgba(13, 13, 13, ${1 - 0.9 ** step})` : '#0d0d0d';
                     ctx.fillRect(0, 0, width, height);
-
-                    shapes.forEach(shape => {
-                        shape.update();
-                        shape.draw(ctx);
-                    });
+                    for (const { char, font, x, y, energy } of shapes) {
+                        if (energy === 0) {
+                            glyphs.draw(ctx, char, font, baseColor, x, y);
+                            continue;
+                        }
+                        ctx.fillStyle = `rgb(${Math.round(140 + 115 * energy)}, ${Math.round(120 + 101 * energy)}, ${Math.round(83 - 83 * energy)})`;
+                        ctx.shadowBlur = !isLowPerf && energy > 0.5 ? 10 * energy : 0;
+                        ctx.shadowColor = activeColor;
+                        ctx.font = font;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(char, x, y);
+                        ctx.shadowBlur = 0;
+                    }
+                    lastFrame = moving ? timestamp : null;
+                    if (moving) schedule();
                 };
 
-                const handleResize = () => init();
-                const handleMouseMove = (e) => { mouse.x = e.clientX; mouse.y = e.clientY; };
-                const handleTouchMove = (e) => { if(e.touches.length > 0) { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; } };
+                const resize = () => {
+                    width = canvas.width = window.innerWidth;
+                    height = canvas.height = window.innerHeight;
+                    const columns = Math.floor(width / spacing);
+                    const rows = Math.floor(height / spacing);
+                    shapes = [];
+                    for (let row = 0; row < rows; row++) {
+                        for (let column = 0; column < columns; column++) {
+                            shapes.push({
+                                x: Math.random() * width,
+                                y: Math.random() * height,
+                                tx: column * spacing + (width - columns * spacing) / 2,
+                                ty: row * spacing + (height - rows * spacing) / 2,
+                                char: chars[Math.floor(Math.random() * chars.length)],
+                                font: `${20 + Math.floor(Math.random() * 20)}px "OracleBone"`,
+                                energy: 0,
+                            });
+                        }
+                    }
+                    lastFrame = null;
+                    input = null;
+                    schedule();
+                };
+                const point = ({ clientX, clientY }) => {
+                    input = { x: clientX, y: clientY };
+                    schedule();
+                };
+                const touch = event => { if (event.touches.length) point(event.touches[0]); };
+                window.addEventListener('resize', resize);
+                window.addEventListener('mousemove', point);
+                window.addEventListener('touchstart', touch, { passive: true });
+                window.addEventListener('touchmove', touch, { passive: true });
+                resize();
 
-                window.addEventListener('resize', handleResize);
-                window.addEventListener('mousemove', handleMouseMove);
-                window.addEventListener('touchmove', handleTouchMove);
-
-                init();
-                animationId = requestAnimationFrame(animate);
+                document.fonts?.load('30px "OracleBone"', chars).then(() => {
+                    if (disposed) return;
+                    glyphs.clear();
+                    schedule();
+                }).catch(() => {});
 
                 return () => {
-                    window.removeEventListener('resize', handleResize);
-                    window.removeEventListener('mousemove', handleMouseMove);
-                    window.removeEventListener('touchmove', handleTouchMove);
-                    if (animationId) cancelAnimationFrame(animationId);
+                    disposed = true;
+                    window.removeEventListener('resize', resize);
+                    window.removeEventListener('mousemove', point);
+                    window.removeEventListener('touchstart', touch);
+                    window.removeEventListener('touchmove', touch);
+                    if (frame !== null) cancelAnimationFrame(frame);
+                    glyphs.clear();
                 };
             }, [isActive, isLowPerf, isBalanced]);
 
@@ -1007,26 +941,18 @@ import { PerformanceContext } from '../../context/PerformanceContext';
         const LunarFireworks = ({ isActive = true, isLowPerf = false }) => {
             const { isBalanced = false } = useContext(PerformanceContext);
             const canvasRef = useRef(null);
-            const animationRef = useRef(null);
+            const starsCanvasRef = useRef(null);
 
             useEffect(() => {
-                // 如果未激活，不启动动画
-                if (!isActive) {
-                    if (animationRef.current) {
-                        cancelAnimationFrame(animationRef.current);
-                        animationRef.current = null;
-                    }
-                    return;
-                }
-
                 const canvas = canvasRef.current;
-                if (!canvas) return;
-
+                const starsCanvas = starsCanvasRef.current;
+                if (!isActive || !canvas || !starsCanvas) return;
                 const ctx = canvas.getContext('2d');
-                if (!ctx) return;
+                const starsCtx = starsCanvas.getContext('2d');
+                if (!ctx || !starsCtx) return;
 
-                let width = canvas.width = window.innerWidth;
-                let height = canvas.height = window.innerHeight;
+                let width = window.innerWidth;
+                let height = window.innerHeight;
 
                 // 2. 核心物理引擎
                 const objects = [];
@@ -1058,7 +984,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
                     update() {
                         const dist = this.y - this.targetY;
-                        this.y -= this.speed * (dist / (height - this.targetY) + 0.1);
+                        this.y -= this.speed * (dist / Math.max(1, height - this.targetY) + 0.1);
                         
                         // 1. 本体微弱抖动：模拟火药推进时的不稳定燃烧，使其不那么呆板
                         // 让 x 坐标在 baseX 左右 2px 范围内随机漂移
@@ -1253,97 +1179,84 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                     draw() {}
                 }
 
-                // 3. 动画循环
-                let autoLaunchTimer = 0;
-                let autoLaunchInterval = 1000;
-                let animationId;
+                const frameDelay = isLowPerf || isBalanced ? 1000 / 30 : 0;
+                const simulationStep = 1000 / (isLowPerf ? 30 : 60);
+                const trailDuration = 350;
+                let animationId = null;
+                let waitingForLaunch = false;
+                let lastFrame = null;
+                let accumulated = 0;
+                let trailUntil = 0;
 
-                // 立即发射两枚迎新春烟花，营造热闹氛围
-                objects.push(new Shell({
-                    x: width * 0.35,
-                    targetY: height * 0.28,
-                    color: COLOR.Gold,
-                    speed: 14
-                }));
-                objects.push(new Shell({
-                    x: width * 0.65,
-                    targetY: height * 0.22,
-                    color: COLOR.Red,
-                    speed: 15
-                }));
+                // Keep the introductory pair. Later launches wait for the sky to clear.
+                objects.push(new Shell({ x: width * 0.35, targetY: height * 0.28, color: COLOR.Gold, speed: 14 }));
+                objects.push(new Shell({ x: width * 0.65, targetY: height * 0.22, color: COLOR.Red, speed: 15 }));
 
-				// 生成背景繁星
                 const bgStars = Array.from({ length: isLowPerf ? 45 : isBalanced ? 100 : 150 }, () => ({
-                    xRatio: Math.random(), // 存储 0~1 的宽度比例
-                    yRatio: Math.random() * 0.85, // 存储 0~0.85 的高度比例
+                    xRatio: Math.random(),
+                    yRatio: Math.random() * 0.85,
                     size: Math.random() * 1.2 + 0.2,
-                    alpha: Math.random(),
-                    speed: Math.random() * 0.015 + 0.005,
-                    dir: Math.random() > 0.5 ? 1 : -1
+                    alpha: MyMath.random(0.1, 0.7),
                 }));
-
-                let lastLoopTime = 0;
-                const loop = (timestamp) => {
-                    animationId = requestAnimationFrame(loop);
-                    if (isLowPerf && timestamp && timestamp - lastLoopTime < 33) {
-                        return; // 低性能模式限制 30 FPS 刷新
+                const drawStars = () => {
+                    starsCanvas.width = width;
+                    starsCanvas.height = height;
+                    starsCtx.fillStyle = '#fff';
+                    for (const star of bgStars) {
+                        starsCtx.globalAlpha = star.alpha;
+                        starsCtx.beginPath();
+                        starsCtx.arc(star.xRatio * width, star.yRatio * height, star.size, 0, 2 * Math.PI);
+                        starsCtx.fill();
                     }
-                    lastLoopTime = timestamp || 0;
+                    starsCtx.globalAlpha = 1;
+                };
 
-                    // 1. 拖尾效果：必须用 destination-out (橡皮擦模式)
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'; // 0.25 控制拖尾长度
-                    ctx.fillRect(0, 0, width, height);
-
-                    // 绘制呼吸闪烁的繁星背景
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.fillStyle = '#FFF';
-                    bgStars.forEach(star => {
-                        // 呼吸闪烁逻辑
-                        star.alpha += star.speed * star.dir;
-                        if (star.alpha > 0.7) { star.alpha = 0.7; star.dir = -1; }
-                        if (star.alpha < 0.1) { star.alpha = 0.1; star.dir = 1; }
-                        
-                        ctx.globalAlpha = star.alpha;
-                        ctx.beginPath();
-                        ctx.arc(star.xRatio * width, star.yRatio * height, star.size, 0, 2 * Math.PI);
-                        ctx.fill();
-                    });
-                    ctx.globalAlpha = 1; // 恢复默认透明度
-
-                    // 2. 画烟花：必须切回 lighter 叠加发光模式
-                    ctx.globalCompositeOperation = 'lighter';
-
-                    // 自动发射
-                    autoLaunchTimer += 16; 
-                    if (autoLaunchTimer > autoLaunchInterval) {
-                        const targetX = MyMath.random(width * 0.05, width * 0.95);
-                        const targetY = MyMath.random(height * 0.1, height * 0.65);
-                        
-                        objects.push(new Shell({
-                            x: targetX, // 直飞：起点X = 终点X
-                            targetY: targetY,
-                            color: MyMath.randomChoice(Object.values(COLOR))
-                        }));
-                        
-                        autoLaunchTimer = 0;
-                        autoLaunchInterval = isLowPerf ? MyMath.random(2200, 3800) : MyMath.random(1200, 2500);
-                    }
-
-                    // 更新所有对象
+                const updateParticles = () => {
                     for (let i = objects.length - 1; i >= 0; i--) {
                         const obj = objects[i];
                         if (obj.update()) {
-                            // 如果是 Shell 完成任务，变为 Burst
-                            if (obj instanceof Shell) {
-                                new Burst({ x: obj.x, y: obj.y, color: obj.color });
-                            }
-                            // 移除已完成的对象 (Shell 或 寿命耗尽的粒子)
+                            if (obj instanceof Shell) new Burst({ x: obj.x, y: obj.y, color: obj.color });
                             objects.splice(i, 1);
-                        } else {
-                            obj.draw(ctx);
                         }
                     }
+                };
+                const loop = timestamp => {
+                    animationId = null;
+                    const elapsed = lastFrame === null ? simulationStep : Math.min(timestamp - lastFrame, simulationStep * 4);
+                    lastFrame = timestamp;
+                    accumulated += elapsed;
+                    while (accumulated >= simulationStep) {
+                        if (objects.length) updateParticles();
+                        accumulated -= simulationStep;
+                    }
+
+                    if (objects.length) trailUntil = timestamp + trailDuration;
+                    else if (timestamp >= trailUntil) {
+                        ctx.clearRect(0, 0, width, height);
+                        lastFrame = null;
+                        accumulated = 0;
+                        waitingForLaunch = true;
+                        const delay = isLowPerf ? MyMath.random(2200, 3800) : MyMath.random(1200, 2500);
+                        animationId = requestAnimationFrame(time => {
+                            waitingForLaunch = false;
+                            objects.push(new Shell({
+                                x: MyMath.random(width * 0.05, width * 0.95),
+                                targetY: MyMath.random(height * 0.1, height * 0.65),
+                                color: MyMath.randomChoice(Object.values(COLOR)),
+                            }));
+                            loop(time);
+                        }, delay);
+                        return;
+                    }
+
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.globalAlpha = 1 - 0.75 ** (elapsed / simulationStep);
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.globalAlpha = 1;
+                    ctx.globalCompositeOperation = 'lighter';
+                    for (let i = objects.length - 1; i >= 0; i--) objects[i].draw(ctx);
+                    animationId = requestAnimationFrame(loop, frameDelay);
                 };
 
                 // 4. 交互处理 (点击屏幕空白处，发射烟花直飞到目标位置)
@@ -1367,25 +1280,30 @@ import { PerformanceContext } from '../../context/PerformanceContext';
 
                     objects.push(new Shell({
                         x: clientX, // 直飞到点击处
-                        targetY: clientY,
+                        targetY: Math.min(clientY, height - 1),
                         color: MyMath.randomChoice(Object.values(COLOR)),
                         speed: 15 // 点击发射的稍微快一点
                     }));
+                    if (waitingForLaunch) {
+                        cancelAnimationFrame(animationId);
+                        animationId = null;
+                        waitingForLaunch = false;
+                    }
+                    if (animationId === null) animationId = requestAnimationFrame(loop);
                 };
 
                 const handleResize = () => {
-                    if (!canvas) return;
                     width = canvas.width = window.innerWidth;
                     height = canvas.height = window.innerHeight;
+                    drawStars();
                 };
 
+                handleResize();
                 window.addEventListener('resize', handleResize);
                 window.addEventListener('pointerdown', handleInteraction);
-
                 animationId = requestAnimationFrame(loop);
-
                 return () => {
-                    if (animationId) cancelAnimationFrame(animationId);
+                    if (animationId !== null) cancelAnimationFrame(animationId);
                     window.removeEventListener('resize', handleResize);
                     window.removeEventListener('pointerdown', handleInteraction);
                 };
@@ -1395,6 +1313,7 @@ import { PerformanceContext } from '../../context/PerformanceContext';
                 <div 
                     className="absolute inset-0 w-full h-full bg-lunar-night overflow-hidden animate-in fade-in duration-1000 pointer-events-none"
                 >
+                    <canvas ref={starsCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
                     <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
                 </div>
             );

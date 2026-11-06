@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XIcon } from '../icons';
 import { getThemeHeaderStyle } from '../../data/themes';
+import { PerformanceContext } from '../../context/PerformanceContext';
 
 // --- 全局数据安全读取与降级 ---
 const petCatalog = (typeof window !== 'undefined' && window.PET_CATALOG) ? window.PET_CATALOG : [];
@@ -132,6 +133,27 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
 
         // 用户卡片内宠物 idle 动画组件（多帧循环 + 三级降级）
         const CardPetImage = ({ petId }) => {
+            const { staticDecorations } = React.useContext(PerformanceContext);
+            const readPaused = () => document.body.dataset.decorationPaused === 'true' || document.hidden;
+            const [paused, setPaused] = useState(readPaused);
+            useEffect(() => {
+                if (staticDecorations) return;
+                const refresh = () => setPaused(readPaused());
+                const observer = new MutationObserver(refresh);
+                observer.observe(document.body, { attributes: true, attributeFilter: ['data-decoration-paused'] });
+                refresh();
+                return () => observer.disconnect();
+            }, [staticDecorations]);
+
+            if (!petId) return null;
+            if (staticDecorations || paused) {
+                return <PetImage key={petId} petId={petId} src={`pet_animations/${petId}/${petId}-thumb.png`}
+                    className="w-16 h-16 object-contain" />;
+            }
+            return <AnimatedCardPetImage key={petId} petId={petId} />;
+        };
+
+        const AnimatedCardPetImage = ({ petId }) => {
             const [idleFrames, setIdleFrames] = React.useState([]);
             const [animSrc, setAnimSrc] = React.useState(null);
             const [failStage, setFailStage] = React.useState(0); // 0=webp, 1=thumb, 2=emoji
@@ -146,8 +168,9 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                     setFailStage(1);
                     return;
                 }
-                let loaded = [];
+                const loaded = [];
                 let done = 0;
+                let cancelled = false;
                 frames.forEach((src) => {
                     const img = new Image();
                     img.onload = () => { loaded.push(src); done++; if (done === frames.length) finish(); };
@@ -155,6 +178,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                     img.src = src;
                 });
                 function finish() {
+                    if (cancelled) return;
                     if (loaded.length > 0) {
                         setIdleFrames(loaded);
                         setAnimSrc(loaded[Math.floor(Math.random() * loaded.length)]);
@@ -164,7 +188,7 @@ export const calcAdventureHungerCost = (realmDuration, hungerPerHour, foodHunger
                         setFailStage(1);
                     }
                 }
-                return () => { clearInterval(cycleRef.current); };
+                return () => { cancelled = true; };
             }, [petId]);
 
             React.useEffect(() => {
