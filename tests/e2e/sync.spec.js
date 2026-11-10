@@ -70,7 +70,9 @@ test('welcome sync retains the server baseline across refresh before any later u
     const f=await family(),page=await browser.newPage();await route(page,traffic());
     await page.clock.setFixedTime(new Date('2026-10-16T12:00:00+08:00'));
     await page.goto('/');
-    await page.getByPlaceholder('例如: yolyhenry 或 family_xxxx').fill(f.code);
+    const syncCodeInput = page.getByLabel('家庭私密同步码');
+    await expect(syncCodeInput).toHaveAttribute('placeholder','请输入家庭同步码');
+    await syncCodeInput.fill(f.code);
     await page.getByRole('button',{name:'立即同步已有数据并进入'}).click();
     await expect(page.locator('main')).toBeAttached();
     const checkpoint=await value(page,'_sync_checkpoint_v2');

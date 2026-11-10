@@ -10240,18 +10240,19 @@ ${context}
 							{welcomeTab === 'sync' && (
 								<div className="space-y-4 text-left animate-in fade-in">
 									<div>
-										<label className="text-xs font-bold text-slate-700 block mb-1.5">家庭私密同步码：</label>
+									<label htmlFor="welcome-sync-code" className="text-xs font-bold text-slate-700 block mb-1.5">家庭私密同步码：</label>
 										<input 
+										id="welcome-sync-code"
 											type="text" 
 											value={welcomeSyncCodeInput} 
 											onChange={e => { setWelcomeSyncCodeInput(e.target.value); setWelcomeSyncError(''); }} 
 											onKeyDown={e => { if (e.key === 'Enter') handleWelcomeSync(); }}
-											placeholder="例如: yolyhenry 或 family_xxxx" 
+										placeholder="请输入家庭同步码"
 											className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-mono font-bold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-slate-400 placeholder:font-normal"
 											autoFocus
 										/>
 										<p className="text-[11px] text-slate-400 mt-1.5">
-											💡 在其他已设置好的手机或平板右上角【设置】中查看同步码，输入后一键载入所有数据。
+										💡 在已同步的设备上，打开右上角【设置】查看同步码。
 										</p>
 									</div>
 
