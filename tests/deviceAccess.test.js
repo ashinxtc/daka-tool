@@ -51,6 +51,21 @@ test('pair and revokeSelf operate smoothly without blocking offline users',async
     assert.equal(client.required('family'),false);
 });
 
+test('same-origin sync credentials stay within the sync route',async()=>{
+    const origin='https://app.test',endpoint=origin+'/api/sync',seen=[];
+    const client=createDeviceAccess({storage:memory(),endpoint,fetchImpl:async url=>{
+        seen.push(url);
+        return response({ok:true});
+    }});
+    for(const url of [endpoint+'?code=family',endpoint+'/?code=family',endpoint+'/ts?code=family']){
+        await client.syncFetch(url);
+    }
+    for(const path of ['/api/sync-other?code=family','/api/exchange?code=family','/api/sync/../push?code=family']){
+        await assert.rejects(client.syncFetch(origin+path),{code:'WRONG_ORIGIN'});
+    }
+    assert.equal(seen.length,3);
+});
+
 test('protected three-way merge drops private settings from sync and always adopts the server registry',()=>{
     const old={app_settings_password:'"local-secret"',app_theme:'"blue"',app_authorized_parents_v1:'{"pairToken":"old","devices":[]}'};
     const remote={app_theme:'"blue"',app_authorized_parents_v1:'{"securityVersion":1,"pairToken":"","devices":[]}'};

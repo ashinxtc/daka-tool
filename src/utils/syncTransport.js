@@ -1,6 +1,7 @@
 import {syncFetch} from './deviceAccess.js';
 import {SYNC_WORKER_URL} from '../constants/api.js';
 export const SYNC_ENDPOINT = SYNC_WORKER_URL;
+const snapshotUrl = (endpoint, code) => new URL(`${endpoint.replace(/\/$/, '')}?code=${encodeURIComponent(code)}`).href;
 export class SyncRequestError extends Error {
     constructor(message, status, code, details) { super(message); Object.assign(this, { status, code, details }); }
 }
@@ -29,7 +30,7 @@ export async function readSyncVersion(code, { fetchImpl = syncFetch, endpoint = 
     return { ts, protocol, revision };
 }
 export async function readSyncSnapshot(code, { fetchImpl = syncFetch, endpoint = SYNC_ENDPOINT, minProtocol = 1 } = {}) {
-    const response = await fetchImpl(`${endpoint}/?code=${encodeURIComponent(code)}`, {cache:'no-store'});
+    const response = await fetchImpl(snapshotUrl(endpoint, code), {cache:'no-store'});
     const meta = syncMetadata(response);
     if (meta.protocol < minProtocol) throw new SyncRequestError('服务器版本回退，已保留本机操作并暂停同步。',409,'PROTOCOL_DOWNGRADE');
     if (response.status === 404) return { ...meta, data:{}, exists:false };
@@ -46,7 +47,7 @@ export async function writeSyncSnapshot(code, data, base, { fetchImpl = syncFetc
     for (let attempt=0; attempt<3; attempt++) {
         if (!isCurrent()) throw new SyncRequestError('同步上下文已变化，本次操作已停止。',409,'CONTEXT_CHANGED');
         let response;
-        try { response=await fetchImpl(`${endpoint}/?code=${encodeURIComponent(code)}`,{method:'POST',headers,body}); }
+        try { response=await fetchImpl(snapshotUrl(endpoint, code),{method:'POST',headers,body}); }
         catch (error) {
             if (attempt===2 || base.protocol!==2) throw error;
             await delay(400*(attempt+1)); continue;

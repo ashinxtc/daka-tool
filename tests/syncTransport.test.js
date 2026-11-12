@@ -24,3 +24,17 @@ test('old server remains readable during frontend-first rollout',async()=>{
     const empty=await readSyncSnapshot('family',{fetchImpl:async()=>response({error:'empty'},404,{'X-Sync-Protocol':'2','X-Sync-Revision':'0'})});
     assert.equal(empty.exists,false);assert.equal(empty.revision,0);
 });
+
+test('snapshot reads and writes use the same bare sync route on Vercel',async()=>{
+    const endpoint='https://app.test/api/sync/',requests=[];
+    const fetchImpl=async(url,options)=>{
+        requests.push([url,options.method||'GET']);
+        return response({ok:true,ts:123});
+    };
+    await readSyncSnapshot('测试-family',{endpoint,fetchImpl});
+    await writeSyncSnapshot('测试-family',{}, {protocol:1},{endpoint,fetchImpl});
+    assert.deepEqual(requests,[
+        ['https://app.test/api/sync?code=%E6%B5%8B%E8%AF%95-family','GET'],
+        ['https://app.test/api/sync?code=%E6%B5%8B%E8%AF%95-family','POST'],
+    ]);
+});

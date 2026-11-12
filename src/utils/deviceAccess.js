@@ -56,8 +56,11 @@ export function createDeviceAccess({storage=browserStore(),fetchImpl=(...args)=>
         }finally{clearTimeout(timer);}
     };
     const syncFetch=async(url,options={},role='main')=>{
-        const target=new URL(url,endpoint),origin=new URL(endpoint).origin;
-        if(target.origin!==origin)throw new DeviceAccessError('拒绝向其他服务发送家庭凭据。','WRONG_ORIGIN',400);
+        const target=new URL(url,endpoint),base=new URL(endpoint);
+        const prefix=base.pathname.replace(/\/$/,'');
+        if(target.origin!==base.origin||(target.pathname!==prefix&&!target.pathname.startsWith(prefix+'/'))){
+            throw new DeviceAccessError('拒绝向其他服务发送家庭凭据。','WRONG_ORIGIN',400);
+        }
         const code=target.searchParams.get('code')||'',saved=credential(code,role);
         const headers=new Headers(options.headers);
         const isBrowser = typeof window !== 'undefined';

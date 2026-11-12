@@ -14,9 +14,23 @@ test('staging endpoints never inherit production proxies and refuse production h
     }
     for(const host of ['www.daka-tool.top','daka-tool.top','daka-tool.vip'])assert.throws(()=>deploymentEndpoints('staging',host));
     assert.equal(deploymentEndpoints('production','www.daka-tool.top').push,'');
+    assert.equal(deploymentEndpoints('production','www.daka-tool.top').sync,'/api/sync');
     assert.notEqual(deploymentEndpoints('production','daka-tool.top.evil.test').push,'');
     const config=JSON.parse(readFileSync(new URL('../vercel.staging.json',import.meta.url)));
     assert.equal(config.outputDirectory,'dist-staging');assert.deepEqual(config.rewrites,[]);
+});
+
+test('sync routes preserve the upstream paths and precede the exchange catch-all',()=>{
+    const {rewrites}=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url)));
+    const exchange=rewrites.findIndex(rule=>rule.source==='/api/:match*');
+    for(const [source,destination] of [
+        ['/api/sync','https://sync.daka-tool.top/'],
+        ['/api/sync/:match*','https://sync.daka-tool.top/:match*'],
+    ]){
+        const index=rewrites.findIndex(rule=>rule.source===source);
+        assert.ok(index>=0&&index<exchange);
+        assert.equal(rewrites[index].destination,destination);
+    }
 });
 
 test('notification clicks cannot leave the subscription origin or focus a production tab',async()=>{

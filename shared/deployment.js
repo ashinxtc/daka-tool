@@ -9,7 +9,8 @@ export function deploymentEndpoints(mode,hostname=''){
         if(under(hostname,'daka-tool.top')||under(hostname,'daka-tool.vip'))throw new Error('测试构建禁止在正式域名运行。');
         return {...STAGING_SERVICES,wecom:'https://disabled.invalid'};
     }
-    const proxy=under(hostname,'daka-tool.top')||under(hostname,'vercel.app')||['localhost','127.0.0.1'].includes(hostname);
-    return {sync:'https://sync.daka-tool.top',exchange:proxy?'':'https://daka-exchange.2378385593.workers.dev',
+    const hosted=under(hostname,'daka-tool.top')||under(hostname,'vercel.app');
+    const proxy=hosted||['localhost','127.0.0.1'].includes(hostname);
+    return {sync:hosted?'/api/sync':'https://sync.daka-tool.top',exchange:proxy?'':'https://daka-exchange.2378385593.workers.dev',
         push:proxy?'':'https://daka-push.2378385593.workers.dev',wecom:proxy?'':'https://daka-wecom.2378385593.workers.dev'};
 }

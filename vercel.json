@@ -14,6 +14,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/sync",
+      "destination": "https://sync.daka-tool.top/"
+    },
+    {
+      "source": "/api/sync/:match*",
+      "destination": "https://sync.daka-tool.top/:match*"
+    },
+    {
       "source": "/api/wecom/:match*",
       "destination": "https://daka-wecom.2378385593.workers.dev/api/wecom/:match*"
     },
