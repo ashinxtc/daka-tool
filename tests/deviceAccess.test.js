@@ -4,8 +4,40 @@ import {createDeviceAccess,newDeviceToken} from '../src/utils/deviceAccess.js';
 import {mergeSyncSnapshots} from '../src/utils/syncMerge.js';
 import {applyDeductions} from '../src/utils/accounting.js';
 import {appendParentAction} from '../src/utils/syncCoordinator.js';
+import {getValidDeviceIdsSet, isAuthorizedParentDevice, mergeLegacyParentAccess, mergeParentDevices} from '../src/utils/deviceFingerprint.js';
 const memory=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k),map};};
 const response=(body,status=200,headers={})=>new Response(JSON.stringify(body),{status,headers});
+
+test('rebound parent entry survives stale sync and a later revocation takes precedence', () => {
+    const oldDevice = {
+        deviceId: 'old', authorizedDeviceIds: ['old', 'other-revoked'],
+        role: '爸爸', deviceName: 'iPhone (系统浏览器)', boundAt: 100
+    };
+    const stale = {
+        pairToken: 'family-test', devices: [oldDevice],
+        revokedDevices: { current: 200, 'fp_current': 200, 'other-revoked': 200 }
+    };
+    const rebound = mergeLegacyParentAccess({}, {
+        ...stale,
+        devices: mergeParentDevices(stale.devices, {
+            deviceId: 'current', fingerprint: 'fp_current', role: '爸爸', osName: 'iPhone', boundAt: 300
+        }).devices
+    });
+    assert.equal(rebound.devices[0].boundAt, 100);
+    for (const merged of [mergeLegacyParentAccess(stale, rebound), mergeLegacyParentAccess(rebound, stale)]) {
+        assert.equal(isAuthorizedParentDevice(merged, { deviceId: 'current', fingerprint: 'fp_current' }), true);
+        assert.equal(isAuthorizedParentDevice(merged, { deviceId: 'old' }), true);
+        assert.equal(getValidDeviceIdsSet(merged.devices).has('other-revoked'), false);
+        assert.deepEqual(merged.revokedDevices, { 'other-revoked': 200 });
+        const later = { devices: [], revokedDevices: { current: 400, 'fp_current': 400 } };
+        const revoked = mergeLegacyParentAccess(stale, mergeLegacyParentAccess(merged, later));
+        assert.equal(revoked.revokedDevices.current, 400);
+        assert.equal(revoked.revokedDevices.fp_current, 400);
+        assert.equal(isAuthorizedParentDevice(revoked, { deviceId: 'current', fingerprint: 'fp_current' }), false);
+        assert.equal(getValidDeviceIdsSet(revoked.devices).has('current'), false);
+        assert.equal(isAuthorizedParentDevice(revoked, { deviceId: 'old' }), true);
+    }
+});
 
 test('frictionless access generates and reuses persistent device ID per family/role without pairing vouchers',async()=>{
     const storage=memory();

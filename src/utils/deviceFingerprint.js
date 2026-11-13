@@ -154,6 +154,8 @@ export function mergeParentDevices(existingDevices = [], incoming) {
     const incomingPlatform = incoming.platform || 'browser';
     const incomingRole = incoming.role || '爸爸';
     const incomingOs = incoming.osName || 'iPhone';
+    const authorizedAt = incoming.boundAt || Date.now();
+    const currentAuthorization = { [incomingDevId]: authorizedAt, [incomingFingerprint]: authorizedAt };
 
     // 查找是否已有同一台物理手机或同一角色的设备
     // 匹配条件：1) 硬件指纹相同，或 2) 凭据已包含该 devId，或 3) 角色相同且设备大类相同
@@ -170,7 +172,8 @@ export function mergeParentDevices(existingDevices = [], incoming) {
     if (matchIndex >= 0) {
         const existing = devices[matchIndex];
         const allAuthorizedIds = Array.from(new Set([
-            ...(existing.authorizedDeviceIds || [existing.deviceId]),
+            existing.deviceId,
+            ...(existing.authorizedDeviceIds || []),
             incomingDevId
         ].filter(Boolean)));
 
@@ -189,6 +192,7 @@ export function mergeParentDevices(existingDevices = [], incoming) {
             ...existing,
             deviceId: incomingDevId,
             authorizedDeviceIds: allAuthorizedIds,
+            authorizedAtByIdentity: { ...existing.authorizedAtByIdentity, ...currentAuthorization },
             fingerprint: incomingFingerprint,
             role: incomingRole,
             deviceName: `${incomingOs} (${platformDesc})`,
@@ -205,6 +209,7 @@ export function mergeParentDevices(existingDevices = [], incoming) {
     const newDevice = {
         deviceId: incomingDevId,
         authorizedDeviceIds: [incomingDevId],
+        authorizedAtByIdentity: currentAuthorization,
         fingerprint: incomingFingerprint,
         role: incomingRole,
         deviceName: `${incomingOs} (${incomingPlatform === 'wechat' ? '微信内置' : '系统浏览器'})`,
@@ -215,6 +220,66 @@ export function mergeParentDevices(existingDevices = [], incoming) {
 
     devices.push(newDevice);
     return { devices, currentDevice: newDevice, merged: false };
+}
+
+// Consolidation must keep the latest authorization for each ID and fingerprint.
+function latestIdentityTimes(first, second) {
+    const times = new Map(Object.entries(first || {}));
+    for (const [id, at] of Object.entries(second || {})) {
+        times.set(id, Math.max(times.get(id) || 0, at));
+    }
+    return Object.fromEntries(times);
+}
+
+export function mergeLegacyParentAccess(local, cloud) {
+    const revokedDevices = latestIdentityTimes(cloud.revokedDevices, local.revokedDevices);
+    const devices = [cloud.devices, local.devices].flatMap(items => Array.isArray(items) ? items : []);
+    const deviceIds = device => [device.deviceId, ...(Array.isArray(device.authorizedDeviceIds) ? device.authorizedDeviceIds : [])];
+
+    for (const device of devices) {
+        if (!device) continue;
+        const identities = [...deviceIds(device), device.fingerprint];
+        for (const id of identities) {
+            if (id && Object.hasOwn(revokedDevices, id) && device.authorizedAtByIdentity?.[id] > revokedDevices[id]) {
+                delete revokedDevices[id];
+            }
+        }
+    }
+
+    const activeById = new Map();
+    for (const device of devices) {
+        if (!device?.deviceId) continue;
+        const ids = [...new Set(deviceIds(device))];
+        const activeIds = ids.filter(id => id && !Object.hasOwn(revokedDevices, id));
+        if (activeIds.length === 0) continue;
+
+        const deviceId = activeIds[0];
+        const active = { ...device, deviceId };
+        if (device.authorizedDeviceIds || deviceId !== device.deviceId) active.authorizedDeviceIds = activeIds;
+        if (device.fingerprint && Object.hasOwn(revokedDevices, device.fingerprint)) delete active.fingerprint;
+        const previous = activeById.get(deviceId);
+        if (!previous) {
+            activeById.set(deviceId, active);
+            continue;
+        }
+        const latest = (active.lastActive || 0) >= (previous.lastActive || 0) ? active : previous;
+        const combined = { ...latest };
+        if (active.authorizedDeviceIds || previous.authorizedDeviceIds) {
+            combined.authorizedDeviceIds = [...new Set([
+                ...(previous.authorizedDeviceIds || [deviceId]), ...(active.authorizedDeviceIds || [deviceId])
+            ])];
+        }
+        if (active.authorizedAtByIdentity || previous.authorizedAtByIdentity) {
+            combined.authorizedAtByIdentity = latestIdentityTimes(previous.authorizedAtByIdentity, active.authorizedAtByIdentity);
+        }
+        activeById.set(deviceId, combined);
+    }
+    return {
+        ...cloud,
+        pairToken: local.pairToken || cloud.pairToken || '',
+        devices: consolidateLegacyDevices([...activeById.values()]),
+        revokedDevices
+    };
 }
 
 /**
@@ -271,6 +336,9 @@ export function consolidateLegacyDevices(devices = []) {
             consolidated[existingIndex] = {
                 ...existing,
                 authorizedDeviceIds: allIds,
+                ...(existing.authorizedAtByIdentity || dev.authorizedAtByIdentity
+                    ? { authorizedAtByIdentity: latestIdentityTimes(existing.authorizedAtByIdentity, dev.authorizedAtByIdentity) }
+                    : {}),
                 fingerprint: existing.fingerprint || dev.fingerprint || undefined,
                 role: existing.role || dev.role,
                 deviceName: `${cleanOs} (${platformDesc})`,

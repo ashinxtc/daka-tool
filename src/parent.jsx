@@ -6,7 +6,7 @@ import { readSyncVersion, syncMetadata, SyncRequestError, newSyncOperationId } f
 import SyncConflictDialog from './components/common/SyncConflictDialog';
 import { startVisibleSyncPoll } from './utils/visibleSyncPoll';
 import {deviceAccess,parentFetch,securityUrl} from './utils/deviceAccess';
-import { getDeviceFingerprint, getDevicePlatformInfo, mergeParentDevices, consolidateLegacyDevices } from './utils/deviceFingerprint';
+import { getDeviceFingerprint, getDevicePlatformInfo, mergeParentDevices, consolidateLegacyDevices, mergeLegacyParentAccess } from './utils/deviceFingerprint';
 
 // 保证必须在 HTTPS 协议下运行，避免因 Origin 隔离导致 localStorage 丢失
 if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -399,7 +399,8 @@ export const ParentApp = () => {
                 try { authConfig = JSON.parse(authConfigStr); } catch (e) {}
             }
             if (authConfig && Array.isArray(authConfig.devices)) {
-                authConfig.devices = consolidateLegacyDevices(authConfig.devices);
+                if (authConfig.securityVersion !== 1) authConfig = mergeLegacyParentAccess({}, authConfig);
+                else authConfig.devices = consolidateLegacyDevices(authConfig.devices);
             }
 
             const currentDevId = secureIdentity?.id||deviceId;
@@ -491,7 +492,7 @@ export const ParentApp = () => {
             const { osName, platformKey } = getDevicePlatformInfo();
             const currentFp = fingerprint || getDeviceFingerprint();
 
-            const { devices: updatedDevices, currentDevice } = mergeParentDevices(authConfig.devices || [], {
+            const { devices: updatedDevices } = mergeParentDevices(authConfig.devices || [], {
                 deviceId: devId,
                 fingerprint: currentFp,
                 role: roleToUse,
@@ -501,19 +502,14 @@ export const ParentApp = () => {
             });
 
             const updatedPairToken = authConfig.pairToken || pairToken || localStorage.getItem('parent_pair_token') || ('token_' + Math.random().toString(36).slice(2, 10));
-            // 重新绑定时从解绑黑名单中移出当前设备及其所有关联沙盒凭据
-            const updatedRevoked = { ...(authConfig.revokedDevices || {}) };
-            delete updatedRevoked[devId];
-            if (currentFp) delete updatedRevoked[currentFp];
-            if (Array.isArray(currentDevice.authorizedDeviceIds)) {
-                currentDevice.authorizedDeviceIds.forEach(id => delete updatedRevoked[id]);
-            }
-
-            const updatedAuthConfig = {
+            const updatedAuthConfig = mergeLegacyParentAccess({}, {
                 pairToken: updatedPairToken,
                 devices: updatedDevices,
-                revokedDevices: updatedRevoked
-            };
+                revokedDevices: authConfig.revokedDevices
+            });
+            if (updatedAuthConfig.revokedDevices[devId] || updatedAuthConfig.revokedDevices[currentFp]) {
+                throw new Error('此入口仍有较新的撤销记录，请检查手机时间后重新授权。');
+            }
 
             const payload = await updateSyncKeys(code,currentCloudData,{
                 app_authorized_parents_v1:JSON.stringify(updatedAuthConfig)
