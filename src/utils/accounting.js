@@ -22,7 +22,7 @@ export function pendingNotices(receipts, child) {
         .sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
 }
 
-export function applyDeductions({ actions, child, devices = [], strictAuthorization = false, history = {}, receipts = {}, stats = {}, balance }) {
+export function applyDeductions({ actions, child, devices = [], strictAuthorization = false, canRejectUnauthorized = () => true, history = {}, receipts = {}, stats = {}, balance }) {
     let nextHistory = { ...history }, nextReceipts = { ...receipts }, nextStats = { ...stats };
     if (!Array.isArray(actions)) return { changed: false };
     const processed = new Map();
@@ -40,7 +40,8 @@ export function applyDeductions({ actions, child, devices = [], strictAuthorizat
         const id = identity(child, action.id);
         if (nextReceipts[id]) { processed.set(action.id, 'claimed'); continue; }
         if ((strictAuthorization || devices.length) && !validDevices.has(action.operatorDeviceId)) {
-            processed.set(action.id, 'rejected_unauthorized'); continue;
+            if (canRejectUnauthorized(action)) processed.set(action.id, 'rejected_unauthorized');
+            continue;
         }
         const amount = Math.abs(Number(action.amount));
         if (!Number.isSafeInteger(amount) || amount <= 0) { processed.set(action.id, 'rejected_invalid'); continue; }

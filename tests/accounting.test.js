@@ -53,6 +53,22 @@ test('red packet/extra wheel commands are left for existing handlers', () => {
     const actions=[action(1,10,{type:'red_packet'}),action(2,10,{type:'extra_wheel'})];
     assert.deepEqual(apply(actions).actions,actions);
 });
+test('a deduction with a stale device list stays pending until authorization is checked', () => {
+    const command = action(1, 10, { operatorDeviceId: 'new-entry' });
+    const stale = { devices: [{ deviceId: 'old-entry' }] };
+    const waiting = apply([command], { ...stale, canRejectUnauthorized: () => false });
+    assert.equal(waiting.changed, false);
+    assert.equal(waiting.actions[0].status, 'pending');
+    assert.deepEqual(waiting.history, {});
+
+    const allowed = apply(waiting.actions, { devices: [{ deviceId: 'new-entry' }] });
+    assert.equal(allowed.actions[0].status, 'claimed');
+    assert.equal(Object.values(allowed.history).reduce((sum, value) => sum + value, 0), -10);
+
+    const denied = apply(waiting.actions, stale);
+    assert.equal(denied.actions[0].status, 'rejected_unauthorized');
+    assert.deepEqual(denied.history, {});
+});
 test('missing timestamp uses stable ledger key across devices and balance is floored', () => {
     const a=apply([action(1,150,{timestamp:undefined,type:'parent_deduct'})]);
     const b=apply([action(1,150,{timestamp:undefined,type:'parent_deduct'})]);

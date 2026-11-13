@@ -991,6 +991,7 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
             const [syncCode, setSyncCode] = useStickyState('', 'app_sync_code');
             const [syncLastTime, setSyncLastTime] = useStickyState(null, 'app_sync_last_time');
             const [syncStatus, setSyncStatus] = React.useState(''); // '' | 'syncing' | 'success' | 'error'
+            const [checkedParentActions, setCheckedParentActions] = React.useState(null);
             const syncDebounceRef = React.useRef(null);
             const syncDownloadingRef = React.useRef(false);
             const [syncConflict, setSyncConflict] = React.useState(() => {
@@ -5546,7 +5547,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
             const applySyncMerge = (result) => {
                 let written = 0;
                 if (Object.keys(result.writes).length) {
-                    const financialKeys = new Set(['app_wheel_history', RECEIPTS_KEY, ESCROWS_KEY, 'app_stats_v1', 'app_parent_actions_v1', 'app_pending_evil_penalties_v2', 'app_evil_penalty_log_v1']);
+                    const financialKeys = new Set(['app_wheel_history', RECEIPTS_KEY, ESCROWS_KEY, 'app_stats_v1', 'app_parent_actions_v1', 'app_authorized_parents_v1', 'app_pending_evil_penalties_v2', 'app_evil_penalty_log_v1']);
                     const financial = Object.fromEntries(Object.entries(result.writes).filter(([key]) => financialKeys.has(key)));
                     if (Object.keys(financial).length) commitDurable(financial);
                     for (const [key, value] of Object.entries(result.writes)) if (!financialKeys.has(key)) storage.setItem(key, value);
@@ -5775,6 +5776,24 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                 }
             };
 
+            const confirmParentActionSnapshot = (code, cloudData) => {
+                let pending = [];
+                try {
+                    const registry = JSON.parse(cloudData.app_authorized_parents_v1 || 'null');
+                    const actions = JSON.parse(cloudData.app_parent_actions_v1 || '[]');
+                    if (Array.isArray(registry?.devices) && Array.isArray(actions)) {
+                        const access = registry.securityVersion === 1 ? registry : mergeLegacyParentAccess({}, registry);
+                        const validDeviceIds = getValidDeviceIdsSet(access.devices);
+                        pending = actions.filter(action => action?.status === 'pending' && !validDeviceIds.has(action.operatorDeviceId));
+                    }
+                } catch { /* Leave malformed cloud authorization unconfirmed. */ }
+                setCheckedParentActions({
+                    code,
+                    epoch: getStorageState().epoch,
+                    senders: new Map(pending.map(action => [action.id, action.operatorDeviceId]))
+                });
+            };
+
             const syncFromCloud = async () => {
                 if (!syncCode || !canSyncStorage() || syncConflictRef.current) return;
                 const storageEpoch = getStorageState().epoch;
@@ -5787,6 +5806,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     if (meta.protocol === 2) {
                         const data = resp.status === 404 ? {} : stripTesterDataFromPayload(await checkedSyncJson(resp));
                         const result = await makeSyncCoordinator(storageEpoch).pull({...meta,data,exists:resp.status!==404});
+                        confirmParentActionSnapshot(syncCode, data);
                         if (syncConflictRef.current || syncConflict) {
                             syncConflictRef.current = null;
                             setSyncConflict(null);
@@ -5813,7 +5833,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     }
                     if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
                     const cloudDataRaw = await resp.json();
-                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch) return;
+                    if (!canSyncStorage() || getStorageState().epoch !== storageEpoch || currentSyncCodeRef.current !== syncCode) return;
                     flushPendingState();
                     const cloudData = stripTesterDataFromPayload(cloudDataRaw);
                     storage.setItem('_sync_has_pulled_v1', '1');
@@ -5848,6 +5868,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 
                     // 哈希相同 = 数据未变化，跳过
                     if (cloudHash === lastHash) {
+                        confirmParentActionSnapshot(syncCode, cloudData);
                         // Record a newer server timestamp even when only metadata changed.
                         if (cloudTs > localTs) storage.setItem('_sync_local_ts', String(cloudTs));
                         setSyncLastTime(Date.now());
@@ -5863,6 +5884,7 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
                     const { snapshot, versions } = buildLocalSnapshot(cloudData);
                     const mergeResult = resolveSyncMerge(cloudData, snapshot, versions, localTs);
                     const written = applySyncMerge(mergeResult);
+                    confirmParentActionSnapshot(syncCode, cloudData);
 
                     // 本地时间戳推进到云端（本地保留的新 key 会通过回传上传，届时再推进）
                     storage.setItem('_sync_local_ts', String(Math.max(cloudTs, localTs)));
@@ -9108,16 +9130,24 @@ ${context}
                 persistAccounting({ receipts: { ...receipts,
                     [parentDeductionNotice.id]: { ...receipts[parentDeductionNotice.id], acknowledged: true } } });
             };
+            const canRejectParentAction = (action) => !syncCode || (
+                checkedParentActions?.code === syncCode &&
+                checkedParentActions.epoch === getStorageState().epoch &&
+                checkedParentActions.senders.has(action.id) &&
+                checkedParentActions.senders.get(action.id) === action.operatorDeviceId
+            );
+
             useEffect(() => {
                 const snapshot = accountingRef.current;
                 if(deviceAccess.required(syncCode)&&authorizedParents?.securityVersion!==1)return;
                 const result = applyDeductions({ ...snapshot, child: activeChild,
                     devices: authorizedParents?.devices || [],
                     strictAuthorization:authorizedParents?.securityVersion===1,
+                    canRejectUnauthorized:canRejectParentAction,
                     balance: (history, child) => calculateTotalGold(checkins, history, child, activeBuffs, tasks) });
                 if (result.changed) persistAccounting({ history: result.history, receipts: result.receipts,
                     actions: result.actions, stats: result.stats });
-            }, [parentActions, activeChild, authorizedParents]);
+            }, [parentActions, activeChild, authorizedParents, syncCode, checkedParentActions]);
             const processedParentActionsRef = React.useRef(new Set());
             const notifiedParentActionIdsRef = React.useRef(new Set());
 
@@ -9161,8 +9191,7 @@ ${context}
                     // 鉴权校验：如果系统已有已登记授权设备列表，则严格核验 deviceId
                     const isAuthorized = !hasRegisteredDevices || validDeviceIds.has(action.operatorDeviceId);
                     if (!isAuthorized) {
-                        if (processedParentActionsRef.current.has(action.id)) return action;
-                        processedParentActionsRef.current.add(action.id);
+                        if (!canRejectParentAction(action)) return action;
                         console.warn('[ParentAction] 拦截未授权设备的操作指令:', action);
                         hasUpdates = true;
                         return { ...action, status: 'rejected_unauthorized', processedAt: Date.now() };
@@ -9205,13 +9234,13 @@ ${context}
                 });
 
                 if (hasUpdates) {
-                    const updates = new Map(updatedActions.filter(a => a && !['deduction', 'parent_deduct'].includes(a.type)).map(a => [a.id, a]));
-                    setParentActions(prev => prev.map(a => a && updates.has(a.id) ? updates.get(a.id) : a));
-                    if (typeof window.triggerSyncUpload === 'function') {
-                        window.triggerSyncUpload();
-                    }
+                    const updates = new Map(updatedActions.filter((action, index) => action !== parentActions[index]).map(action => [action.id, action]));
+                    const latestActions = accountingRef.current.actions;
+                    persistAccounting({ actions: latestActions.map(action =>
+                        action?.status === 'pending' ? updates.get(action.id) || action : action
+                    ) });
                 }
-            }, [parentActions, activeChild, authorizedParents]);
+            }, [parentActions, activeChild, authorizedParents, syncCode, checkedParentActions]);
 
             // 孩子点击拆领红包
             const handleClaimRedPacket = (gift) => {
