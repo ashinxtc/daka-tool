@@ -46,7 +46,6 @@ import { showToast, dismissToast, ToastContainer } from './components/common/Toa
 import { ModalShell } from './components/common/ModalShell';
 import { TabBar } from './components/common/TabBar';
 import { TimeDisplay } from './components/common/TimeDisplay';
-import { WeekendDashboard, WeekendSettlementModal } from './components/weekend/WeekendDashboard';
 import { convertWMOToType, getWeatherInfo, WeatherEffects } from './components/weather/WeatherEffects';
 import { TributeModal } from './components/modals/TributeModal';
 import { CompletedWallModal } from './components/modals/CompletedWallModal';
@@ -242,7 +241,7 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
         // z-[70]: 数据展示模态框（进化之路、历史明细、成就墙、转盘选择、邪恶转盘）
         // z-[80]: 功能模态框（商店、作业考试、统计）
         // z-[85]: 宠物主模态框
-        // z-[90]: 宠物子模态框（指南、周末结算）
+        // z-[90]: 宠物子模态框（指南）
         // z-[100]: 通知/交互模态框（升级、成就通知、转盘、禁言、进贡、豁免）
         // z-[110]: 随机事件、周工资
         // z-[120]: 聊天抽屉（最高层级）
@@ -288,7 +287,6 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
 
 		
 		// getHolidayInfo, getHeaderTheme 已迁移至 src/utils/holidays.js
-		// WeekendDashboard, WeekendSettlementModal 已迁移至 src/components/weekend/WeekendDashboard.jsx
 		// convertWMOToType, getWeatherInfo, WeatherEffects 已迁移至 src/components/weather/WeatherEffects.jsx
 		
 		// useStickyState, markKeyVersion 已迁移至 src/hooks/useStickyState.js
@@ -1242,32 +1240,6 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
             // --- 新增：装备状态 ---
             const [equippedGear, setEquippedGear] = useStickyState({}, 'app_equipped_gear_v1');
             
-			// 【新增】周末系统配置
-            const [weekendSettings, setWeekendSettings] = useStickyState({
-                enabled: true,       // 是否启用周末冲刺模式
-                coreThreshold: 80,   // 核心任务达标百分比
-                dailyThreshold: 50,  // 日常任务达标百分比
-                guardianPassCount: 0, // 监护人豁免卡数量
-                perfectReward: 100,  // 完美周末奖励（金元宝）
-                passReward: 60,      // 达标周末奖励（金元宝）
-                lastSettledWeekend: {} // { [childName]: weekendKey } 已结算的周末，避免重复弹窗
-            }, 'app_weekend_settings');
-
-            // 当前周末唯一键（以该周周日日期表示）
-            const getCurrentWeekendKey = () => {
-                const d = new Date();
-                const day = d.getDay();
-                const sundayOffset = day === 0 ? 0 : 7 - day;
-                const sunday = new Date(d);
-                sunday.setDate(d.getDate() + sundayOffset);
-                const y = sunday.getFullYear(), m = String(sunday.getMonth() + 1).padStart(2, '0'), dd = String(sunday.getDate()).padStart(2, '0');
-                return `${y}-${m}-${dd}`;
-            };
-
-            // 【新增】结算弹窗队列 (用于次日结算)
-            const [settlementState, setSettlementState] = useState(null);
-            const weekendAutoShownRef = React.useRef(null); // 本周末是否已自动弹过结算（避免重复）
-
             // 【新增】每周学习工资结算记录与待领取状态
             const [weeklyPayroll, setWeeklyPayroll] = useStickyState({}, 'app_weekly_payroll_v1');
             const [weeklyPayrollToClaim, setWeeklyPayrollToClaim] = useState(null);
@@ -1519,18 +1491,19 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
                     return next;
                 });
 
-                // 清理 weekendSettings.lastSettledWeekend
-                setWeekendSettings(prev => {
-                    if (!prev || !prev.lastSettledWeekend) return prev;
-                    const next = { ...prev, lastSettledWeekend: { ...prev.lastSettledWeekend } };
-                    let m = false;
-                    keysToRemove.forEach(k => { if (k in next.lastSettledWeekend) { delete next.lastSettledWeekend[k]; m = true; } });
-                    if (m) {
-                        storage.setItem('app_weekend_settings', JSON.stringify(next));
-                        storage.markKeyVersion('app_weekend_settings');
+                // 仅在删除成员时清理旧版周末结算记录。
+                const weekendKey = 'app_weekend_settings';
+                try {
+                    const legacyWeekend = JSON.parse(storage.getItem(weekendKey));
+                    const previous = legacyWeekend?.lastSettledWeekend;
+                    const remaining = purgeObj(previous);
+                    if (remaining !== previous) {
+                        storage.setItem(weekendKey, JSON.stringify({ ...legacyWeekend, lastSettledWeekend: remaining }));
+                        storage.markKeyVersion(weekendKey);
                     }
-                    return next;
-                });
+                } catch (error) {
+                    console.warn('清理成员的旧周末结算记录失败', error);
+                }
             };
 
             // 上帝模式：全量彻底重置测试员本地数据
@@ -2073,32 +2046,7 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
                     }
                 }
 
-                // === 优先级 8：周末冲刺提醒 ===
-                if (weekendSettings?.enabled) {
-                    const dayOfWeek = now.getDay();
-                    // 周五傍晚预告
-                    if (dayOfWeek === 5 && hour >= 15) {
-                        const weekKey = `weekend_preview_${activeChild}_${today}`;
-                        if (!log[weekKey]) {
-                            const prompt = `你是小星老师。明天就是周末冲刺了！请用期待的语气提醒${activeChild}准备好（30字以内），不要用引号。`;
-                            const sent = await trySendAiReminder('weekend_preview', prompt, '周末预告', log, today);
-                            if (sent) { setAiReminderLog(prev => ({ ...prev, [weekKey]: true })); return; }
-                        }
-                    }
-                    // 周日进度提醒
-                    if (dayOfWeek === 0 && hour >= 14) {
-                        const dailyMust = childTasks.filter(t => t.frequencyType === 'daily_must').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
-                        const coreTasks = childTasks.filter(t => t.type === 'core').filter(t => !t.startDate || today >= t.startDate).filter(t => !t.earlyCompleted);
-                        const coreDone = coreTasks.filter(t => todayCheckins[t.id]?.[today]).length;
-                        if (coreTasks.length > 0 && coreDone < coreTasks.length) {
-                            const prompt = `你是小星老师。今天是周日，周末冲刺还差${coreTasks.length - coreDone}个核心任务就达标了。请用鼓励的语气提醒${activeChild}加油完成（40字以内），不要用引号。`;
-                            const sent = await trySendAiReminder('weekend_urge', prompt, '周末冲刺提醒', log, today);
-                            if (sent) return;
-                        }
-                    }
-                }
-
-                // === 优先级 9：每周进步回顾（周日） ===
+                // === 优先级 8：每周进步回顾（周日） ===
                 if (now.getDay() === 0) {
                     const weekKey = `weekly_review_${activeChild}_${getLocalDateKey(0)}`;
                     if (!log[weekKey]) {
@@ -2117,7 +2065,7 @@ import { ParentDeductionModal } from './components/modals/ParentDeductionModal';
                         }
                     }
                 }
-            }, [aiEnabled, deepseekApiKey, aiReminderLog, tasks, activeChild, checkins, callDeepSeekAPI, showAiBubble, realWeather, weeklyPayrollToClaim, currentXP, activeBuffs, activePet, petData, weekendSettings, wheelSettings]);
+            }, [aiEnabled, deepseekApiKey, aiReminderLog, tasks, activeChild, checkins, callDeepSeekAPI, showAiBubble, realWeather, weeklyPayrollToClaim, currentXP, activeBuffs, activePet, petData, wheelSettings]);
             checkAiRemindersRef.current = checkAiReminders;
 
             // App 启动时和每30分钟检查 AI 提醒
@@ -3166,7 +3114,6 @@ ${result.event ? `奇遇事件：${result.event.name}（${result.event.desc}）`
 					window.__tier7_debug = {
 						openPet: (tab = 'home') => handleOpenPet(tab),
 						closePet: () => setShowPet(false),
-						openWeekendSettlement: (state) => setSettlementState(state),
 						openFamilyMessage: (msgs) => {
 							if (msgs) setFamilyMessages(msgs);
 							setWecomEnabled(true);
@@ -6909,49 +6856,6 @@ ${context}
                 }
             }, [activeChild, profiles]);
 
-			// 【新增】测试结算功能的函数
-			// 周末冲刺结算计算（共用：测试结算 + 自动触发）
-            const computeWeekendSettlement = (childName) => {
-                const childTasks = tasks[childName] || [];
-                const childCheckins = checkins[childName] || {};
-                const todayKey = getLocalDateKey(0);
-                // 只统计进行中的任务，排除已达成目标并进入目标达成墙的「按总次数」任务
-                const isOngoing = (t) => {
-                const freq = t.frequencyType || 'count';
-                if (freq === 'daily_must' || freq === 'weekly_optional') return !t.earlyCompleted;
-                const count = Object.keys(childCheckins[t.id] || {}).length;
-                return count < (t.targetCount || 0);
-                };
-                const ongoingTasks = childTasks.filter(isOngoing);
-                const coreTasks = ongoingTasks.filter(t => t.type === 'core');
-                const dailyTasks = ongoingTasks.filter(t => t.type !== 'core');
-                const calc = (list) => {
-                    if (!list || list.length === 0) return { count: 0, total: 0, percent: 0 };
-                    const completed = list.filter(t => childCheckins[t.id]?.[todayKey]).length;
-                    return { count: completed, total: list.length, percent: Math.round((completed / list.length) * 100) };
-                };
-                const coreStats = calc(coreTasks);
-                const dailyStats = calc(dailyTasks);
-                const coreThreshold = weekendSettings.coreThreshold || 80;
-                const dailyThreshold = weekendSettings.dailyThreshold || 50;
-                const coreMet = coreStats.percent >= coreThreshold;
-                const dailyMet = dailyStats.percent >= dailyThreshold;
-                let type = 'fail';
-                if (coreStats.percent === 100 && dailyStats.percent === 100 && coreTasks.length > 0) type = 'perfect';
-                else if (coreMet && dailyMet) type = 'pass';
-                const perfectReward = Math.max(0, parseInt(weekendSettings.perfectReward, 10) || 100);
-                const passReward = Math.max(0, parseInt(weekendSettings.passReward, 10) || 60);
-                const reward = type === 'perfect' ? perfectReward : (type === 'pass' ? passReward : 0);
-                return { type, coreStats, dailyStats, reward };
-            };
-
-            // 【修正版】测试结算：仅弹出结果，不发放奖励（奖励在弹窗内点击领取时发放）
-            const handleTestSettlement = () => {
-                const result = computeWeekendSettlement(activeChild);
-                setSettlementState(result);
-                setShowSettings(false);
-            };
-
             // 修改：需要密码验证才能打开设置
             const handleOpenSettings = (targetTab = 'parent') => {
                 if (settingsPassword) {
@@ -6965,23 +6869,6 @@ ${context}
                 setShowSettings(true);
                 checkAchievements('settings'); 
             };
-
-            // 周末冲刺：达到要求时自动弹出结算（仅当已启用且本周末尚未结算，且本页未弹过）
-            useEffect(() => {
-                if (!weekendSettings.enabled) return;
-                const now = new Date();
-                const day = now.getDay();
-                if (day !== 0 && day !== 6) return;
-                const weekendKey = getCurrentWeekendKey();
-                const lastSettled = weekendSettings.lastSettledWeekend || {};
-                if (lastSettled[activeChild] === weekendKey) return;
-                if (weekendAutoShownRef.current === weekendKey) return; // 本次会话已弹过
-                const result = computeWeekendSettlement(activeChild);
-                if (result.type === 'pass' || result.type === 'perfect') {
-                    weekendAutoShownRef.current = weekendKey;
-                    setSettlementState(result);
-                }
-            }, [weekendSettings.enabled, weekendSettings.lastSettledWeekend, activeChild, tasks, checkins, weekendSettings.coreThreshold, weekendSettings.dailyThreshold]);
 
             const scrollToToday = () => {
                 setCalendarViewMonth(null);
@@ -8239,7 +8126,7 @@ ${context}
                 if (childBuffs.investMultiplier > 1 && childBuffs.investExpire && today <= childBuffs.investExpire && today >= investStart) {
                     multiplier = childBuffs.investMultiplier;
                 }
-                const dailyReward = (task.reward || 3) * multiplier;
+                const dailyReward = (task.reward ?? 3) * multiplier;
                 const historyKey = isMulti
                     ? `${activeChild}-TASK-${taskId}-${today}_${sessionTimestamp}`
                     : `${activeChild}-TASK-${taskId}-${today}`;
@@ -8586,22 +8473,23 @@ ${context}
 
                 let nextVal = 0;
                 let rewardDelta = 0;
+                const rewardPerCheckin = task.reward ?? 1;
 
                 if (isToggle || cfg.mode === 'check') {
                     if (stepDelta === 1) {
                         nextVal = 1;
-                        rewardDelta = task.reward || 1;
+                        rewardDelta = rewardPerCheckin;
                     } else {
                         nextVal = 0;
                         rewardDelta = 0;
                     }
                 } else if (isCount) {
                     nextVal = Math.max(0, curCount + stepDelta);
-                    rewardDelta = (stepDelta > 0) ? (task.reward || 1) * stepDelta : 0;
+                    rewardDelta = stepDelta > 0 ? rewardPerCheckin * stepDelta : 0;
                 } else {
                     if (curCount < target) {
                         nextVal = curCount + 1;
-                        rewardDelta = task.reward || 1;
+                        rewardDelta = rewardPerCheckin;
                     } else {
                         nextVal = Math.max(0, curCount - 1);
                         rewardDelta = 0;
@@ -8709,7 +8597,6 @@ ${context}
 
                 const overrides = {
                     name: preset.name,
-                    type: 'daily',
                     frequencyType: 'habit',
                     reward: preset.reward || 1,
                     startDate: today,
@@ -9547,7 +9434,7 @@ ${context}
                 triggerSyncUpload();
             };
 
-            // overrides: 新增弹窗表单传入的字段（name/type/frequencyType/reward 等）；返回新任务 id 供自动展开编辑
+            // 新增任务后返回 id，供任务列表定位刚保存的任务。
             const handleAddTask = (overrides) => {
                 const todayStr = getLocalDateKey(0);
                 const d3m = new Date(); d3m.setMonth(d3m.getMonth() + 3);
@@ -10601,14 +10488,6 @@ ${context}
                   })()}
 
                   <main className="app-main relative z-10 max-w-5xl mx-auto px-4 py-8" style={{ opacity: isAccountSwitchingUI ? 0.55 : 1, transition: 'opacity 0.18s ease' }}>
-				    {/* 新增：周末仪表盘 */}
-					<WeekendDashboard 
-						tasks={tasks} 
-						checkins={checkins} 
-						activeChild={activeChild} 
-						settings={weekendSettings}
-						theme={theme}
-					/>
                     {/* --- 灵龟甲骨·吉金传书展示区 --- */}
                     <OracleMessageBoard
                         globalMessages={globalMessages}
@@ -11474,9 +11353,6 @@ ${context}
 					handleDeduplicateAchievements={handleDeduplicateAchievements}
 					handleRecalculateLevelMilestones={handleRecalculateLevelMilestones}
 					onFixInventory={handleFixInventory}
-					weekendSettings={weekendSettings}
-                    setWeekendSettings={setWeekendSettings}
-					handleTestSettlement={handleTestSettlement}
 					userCity={userCity}
                     setUserCity={setUserCity}
 					updateProfileGrade={updateProfileGrade} // 传递年级更新函数
@@ -11853,25 +11729,6 @@ ${context}
                       callDeepSeekAPI={callDeepSeekAPI}
                     />
                   )}
-                  {/* 【新增】周末结算弹窗 */}
-                  <WeekendSettlementModal 
-                        state={settlementState} 
-                        onClose={() => setSettlementState(null)} 
-                        onClaim={(reward) => {
-                            if (!reward || reward <= 0) return;
-                            const weekendKey = getCurrentWeekendKey();
-                            setWheelHistory(prev => ({ ...prev, [`${activeChild}-WEEKEND-${weekendKey}-${Date.now()}`]: reward }));
-                            updateStats(activeChild, 'gold_earn', reward, { source: 'weekend', dateKey: getLocalDateKey(0) });
-                            setWeekendSettings(prev => ({ ...prev, lastSettledWeekend: { ...(prev.lastSettledWeekend || {}), [activeChild]: weekendKey } }));
-                            setSettlementState(null);
-                        }}
-                        settings={weekendSettings}
-                        onUseExemption={() => {
-                            setWeekendSettings(prev => ({...prev, guardianPassCount: (prev.guardianPassCount || 0) - 1}));
-                            setSettlementState(null);
-                            showToast('success', '豁免成功！连胜记录已恢复。');
-                        }}
-                  />
 				  <ThemeSelectionModal show={showThemeModal} onClose={handleCloseThemeModal} currentTheme={theme} onSelectTheme={handleChangeTheme} unlockedThemes={stats[activeChild]?.unlockedThemes || []} showToast={showToast} />
                   <EvilWheelModal 
                     show={showEvilWheel} 

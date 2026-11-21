@@ -128,10 +128,6 @@ export const TaskCardInner = (({
 			const bgStyle = isSolidBgNeeded ? (isLowPerf ? 'bg-white shadow-xs border-slate-300' : 'bg-white/95 shadow-xs border-slate-200') : 'bg-amber-50/60 border-amber-200';
 			const completedBgStyle = isSolidBgNeeded ? (isLowPerf ? 'bg-amber-50 shadow-xs border-amber-300' : 'bg-amber-50/95 shadow-xs border-amber-300') : 'bg-yellow-50/50 border-yellow-200';
 
-            // 周末选做冲刺提醒 (周五、周六、周日)
-            const dayOfWeek = new Date().getDay();
-            const isWeekendSprint = frequencyType === 'weekly_optional' && (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) && weekRemain > 0;
-
             // 节假日与周末免做
             const isHolidayToday = isDateHolidayOrWeekend(today);
             const isHolidayExempt = frequencyType === 'daily_must' && task.holidayExempt;
@@ -168,7 +164,7 @@ export const TaskCardInner = (({
             }
 
             return (
-                <div className={`p-4 rounded-2xl border shadow-sm relative overflow-visible group hover:shadow-md transition-colors transition-transform backdrop-blur-xs ${isCompleted ? `border-yellow-200 ${completedBgStyle}` : isReading ? `${bgStyle} border-amber-200` : task.type === 'core' ? `${bgStyle} border-amber-100` : `${bgStyle} border-stone-200`}`}>
+                <div className={`p-4 rounded-2xl border shadow-sm relative overflow-visible group hover:shadow-md transition-colors transition-transform backdrop-blur-xs ${isCompleted ? `border-yellow-200 ${completedBgStyle}` : isReading ? `${bgStyle} border-amber-200` : `${bgStyle} border-stone-200`}`}>
                     {isCompleted && <div className="absolute -right-4 -top-4 w-16 h-16 bg-gradient-to-br from-yellow-300 to-amber-500 rounded-full flex items-end justify-start pl-3 pb-3 text-white shadow-lg"><Trophy className="w-6 h-6 animate-bounce" /></div>}
 					
                     {/* 每周选做：iOS 式右上角角标 */}
@@ -187,14 +183,8 @@ export const TaskCardInner = (({
 
                     <div className="flex justify-between items-start mb-2 relative z-10 gap-3">
 						<h3 className="font-bold text-gray-800 truncate flex-1 min-w-0 text-lg flex items-center gap-1">
-							{isReading ? (
-								<span title="必读书目" className="text-xl shrink-0">{rCfg.coverEmoji || '📖'}</span>
-							) : task.type === 'core' ? (
-								<span title="核心任务" className="text-amber-500 drop-shadow-sm shrink-0">⭐</span> 
-							) : (
-								<span title="日常任务" className="text-emerald-500 drop-shadow-sm shrink-0">🍃</span>
-							)}
-							{task.name}
+							{isReading && <span title="必读书目" className="text-xl shrink-0">{rCfg.coverEmoji || '📖'}</span>}
+                            {task.name}
 						</h3>
 						<div className="text-right shrink-0 flex flex-col items-end gap-1">
 							<span className="block text-2xl font-bold text-amber-500 drop-shadow-sm">{stats.totalIncome}</span>
@@ -287,14 +277,6 @@ export const TaskCardInner = (({
 							</div>
 						</div>
 					</div>
-
-                    {/* 周末选做冲刺提醒 */}
-                    {isWeekendSprint && (
-                        <div className="mt-2.5 bg-amber-50/90 border border-amber-200/90 rounded-xl p-2 text-[10px] font-bold text-amber-800 flex items-center gap-1.5 shadow-2xs">
-                            <span>⚡</span>
-                            <span>周末冲刺：本周还差 {weekRemain} 次未达标，别忘打卡哦！</span>
-                        </div>
-                    )}
 
                     {/* 节假日免做说明 */}
                     {isHolidayExempt && isHolidayToday && (
